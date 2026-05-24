@@ -494,6 +494,39 @@ def api_delete_dividend(id):
         db.commit()
     return jsonify({'status':'ok'})
 
+# ========== 设置 - 首页背景图 ==========
+ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
+MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
+
+@app.route('/api/settings/background', methods=['POST'])
+@login_required
+def api_upload_background():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({'status': 'error', 'message': '文件名为空'}), 400
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in ALLOWED_BG_EXT:
+        return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
+    # check size
+    f.seek(0, 2)
+    size = f.tell()
+    f.seek(0)
+    if size > MAX_BG_SIZE:
+        return jsonify({'status': 'error', 'message': f'文件最大 5MB'}), 400
+    save_path = os.path.join(app.static_folder, 'home-bg.jpg')
+    f.save(save_path)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/settings/background', methods=['DELETE'])
+@login_required
+def api_reset_background():
+    save_path = os.path.join(app.static_folder, 'home-bg.jpg')
+    if os.path.exists(save_path):
+        os.remove(save_path)
+    return jsonify({'status': 'ok'})
+
 @app.route('/api/partners/<int:id>', methods=['PUT'])
 @login_required
 def api_update_partner(id):
