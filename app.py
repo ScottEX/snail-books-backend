@@ -33,10 +33,41 @@ def handle_options():
         return make_response('', 200)
 
 FRONTEND_VERSION = '1'
+FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
 
 @ app.before_request
 def detect_lang():
     g.lang = get_lang(request)
+
+
+# ── SPA static file serving ──
+import mimetypes
+
+@app.route('/<path:path>')
+def serve_spa_static(path):
+    """Serve static files from the Expo web build dist/ directory."""
+    # Let API routes take priority (they're registered first, so this only
+    # fires for paths that don't match any API route)
+    if path.startswith('api/'):
+        return jsonify({'status':'error','message':'Not found'}), 404
+    file_path = os.path.join(FRONTEND_DIR, path)
+    if os.path.isfile(file_path):
+        mime, _ = mimetypes.guess_type(file_path)
+        return send_file(file_path, mimetype=mime or 'application/octet-stream')
+    # SPA fallback: serve index.html
+    index_path = os.path.join(FRONTEND_DIR, 'index.html')
+    if os.path.isfile(index_path):
+        return send_file(index_path, mimetype='text/html')
+    return jsonify({'status':'error','message':'Frontend not built'}), 503
+
+
+@app.route('/', defaults={'path': ''})
+def serve_spa_root(path):
+    """Serve SPA entry point for root and login routes."""
+    index_path = os.path.join(FRONTEND_DIR, 'index.html')
+    if os.path.isfile(index_path):
+        return send_file(index_path, mimetype='text/html')
+    return jsonify({'status':'error','message':'Frontend not built'}), 503
 
 
 # Email config
@@ -148,7 +179,7 @@ def login_required(f):
             if 'user_id' not in session:
                 if request.path.startswith('/api/'):
                     return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
-                return redirect(url_for('login_page'))
+                return redirect('/login')
         return f(*a, **kw)
     return wrap
 
@@ -261,7 +292,13 @@ with get_db() as db:
 
 @app.route('/login', methods=['GET','POST'])
 def login_page():
-    if request.method == 'POST':
+    if request.method == 'GET':
+        # Serve SPA entry point (React handles the login UI)
+        index_path = os.path.join(FRONTEND_DIR, 'index.html')
+        if os.path.isfile(index_path):
+            return send_file(index_path, mimetype='text/html')
+        return jsonify({'status':'error','message':'Frontend not built'}), 503
+    # POST: JSON login API (unchanged)
         data = request.get_json()
         username = data.get('username','').strip()
         password = data.get('password','')
@@ -398,17 +435,10 @@ def reset_password():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('login_page'))
+    return redirect('/login')
 
-@app.route('/')
-@login_required
-def index():
-    return render_template('index.html', income_cats=INCOME_CATS, expense_cats=EXPENSE_CATS)
-
-@app.route('/partner')
-@login_required
-def partner():
-    return render_template('partner.html')
+# Page routes are now served by the SPA fallback (serve_spa_static / serve_spa_root).
+# API routes follow below — all unchanged.
 
 @app.route('/api/transactions', methods=['GET','POST'])
 @login_required
