@@ -298,28 +298,25 @@ def login_page():
         if os.path.isfile(index_path):
             return send_file(index_path, mimetype='text/html')
         return jsonify({'status':'error','message':'Frontend not built'}), 503
-    # POST: JSON login API (unchanged)
-        data = request.get_json()
-        username = data.get('username','').strip()
-        password = data.get('password','')
-        if not username or not password:
-            return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
-        with get_db() as db:
-            user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username)).fetchone()
-            if user and check_password_hash(user['password'], password):
-                if not user['is_verified']:
-                    return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
-                session.permanent = True
-                session['user_id'] = user['id']
-                session['username'] = user['username']
-                token = secrets.token_hex(32)
-                db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
-                db.commit()
-                return jsonify({'status':'ok','token':token,'username':user['username']})
-        return jsonify({'status':'error','message':_t('err_wrong_credentials', g.lang)}), 401
-    if 'user_id' in session:
-        return redirect(url_for('index'))
-    return render_template('login.html')
+    # POST: JSON login API
+    data = request.get_json()
+    username = data.get('username','').strip()
+    password = data.get('password','')
+    if not username or not password:
+        return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
+    with get_db() as db:
+        user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username)).fetchone()
+        if user and check_password_hash(user['password'], password):
+            if not user['is_verified']:
+                return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
+            session.permanent = True
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            token = secrets.token_hex(32)
+            db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
+            db.commit()
+            return jsonify({'status':'ok','token':token,'username':user['username']})
+    return jsonify({'status':'error','message':_t('err_wrong_credentials', g.lang)}), 401
 
 @app.route('/register', methods=['POST'])
 def register():
