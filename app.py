@@ -725,10 +725,16 @@ def api_create_reconciliation():
 def api_get_reconciliations():
     limit = request.args.get('limit', 30, type=int)
     with get_db() as db:
-        rows = db.execute(
-            'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC LIMIT ?',
-            (g.user_id, limit)
-        ).fetchall()
+        if limit <= 0:
+            rows = db.execute(
+                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC',
+                (g.user_id,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC LIMIT ?',
+                (g.user_id, limit)
+            ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 if __name__ == '__main__':
