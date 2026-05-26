@@ -302,15 +302,19 @@ def init_db():
                 db.execute('INSERT INTO products (name,spec,unit,price) VALUES (?,?,?,?)',
                           (p[0],p[1],p[2],p[3]))
         db.commit()
-        # Migration: add bill_date column + remove UNIQUE(date) constraint
+        # Migration: add bill_date column (ignore if exists)
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
         except:
             pass
-        # Remove UNIQUE constraint by recreating table (SQLite can't DROP CONSTRAINT)
+        # Migration: remove UNIQUE(date) constraint by recreating table
         try:
-            db.execute('''
-                CREATE TABLE IF NOT EXISTS reconciliations_new (
+            # Check if migration already done
+            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
+            has_unique = any(row[0].startswith('sqlite_autoindex') for row in indexes)
+            if has_unique:
+                db.execute('DROP TABLE IF EXISTS reconciliations_new')
+                db.execute('''CREATE TABLE reconciliations_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date TEXT NOT NULL,
                     card_balance REAL NOT NULL DEFAULT 0,
@@ -326,21 +330,15 @@ def init_db():
                     user_id INTEGER REFERENCES users(id),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     bill_date TEXT
-                )
-            ''')
-            # Check if old table has UNIQUE index
-            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
-            has_unique = any('unique' in (row[2] or '').lower() or row[0].startswith('sqlite_autoindex') for row in indexes)
-            if has_unique:
+                )''')
                 db.execute('INSERT INTO reconciliations_new SELECT id,date,card_balance,cash_balance,dine_in,meituan,flash_sale,jd,tuan,channel_total,real_total,diff,user_id,created_at,NULL FROM reconciliations')
                 db.execute('DROP TABLE reconciliations')
                 db.execute('ALTER TABLE reconciliations_new RENAME TO reconciliations')
                 db.execute('CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date)')
-            else:
-                db.execute('DROP TABLE reconciliations_new')
-            db.commit()
+                db.commit()
         except Exception as e:
-            print(f'Migration note: {e}')
+            import traceback
+            traceback.print_exc()
 
 init_db()
 # Auto-verify existing users (backward compat)
