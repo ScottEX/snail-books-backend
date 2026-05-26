@@ -307,38 +307,6 @@ def init_db():
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
         except:
             pass
-        # Migration: remove UNIQUE(date) constraint by recreating table
-        try:
-            # Check if migration already done
-            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
-            has_unique = any(row[0].startswith('sqlite_autoindex') for row in indexes)
-            if has_unique:
-                db.execute('DROP TABLE IF EXISTS reconciliations_new')
-                db.execute('''CREATE TABLE reconciliations_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT NOT NULL,
-                    card_balance REAL NOT NULL DEFAULT 0,
-                    cash_balance REAL NOT NULL DEFAULT 0,
-                    dine_in REAL NOT NULL DEFAULT 0,
-                    meituan REAL NOT NULL DEFAULT 0,
-                    flash_sale REAL NOT NULL DEFAULT 0,
-                    jd REAL NOT NULL DEFAULT 0,
-                    tuan REAL NOT NULL DEFAULT 0,
-                    channel_total REAL NOT NULL DEFAULT 0,
-                    real_total REAL NOT NULL DEFAULT 0,
-                    diff REAL NOT NULL DEFAULT 0,
-                    user_id INTEGER REFERENCES users(id),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    bill_date TEXT
-                )''')
-                db.execute('INSERT INTO reconciliations_new SELECT id,date,card_balance,cash_balance,dine_in,meituan,flash_sale,jd,tuan,channel_total,real_total,diff,user_id,created_at,NULL FROM reconciliations')
-                db.execute('DROP TABLE reconciliations')
-                db.execute('ALTER TABLE reconciliations_new RENAME TO reconciliations')
-                db.execute('CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date)')
-                db.commit()
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -736,6 +704,48 @@ def api_frontend_zip():
     return send_file(buf, mimetype='application/zip', as_attachment=True, download_name='frontend.zip')
 
 # ── Reconciliations ──
+@app.route('/api/migrate-recon', methods=['POST'])
+@login_required
+def api_migrate_recon():
+    """One-time migration: remove UNIQUE(date) constraint."""
+    with get_db() as db:
+        try:
+            db.execute('PRAGMA foreign_keys = OFF')
+            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
+            result = {'indexes': [dict(r) for r in indexes]}
+            has_unique = any(r[0].startswith('sqlite_autoindex') for r in indexes)
+            if not has_unique:
+                return jsonify({'message': 'Already migrated, no UNIQUE found', 'result': result})
+            db.execute('DROP TABLE IF EXISTS reconciliations_new')
+            db.execute('''CREATE TABLE reconciliations_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                card_balance REAL NOT NULL DEFAULT 0,
+                cash_balance REAL NOT NULL DEFAULT 0,
+                dine_in REAL NOT NULL DEFAULT 0,
+                meituan REAL NOT NULL DEFAULT 0,
+                flash_sale REAL NOT NULL DEFAULT 0,
+                jd REAL NOT NULL DEFAULT 0,
+                tuan REAL NOT NULL DEFAULT 0,
+                channel_total REAL NOT NULL DEFAULT 0,
+                real_total REAL NOT NULL DEFAULT 0,
+                diff REAL NOT NULL DEFAULT 0,
+                user_id INTEGER REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                bill_date TEXT
+            )''')
+            db.execute('INSERT INTO reconciliations_new SELECT id,date,card_balance,cash_balance,dine_in,meituan,flash_sale,jd,tuan,channel_total,real_total,diff,user_id,created_at,bill_date FROM reconciliations')
+            n = db.execute('SELECT COUNT(*) FROM reconciliations_new').fetchone()[0]
+            db.execute('DROP TABLE reconciliations')
+            db.execute('ALTER TABLE reconciliations_new RENAME TO reconciliations')
+            db.execute('CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date)')
+            db.execute('PRAGMA foreign_keys = ON')
+            db.commit()
+            return jsonify({'message': f'Migrated {n} rows, UNIQUE removed', 'rows': n})
+        except Exception as e:
+            import traceback
+            return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
 @app.route('/api/reconciliations', methods=['POST'])
 @login_required
 def api_create_reconciliation():
