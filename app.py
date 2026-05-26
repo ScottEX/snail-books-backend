@@ -711,6 +711,14 @@ def api_frontend_zip():
     buf.seek(0)
     return send_file(buf, mimetype='application/zip', as_attachment=True, download_name='frontend.zip')
 
+# ── Users list (for dropdowns etc.) ──
+@app.route('/api/users')
+@login_required
+def api_users():
+    with get_db() as db:
+        rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
+    return jsonify([dict(r) for r in rows])
+
 # ── Reconciliations ──
 @app.route('/api/migrate-recon', methods=['POST'])
 @login_required
