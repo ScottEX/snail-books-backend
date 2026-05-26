@@ -19,18 +19,6 @@ jobs:
           python -m py_compile app.py
           python -m py_compile i18n_backend.py
           echo "✅ 语法检查通过"
-      - name: Jinja2 模板验证
-        run: |
-          pip install jinja2
-          python -c "
-          from jinja2 import Environment, FileSystemLoader, BaseLoader
-          import glob, os
-          # 验证所有 Python 文件可导入
-          import py_compile
-          for f in ['app.py', 'i18n_backend.py']:
-              py_compile.compile(f, doraise=True)
-          print('✅ 所有文件验证通过')
-          "
 
   deploy-staging:
     needs: test
@@ -44,7 +32,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/snail-books-staging
+            cd /opt/snail-books-backend-staging
             git checkout develop
             git pull origin develop
             systemctl restart snail-books-staging
@@ -65,7 +53,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/snail-books
+            cd /opt/snail-books-backend
             git checkout main
             git pull origin main
             systemctl restart snail-books
