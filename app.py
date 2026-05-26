@@ -180,6 +180,7 @@ def login_required(f):
                 if request.path.startswith('/api/'):
                     return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
                 return redirect('/login')
+        g.user_id = session['user_id']
         return f(*a, **kw)
     return wrap
 
