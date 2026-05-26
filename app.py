@@ -4,7 +4,7 @@
 import sqlite3, os, secrets, functools, re
 from datetime import datetime, date
 from contextlib import contextmanager
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g, make_response, send_file
+from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib, random, string
 from email.mime.text import MIMEText
@@ -637,7 +637,7 @@ def api_frontend_version():
 def api_frontend_zip():
     import io, zipfile
     buf = io.BytesIO()
-    www = os.path.join(os.path.dirname(__file__), 'ios-app', 'www')
+    www = os.path.join(os.path.dirname(__file__), '..', 'snail-books-ios', 'www')
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(www):
             for fn in files:
