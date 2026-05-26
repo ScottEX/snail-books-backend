@@ -182,6 +182,7 @@ def login_required(f):
                     return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
                 return redirect('/login')
         g.user_id = session['user_id']
+        g.username = session.get('username', '')
         return f(*a, **kw)
     return wrap
 
@@ -278,7 +279,8 @@ def init_db():
                 diff REAL NOT NULL DEFAULT 0,
                 user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                bill_date TEXT
+                bill_date TEXT,
+                reconciled_by TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
         ''')
@@ -306,6 +308,10 @@ def init_db():
         # Migration: add bill_date column (ignore if exists)
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
+        except:
+            pass
+        try:
+            db.execute('ALTER TABLE reconciliations ADD COLUMN reconciled_by TEXT')
         except:
             pass
 
@@ -763,6 +769,7 @@ def api_create_reconciliation():
     if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
     date = data['date']
     bill_date = data.get('bill_date', date)
+    reconciled_by = data.get('reconciled_by', g.username)
 
     card_balance = float(data.get('card_balance', 0))
     cash_balance = float(data.get('cash_balance', 0))
@@ -784,33 +791,57 @@ def api_create_reconciliation():
         if existing:
             db.execute('''UPDATE reconciliations SET
                 date=?, card_balance=?, cash_balance=?, dine_in=?, meituan=?, flash_sale=?,
-                jd=?, tuan=?, channel_total=?, real_total=?, diff=?
+                jd=?, tuan=?, channel_total=?, real_total=?, diff=?, reconciled_by=?
                 WHERE id=?''',
                 (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, existing['id']))
+                 channel_total, real_total, diff, reconciled_by, existing['id']))
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, user_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 channel_total, real_total, diff, user_id, reconciled_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, g.user_id))
+                 channel_total, real_total, diff, g.user_id, reconciled_by))
     return jsonify({'ok': True}), 201
 
 @app.route('/api/reconciliations', methods=['GET'])
 @login_required
 def api_get_reconciliations():
     limit = request.args.get('limit', 30, type=int)
+    bill_date_from = request.args.get('bill_date_from', '')
+    bill_date_to = request.args.get('bill_date_to', '')
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    reconciled_by = request.args.get('reconciled_by', '')
+
+    where = 'WHERE user_id=?'
+    params = [g.user_id]
+    if bill_date_from:
+        where += ' AND bill_date >= ?'
+        params.append(bill_date_from)
+    if bill_date_to:
+        where += ' AND bill_date <= ?'
+        params.append(bill_date_to)
+    if date_from:
+        where += ' AND date >= ?'
+        params.append(date_from)
+    if date_to:
+        where += ' AND date <= ?'
+        params.append(date_to)
+    if reconciled_by:
+        where += ' AND reconciled_by = ?'
+        params.append(reconciled_by)
+
     with get_db() as db:
         if limit <= 0:
             rows = db.execute(
-                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY bill_date DESC, date DESC',
-                (g.user_id,)
+                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC',
+                params
             ).fetchall()
         else:
             rows = db.execute(
-                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY bill_date DESC, date DESC LIMIT ?',
-                (g.user_id, limit)
+                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ?',
+                params + [limit]
             ).fetchall()
     return jsonify([dict(r) for r in rows])
 
