@@ -126,7 +126,7 @@ def validate_password(password, lang='zh-CN'):
         return False, _t('err_pw_no_digit', lang)
     return True, ''
 
-DB = os.environ.get('DB', '/opt/snail-books/data/snail.db')
+DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
 
 INCOME_CATS = ['🍜 堂食', '🛵 美团外卖', '🛵 饿了吗外卖', '🎫 美团团购', '📦 京东', '🔧 其他收入']
 EXPENSE_CATS = [
