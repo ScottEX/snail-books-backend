@@ -746,6 +746,14 @@ def api_migrate_recon():
             import traceback
             return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
+@app.route('/api/reconciliations/clear', methods=['POST'])
+@login_required
+def api_clear_reconciliations():
+    with get_db() as db:
+        db.execute('DELETE FROM reconciliations WHERE user_id=?', (g.user_id,))
+        db.commit()
+    return jsonify({'ok': True, 'message': 'All reconciliation records cleared'})
+
 @app.route('/api/reconciliations', methods=['POST'])
 @login_required
 def api_create_reconciliation():
