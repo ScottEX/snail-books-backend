@@ -277,7 +277,7 @@ def init_db():
                 diff REAL NOT NULL DEFAULT 0,
                 user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(date)
+                bill_date TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
         ''')
@@ -302,6 +302,45 @@ def init_db():
                 db.execute('INSERT INTO products (name,spec,unit,price) VALUES (?,?,?,?)',
                           (p[0],p[1],p[2],p[3]))
         db.commit()
+        # Migration: add bill_date column + remove UNIQUE(date) constraint
+        try:
+            db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
+        except:
+            pass
+        # Remove UNIQUE constraint by recreating table (SQLite can't DROP CONSTRAINT)
+        try:
+            db.execute('''
+                CREATE TABLE IF NOT EXISTS reconciliations_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    card_balance REAL NOT NULL DEFAULT 0,
+                    cash_balance REAL NOT NULL DEFAULT 0,
+                    dine_in REAL NOT NULL DEFAULT 0,
+                    meituan REAL NOT NULL DEFAULT 0,
+                    flash_sale REAL NOT NULL DEFAULT 0,
+                    jd REAL NOT NULL DEFAULT 0,
+                    tuan REAL NOT NULL DEFAULT 0,
+                    channel_total REAL NOT NULL DEFAULT 0,
+                    real_total REAL NOT NULL DEFAULT 0,
+                    diff REAL NOT NULL DEFAULT 0,
+                    user_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    bill_date TEXT
+                )
+            ''')
+            # Check if old table has UNIQUE index
+            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
+            has_unique = any('unique' in (row[2] or '').lower() or row[0].startswith('sqlite_autoindex') for row in indexes)
+            if has_unique:
+                db.execute('INSERT INTO reconciliations_new SELECT id,date,card_balance,cash_balance,dine_in,meituan,flash_sale,jd,tuan,channel_total,real_total,diff,user_id,created_at,NULL FROM reconciliations')
+                db.execute('DROP TABLE reconciliations')
+                db.execute('ALTER TABLE reconciliations_new RENAME TO reconciliations')
+                db.execute('CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date)')
+            else:
+                db.execute('DROP TABLE reconciliations_new')
+            db.commit()
+        except Exception as e:
+            print(f'Migration note: {e}')
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -705,6 +744,7 @@ def api_create_reconciliation():
     data = request.get_json() or {}
     if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
     date = data['date']
+    bill_date = data.get('bill_date', date)
 
     card_balance = float(data.get('card_balance', 0))
     cash_balance = float(data.get('cash_balance', 0))
@@ -718,11 +758,11 @@ def api_create_reconciliation():
     diff = real_total - channel_total
 
     with get_db() as db:
-        db.execute('''INSERT OR REPLACE INTO reconciliations
-            (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+        db.execute('''INSERT INTO reconciliations
+            (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
              channel_total, real_total, diff, user_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
              channel_total, real_total, diff, g.user_id))
     return jsonify({'ok': True}), 201
 
