@@ -712,8 +712,8 @@ def api_migrate_recon():
         try:
             db.execute('PRAGMA foreign_keys = OFF')
             indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
-            result = {'indexes': [dict(r) for r in indexes]}
-            has_unique = any(r[0].startswith('sqlite_autoindex') for r in indexes)
+            result = {'indexes': [{'seq': r[0], 'name': r[1], 'unique': r[2]} for r in indexes]}
+            has_unique = any(r[1].startswith('sqlite_autoindex') for r in indexes)
             if not has_unique:
                 return jsonify({'message': 'Already migrated, no UNIQUE found', 'result': result})
             db.execute('DROP TABLE IF EXISTS reconciliations_new')
