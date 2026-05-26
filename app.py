@@ -693,7 +693,7 @@ def api_frontend_zip():
 @app.route('/api/reconciliations', methods=['POST'])
 @login_required
 def api_create_reconciliation():
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
     date = data['date']
 
