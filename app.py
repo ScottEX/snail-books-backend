@@ -694,8 +694,8 @@ def api_frontend_zip():
 @login_required
 def api_create_reconciliation():
     data = request.get_json(force=True) or {}
-    date = validate_required(data, 'date')
-    if not date: return jsonify({'error': '缺少日期'}), 400
+    if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
+    date = data['date']
 
     card_balance = float(data.get('card_balance', 0))
     cash_balance = float(data.get('cash_balance', 0))
