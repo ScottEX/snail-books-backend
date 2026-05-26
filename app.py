@@ -190,7 +190,9 @@ def get_db():
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
     try: yield db
-    finally: db.close()
+    finally:
+        db.commit()
+        db.close()
 
 def init_db():
     os.makedirs(os.path.dirname(DB), exist_ok=True)
