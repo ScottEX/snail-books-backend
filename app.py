@@ -259,6 +259,24 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions(type);
             CREATE INDEX IF NOT EXISTS idx_div_date ON dividends(created_at);
             CREATE INDEX IF NOT EXISTS idx_proc_date ON procurements(created_at);
+            CREATE TABLE IF NOT EXISTS reconciliations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                card_balance REAL NOT NULL DEFAULT 0,
+                cash_balance REAL NOT NULL DEFAULT 0,
+                dine_in REAL NOT NULL DEFAULT 0,
+                meituan REAL NOT NULL DEFAULT 0,
+                flash_sale REAL NOT NULL DEFAULT 0,
+                jd REAL NOT NULL DEFAULT 0,
+                tuan REAL NOT NULL DEFAULT 0,
+                channel_total REAL NOT NULL DEFAULT 0,
+                real_total REAL NOT NULL DEFAULT 0,
+                diff REAL NOT NULL DEFAULT 0,
+                user_id INTEGER REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -670,6 +688,45 @@ def api_frontend_zip():
                 zf.write(full, arcname)
     buf.seek(0)
     return send_file(buf, mimetype='application/zip', as_attachment=True, download_name='frontend.zip')
+
+# ── Reconciliations ──
+@app.route('/api/reconciliations', methods=['POST'])
+@login_required
+def api_create_reconciliation():
+    data = request.get_json(force=True) or {}
+    date = validate_required(data, 'date')
+    if not date: return jsonify({'error': '缺少日期'}), 400
+
+    card_balance = float(data.get('card_balance', 0))
+    cash_balance = float(data.get('cash_balance', 0))
+    dine_in = float(data.get('dine_in', 0))
+    meituan = float(data.get('meituan', 0))
+    flash_sale = float(data.get('flash_sale', 0))
+    jd = float(data.get('jd', 0))
+    tuan = float(data.get('tuan', 0))
+    channel_total = dine_in + meituan + flash_sale + jd + tuan
+    real_total = card_balance + cash_balance
+    diff = real_total - channel_total
+
+    with get_db() as db:
+        db.execute('''INSERT OR REPLACE INTO reconciliations
+            (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+             channel_total, real_total, diff, user_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+             channel_total, real_total, diff, g.user_id))
+    return jsonify({'ok': True}), 201
+
+@app.route('/api/reconciliations', methods=['GET'])
+@login_required
+def api_get_reconciliations():
+    limit = request.args.get('limit', 30, type=int)
+    with get_db() as db:
+        rows = db.execute(
+            'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC LIMIT ?',
+            (g.user_id, limit)
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
