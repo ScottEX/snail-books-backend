@@ -23,7 +23,7 @@ app.permanent_session_lifetime = timedelta(hours=24)
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
     response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,X-Lang'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,X-Lang,Authorization'
     response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
     return response
 

@@ -1,6 +1,6 @@
 FROM python:3.12-slim
-RUN pip install flask gunicorn -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install flask gunicorn werkzeug -i https://pypi.tuna.tsinghua.edu.cn/simple
 WORKDIR /app
-COPY app.py /app/
-COPY templates /app/templates/
+COPY app.py i18n_backend.py /app/
+COPY static /app/static/
 CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8600", "app:app"]

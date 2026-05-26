@@ -3,8 +3,9 @@
 ## 技术栈
 - **语言**: Python 3
 - **框架**: Flask
-- **数据库**: SQLite（`/opt/snail-books/data/snail.db`）
-- **部署**: 阿里云 ECS Ubuntu 24.04，gunicorn + systemd
+- **数据库**: SQLite（默认 `/opt/snail-books/data/snail.db`，可通过 `DB` 环境变量覆盖）
+- **部署**: Docker + gunicorn，或直接 gunicorn + systemd
+- **前端**: SPA 模式，serve `../snail-books-web/dist/` 下的构建产物
 
 ## API 设计
 
@@ -52,7 +53,17 @@ for col, col_type in [('email','TEXT'),('is_verified','INTEGER DEFAULT 0')]:
 
 ## 部署
 
-### 部署命令
+### Docker 部署
+```bash
+# 先在 snail-books-web 构建前端
+cd ../snail-books-web && npm run build:web
+
+# 构建并启动后端
+docker build -t snail-books .
+docker run -d -p 8600:8600 -v /opt/snail-books/data:/opt/snail-books/data snail-books
+```
+
+### VPS 直接部署
 ```bash
 rsync -avz app.py i18n_backend.py root@8.135.58.90:/opt/snail-books/
 ssh root@8.135.58.90 'systemctl restart snail-books'
@@ -61,8 +72,12 @@ ssh root@8.135.58.90 'systemctl restart snail-books'
 ### 重启后验证（必须全部通过）
 1. `systemctl is-active snail-books` → active
 2. `curl -s -o /dev/null -w '%{http_code}' localhost:8600/login` → 200
-3. Jinja2 模板语法验证（改 HTML 后必做）
-4. curl API 功能测试（确认 i18n 正常）
+3. `curl -s localhost:8600/api/summary` → JSON（前端构建后测试 SPA 页面）
+
+## OTA 更新
+- `/api/frontend-version` 返回当前版本号
+- `/api/frontend.zip` 打包 `../snail-books-ios/www/` 供 iOS 端下载更新
+- iOS 端 `updater.js` 轮询版本号自动更新
 
 ## 代码规范
 
