@@ -804,12 +804,12 @@ def api_get_reconciliations():
     with get_db() as db:
         if limit <= 0:
             rows = db.execute(
-                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC',
+                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY bill_date DESC, date DESC',
                 (g.user_id,)
             ).fetchall()
         else:
             rows = db.execute(
-                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY date DESC LIMIT ?',
+                'SELECT * FROM reconciliations WHERE user_id=? ORDER BY bill_date DESC, date DESC LIMIT ?',
                 (g.user_id, limit)
             ).fetchall()
     return jsonify([dict(r) for r in rows])
