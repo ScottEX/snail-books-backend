@@ -776,12 +776,25 @@ def api_create_reconciliation():
     diff = real_total - channel_total
 
     with get_db() as db:
-        db.execute('''INSERT INTO reconciliations
-            (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-             channel_total, real_total, diff, user_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-             channel_total, real_total, diff, g.user_id))
+        # Upsert: same user + same bill_date updates existing, otherwise inserts
+        existing = db.execute(
+            'SELECT id FROM reconciliations WHERE user_id=? AND bill_date=?',
+            (g.user_id, bill_date)
+        ).fetchone()
+        if existing:
+            db.execute('''UPDATE reconciliations SET
+                date=?, card_balance=?, cash_balance=?, dine_in=?, meituan=?, flash_sale=?,
+                jd=?, tuan=?, channel_total=?, real_total=?, diff=?
+                WHERE id=?''',
+                (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+                 channel_total, real_total, diff, existing['id']))
+        else:
+            db.execute('''INSERT INTO reconciliations
+                (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+                 channel_total, real_total, diff, user_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
+                 channel_total, real_total, diff, g.user_id))
     return jsonify({'ok': True}), 201
 
 @app.route('/api/reconciliations', methods=['GET'])
