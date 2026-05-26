@@ -556,8 +556,14 @@ def api_upload_background():
 @login_required
 def api_reset_background():
     save_path = os.path.join(app.static_folder, 'home-bg.jpg')
+    # Remove uploaded image
     if os.path.exists(save_path):
         os.remove(save_path)
+    # Restore default from production static if available
+    default_bg = os.path.join(app.static_folder, 'bg.jpg')
+    if os.path.exists(default_bg):
+        import shutil
+        shutil.copy(default_bg, save_path)
     return jsonify({'status': 'ok'})
 
 @app.route('/api/partners/<int:id>', methods=['PUT'])
