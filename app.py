@@ -288,6 +288,11 @@ with get_db() as db:
     db.execute("UPDATE users SET is_verified=1 WHERE is_verified IS NULL OR is_verified=0")
     db.commit()
 
+# ── Validation helper ──
+def validate_required(data, *fields):
+    """Return list of missing field names; empty if all present."""
+    return [f for f in fields if not data.get(f)]
+
 # ====== Auth ======
 
 @app.route('/login', methods=['GET','POST'])
@@ -442,6 +447,9 @@ def logout():
 def api_transactions():
     if request.method == 'POST':
         data = request.get_json()
+        missing = validate_required(data, 'type', 'amount', 'category', 'account')
+        if missing:
+            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             db.execute('INSERT INTO transactions (type,amount,category,account,note) VALUES (?,?,?,?,?)', (data['type'], data['amount'], data['category'], data['account'], data.get('note','')))
             db.commit()
@@ -477,6 +485,10 @@ def api_dividends():
     if request.method == 'POST':
         data = request.get_json()
         items = data.get('items', [data])  # support single item or array
+        for item in items:
+            missing = validate_required(item, 'partner', 'amount')
+            if missing:
+                return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             for item in items:
                 db.execute('INSERT INTO dividends (partner,amount,note) VALUES (?,?,?)', (item['partner'], item['amount'], item.get('note','')))
@@ -531,6 +543,9 @@ def api_reset_background():
 @login_required
 def api_update_partner(id):
     data = request.get_json()
+    missing = validate_required(data, 'share', 'investment')
+    if missing:
+        return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
     with get_db() as db:
         db.execute('UPDATE partners SET share=?, investment=?, status=? WHERE id=?', (data['share'], data['investment'], data.get('status','进行中'), id))
         db.commit()
@@ -541,6 +556,9 @@ def api_update_partner(id):
 def api_products():
     if request.method == 'POST':
         data = request.get_json()
+        missing = validate_required(data, 'name')
+        if missing:
+            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             db.execute('INSERT INTO products (name,spec,unit,price,note) VALUES (?,?,?,?,?)',
                       (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('note','')))
@@ -548,6 +566,9 @@ def api_products():
         return jsonify({'status':'ok'})
     if request.method == 'PUT':
         data = request.get_json()
+        missing = validate_required(data, 'name', 'id')
+        if missing:
+            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             db.execute('UPDATE products SET name=?, spec=?, unit=?, price=?, note=? WHERE id=?',
                       (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('note',''), data['id']))
@@ -569,6 +590,9 @@ def api_products():
 def api_procurements():
     if request.method == 'POST':
         data = request.get_json()
+        missing = validate_required(data, 'product_id', 'product_name', 'quantity', 'unit_price', 'total')
+        if missing:
+            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             db.execute('INSERT INTO procurements (product_id,product_name,quantity,unit_price,total,note) VALUES (?,?,?,?,?,?)', (data['product_id'], data['product_name'], data['quantity'], data['unit_price'], data['total'], data.get('note','')))
             db.commit()
