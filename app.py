@@ -40,13 +40,18 @@ EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
 
-@app.route('/expense-imgs/<int:user_id>/<path:filename>')
-def serve_expense_image(user_id, filename):
+@app.route('/expense-imgs/<path:subpath>')
+def serve_expense_image(subpath):
     """Serve expense receipt images with permanent cache headers.
+    subpath format: <user_id>/<filename>
     Receipt images are immutable once uploaded — they never change.
     """
-    # Path traversal guard
-    user_dir = os.path.join(EXPENSE_IMG_DIR, str(user_id))
+    # Path traversal guard: extract user_id/filename from subpath
+    parts = subpath.split('/', 1)
+    if len(parts) != 2:
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    user_id, filename = parts
+    user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
     file_path = os.path.normpath(os.path.join(user_dir, filename))
     if not file_path.startswith(user_dir) or not os.path.isfile(file_path):
         return jsonify({'status': 'error', 'message': 'Not found'}), 404
