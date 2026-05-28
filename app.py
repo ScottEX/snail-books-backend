@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """🍜 蓝姐螺蛳粉 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re
+import sqlite3, os, secrets, functools, re, json
 from datetime import datetime, date
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
@@ -35,6 +35,26 @@ def handle_options():
 FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
 IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
+EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
+
+# ── Expense image serving (with permanent cache) ──
+# Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
+
+@app.route('/expense-imgs/<int:user_id>/<path:filename>')
+def serve_expense_image(user_id, filename):
+    """Serve expense receipt images with permanent cache headers.
+    Receipt images are immutable once uploaded — they never change.
+    """
+    # Path traversal guard
+    user_dir = os.path.join(EXPENSE_IMG_DIR, str(user_id))
+    file_path = os.path.normpath(os.path.join(user_dir, filename))
+    if not file_path.startswith(user_dir) or not os.path.isfile(file_path):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    mime, _ = mimetypes.guess_type(file_path)
+    resp = make_response(send_file(file_path, mimetype=mime or 'image/jpeg'))
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
 
 @ app.before_request
 def detect_lang():
@@ -314,6 +334,10 @@ def init_db():
             db.execute('ALTER TABLE reconciliations ADD COLUMN reconciled_by TEXT')
         except:
             pass
+        try:
+            db.execute('ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT \'\'')
+        except:
+            pass
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -484,18 +508,51 @@ def api_transactions():
         if missing:
             return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
-            db.execute('INSERT INTO transactions (type,amount,category,account,note) VALUES (?,?,?,?,?)', (data['type'], data['amount'], data['category'], data['account'], data.get('note','')))
+            db.execute('INSERT INTO transactions (type,amount,category,account,note,images) VALUES (?,?,?,?,?,?)',
+                       (data['type'], data['amount'], data['category'], data['account'],
+                        data.get('note',''), json.dumps(data.get('images', []))))
             db.commit()
         return jsonify({'status':'ok'})
-    # GET with pagination
+    # GET with pagination & filtering
     page = request.args.get('page', 1, type=int)
-    per_page = 20
+    per_page = request.args.get('per_page', 10, type=int)
+    tx_type = request.args.get('type')           # 'income' or 'expense'
+    date_from = request.args.get('date_from')    # 'YYYY-MM-DD'
+    date_to = request.args.get('date_to')
+    category = request.args.get('category')      # comma-separated: '日常,房租'
+
+    where = []
+    params = []
+    if tx_type:
+        where.append('type=?')
+        params.append(tx_type)
+    if date_from:
+        where.append('date(created_at) >= ?')
+        params.append(date_from)
+    if date_to:
+        where.append('date(created_at) <= ?')
+        params.append(date_to)
+    if category:
+        cats = [c.strip() for c in category.split(',') if c.strip()]
+        if cats:
+            placeholders = ','.join(['?' for _ in cats])
+            where.append(f'category IN ({placeholders})')
+            params.extend(cats)
+
+    where_sql = ' AND '.join(where) if where else '1=1'
+
     with get_db() as db:
-        count = db.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
+        count = db.execute(f'SELECT COUNT(*) FROM transactions WHERE {where_sql}', params).fetchone()[0]
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
-        rows = db.execute('SELECT * FROM transactions ORDER BY created_at DESC LIMIT ? OFFSET ?', (per_page, offset)).fetchall()
-    return jsonify({'transactions': [dict(r) for r in rows], 'page': page, 'pages': pages, 'total': count})
+        rows = db.execute(
+            f'SELECT * FROM transactions WHERE {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            params + [per_page, offset]
+        ).fetchall()
+    return jsonify({
+        'transactions': [dict(r) for r in rows],
+        'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+    })
 
 @app.route('/api/transactions/<int:id>', methods=['DELETE'])
 @login_required
@@ -504,6 +561,32 @@ def api_delete_transaction(id):
         db.execute('DELETE FROM transactions WHERE id=?', (id,))
         db.commit()
     return jsonify({'status':'ok'})
+
+# ── Expense image upload ──
+
+@app.route('/api/expenses/upload-images', methods=['POST'])
+@login_required
+def api_upload_expense_images():
+    """Upload receipt images. Returns { images: ['/expense-imgs/<user_id>/<file>', ...] }."""
+    if 'files' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No files'}), 400
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'status': 'error', 'message': 'No files'}), 400
+    user_id = str(g.user['id'])
+    user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
+    os.makedirs(user_dir, exist_ok=True)
+    urls = []
+    import uuid
+    for f in files:
+        if f.filename == '':
+            continue
+        # Keep original extension, generate unique name
+        ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
+        safe_name = f"{uuid.uuid4().hex}{ext}"
+        f.save(os.path.join(user_dir, safe_name))
+        urls.append(f'/expense-imgs/{user_id}/{safe_name}')
+    return jsonify({'status': 'ok', 'images': urls})
 
 @app.route('/api/partners')
 @login_required
