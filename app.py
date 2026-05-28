@@ -314,6 +314,26 @@ def init_db():
                 reconciled_by TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
+            CREATE TABLE IF NOT EXISTS platform_fees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                meituan_cashier REAL DEFAULT 0,
+                meituan_waimai REAL DEFAULT 0,
+                eleme_waimai REAL DEFAULT 0,
+                meituan_tuan REAL DEFAULT 0,
+                UNIQUE(year, month)
+            );
+            CREATE TABLE IF NOT EXISTS platform_fee_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fee_id INTEGER REFERENCES platform_fees(id),
+                entry_date TEXT NOT NULL,
+                meituan_cashier REAL DEFAULT 0,
+                meituan_waimai REAL DEFAULT 0,
+                eleme_waimai REAL DEFAULT 0,
+                meituan_tuan REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -946,6 +966,65 @@ def api_get_reconciliations():
                 params + [limit]
             ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+# ── Platform Fees ──
+
+@app.route('/api/platform-fees', methods=['GET'])
+@login_required
+def api_get_platform_fees():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    with get_db() as db:
+        if year and month:
+            row = db.execute(
+                'SELECT * FROM platform_fees WHERE year=? AND month=?',
+                (year, month)
+            ).fetchone()
+            return jsonify(dict(row) if row else {})
+        rows = db.execute(
+            'SELECT * FROM platform_fees ORDER BY year DESC, month DESC'
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route('/api/platform-fees/entry', methods=['POST'])
+@login_required
+def api_add_platform_fee_entry():
+    data = request.get_json()
+    year = data.get('year')
+    month = data.get('month')
+    entry_date = data.get('entry_date')
+    mc = data.get('meituan_cashier', 0)
+    mw = data.get('meituan_waimai', 0)
+    ew = data.get('eleme_waimai', 0)
+    mt = data.get('meituan_tuan', 0)
+    with get_db() as db:
+        # Upsert monthly row
+        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
+                      VALUES (?,?,?,?,?,?)
+                      ON CONFLICT(year, month) DO UPDATE SET
+                      meituan_cashier=meituan_cashier+excluded.meituan_cashier,
+                      meituan_waimai=meituan_waimai+excluded.meituan_waimai,
+                      eleme_waimai=eleme_waimai+excluded.eleme_waimai,
+                      meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
+                   (year, month, mc, mw, ew, mt))
+        fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
+        # Record the daily entry
+        db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
+                      VALUES (?,?,?,?,?,?)''',
+                   (fee_id, entry_date, mc, mw, ew, mt))
+        updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
+        return jsonify({'status': 'ok', 'data': dict(updated)})
+
+@app.route('/api/platform-fees/<int:id>', methods=['PUT'])
+@login_required
+def api_update_platform_fee(id):
+    data = request.get_json()
+    with get_db() as db:
+        db.execute('''UPDATE platform_fees SET meituan_cashier=?, meituan_waimai=?, eleme_waimai=?, meituan_tuan=?
+                      WHERE id=?''',
+                   (data.get('meituan_cashier', 0), data.get('meituan_waimai', 0),
+                    data.get('eleme_waimai', 0), data.get('meituan_tuan', 0), id))
+        return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
