@@ -74,7 +74,13 @@ def serve_spa_static(path):
     file_path = os.path.join(FRONTEND_DIR, path)
     if os.path.isfile(file_path):
         mime, _ = mimetypes.guess_type(file_path)
-        return send_file(file_path, mimetype=mime or 'application/octet-stream')
+        # Static assets with content-hash → cache forever
+        no_cache = mime and mime.startswith('text/html')
+        max_age = 0 if no_cache else 31536000
+        resp = make_response(send_file(file_path, mimetype=mime or 'application/octet-stream'))
+        if not no_cache:
+            resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return resp
     # SPA fallback: serve index.html
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
