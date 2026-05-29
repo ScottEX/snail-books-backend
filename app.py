@@ -1145,19 +1145,23 @@ def api_get_daily_revenue():
                 totals['jd_revenue'] += (r['jd_revenue'] or 0)
             return jsonify({'records': [], 'total': len(rows), 'pages': 1, 'page': 1, 'per_page': per_page, 'totals': totals})
         elif date:
-            where = 'WHERE date=?'
+            where = 'WHERE dr.date=?'
             params.append(date)
         elif year and month:
-            where = "WHERE substr(date,1,7)=?"
+            where = "WHERE substr(dr.date,1,7)=?"
             params.append(f'{year}-{month:02d}')
         elif year:
-            where = "WHERE substr(date,1,4)=?"
+            where = "WHERE substr(dr.date,1,4)=?"
             params.append(str(year))
-        count = db.execute(f'SELECT COUNT(*) FROM daily_revenue {where}', params).fetchone()[0]
+        base = f'''SELECT dr.*, u.username as recorded_by
+                   FROM daily_revenue dr
+                   LEFT JOIN users u ON dr.user_id = u.id
+                   {where}'''
+        count = db.execute(f'SELECT COUNT(*) FROM daily_revenue dr {where}', params).fetchone()[0]
         total_pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'SELECT * FROM daily_revenue {where} ORDER BY date DESC LIMIT ? OFFSET ?',
+            base + ' ORDER BY dr.date DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
         return jsonify({
@@ -1167,6 +1171,34 @@ def api_get_daily_revenue():
             'page': page,
             'per_page': per_page,
         })
+
+@app.route('/api/daily-revenue/last-7', methods=['GET'])
+@login_required
+def api_last_7_days():
+    """Return last 7 days with gaps filled (even days without data)."""
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    dates = [(today - timedelta(days=i)).isoformat() for i in range(7)]
+    with get_db() as db:
+        rows = db.execute('''
+            SELECT dr.*, u.username as recorded_by
+            FROM daily_revenue dr
+            LEFT JOIN users u ON dr.user_id = u.id
+            WHERE dr.date IN ({})
+        '''.format(','.join('?' * len(dates))), dates).fetchall()
+        by_date = {r['date']: dict(r) for r in rows}
+        result = []
+        for d in dates:
+            if d in by_date:
+                result.append(by_date[d])
+            else:
+                result.append({
+                    'date': d,
+                    'revenue': 0, 'turnover': 0, 'jd_revenue': 0, 'note': '',
+                    'recorded_by': None,
+                    'status': '未录入',
+                })
+        return jsonify({'records': result})
 
 @app.route('/api/daily-revenue', methods=['POST'])
 @login_required
@@ -1186,7 +1218,10 @@ def api_create_daily_revenue():
                 'INSERT INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id) VALUES (?,?,?,?,?,?)',
                 (date, revenue, turnover, jd_revenue, note, g.user_id)
             )
-            row = db.execute('SELECT * FROM daily_revenue WHERE date=?', (date,)).fetchone()
+            row = db.execute('''SELECT dr.*, u.username as recorded_by
+                                FROM daily_revenue dr
+                                LEFT JOIN users u ON dr.user_id = u.id
+                                WHERE dr.date=?''', (date,)).fetchone()
             return jsonify({'status': 'ok', 'data': dict(row)})
         except sqlite3.IntegrityError:
             return jsonify({'status': 'error', 'message': '该日期已有营收记录'}), 409
@@ -1209,7 +1244,10 @@ def api_update_daily_revenue(id):
             return jsonify({'status': 'error', 'message': '无更新字段'}), 400
         params.append(id)
         db.execute(f"UPDATE daily_revenue SET {', '.join(fields)} WHERE id=?", params)
-        updated = db.execute('SELECT * FROM daily_revenue WHERE id=?', (id,)).fetchone()
+        updated = db.execute('''SELECT dr.*, u.username as recorded_by
+                                FROM daily_revenue dr
+                                LEFT JOIN users u ON dr.user_id = u.id
+                                WHERE dr.id=?''', (id,)).fetchone()
         return jsonify({'status': 'ok', 'data': dict(updated)})
 
 @app.route('/api/daily-revenue/<int:id>', methods=['DELETE'])
