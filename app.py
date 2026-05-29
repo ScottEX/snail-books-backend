@@ -375,6 +375,11 @@ def init_db():
                 db.execute(f'ALTER TABLE users ADD COLUMN {col} {col_type}')
             except:
                 pass
+        # Migration: archived column on daily_revenue
+        try:
+            db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
+        except:
+            pass
         # Seed partners
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
