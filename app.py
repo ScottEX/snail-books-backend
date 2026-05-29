@@ -715,6 +715,25 @@ def api_background():
                 db.commit()
         return jsonify({'status': 'ok'})
 
+@app.route('/api/settings/lang', methods=['GET'])
+@login_required
+def api_get_lang():
+    with get_db() as db:
+        row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='lang'", (g.user_id,)).fetchone()
+    lang = row['value'] if row else 'zh-CN'
+    return jsonify({'lang': lang})
+
+@app.route('/api/settings/lang', methods=['PUT'])
+@login_required
+def api_save_lang():
+    data = request.get_json()
+    if data and 'lang' in data:
+        with get_db() as db:
+            db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'lang', ?)",
+                       (g.user_id, data['lang']))
+            db.commit()
+    return jsonify({'status': 'ok'})
+
     if request.method == 'DELETE':
         save_path = os.path.join(BG_DIR, 'home-bg.jpg')
         if os.path.exists(save_path):
@@ -908,7 +927,7 @@ def api_migrate_recon():
 @login_required
 def api_clear_reconciliations():
     with get_db() as db:
-        db.execute('DELETE FROM reconciliations WHERE user_id=?', (g.user_id,))
+        db.execute('DELETE FROM reconciliations')
         db.commit()
     return jsonify({'ok': True, 'message': 'All reconciliation records cleared'})
 
@@ -933,10 +952,10 @@ def api_create_reconciliation():
     diff = real_total - channel_total
 
     with get_db() as db:
-        # Upsert: same user + same bill_date updates existing, otherwise inserts
+        # Upsert: same bill_date updates existing, otherwise inserts
         existing = db.execute(
-            'SELECT id FROM reconciliations WHERE user_id=? AND bill_date=?',
-            (g.user_id, bill_date)
+            'SELECT id FROM reconciliations WHERE bill_date=?',
+            (bill_date,)
         ).fetchone()
         if existing:
             db.execute('''UPDATE reconciliations SET
@@ -948,10 +967,10 @@ def api_create_reconciliation():
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, user_id, reconciled_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 channel_total, real_total, diff, reconciled_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, g.user_id, reconciled_by))
+                 channel_total, real_total, diff, reconciled_by))
     return jsonify({'ok': True}), 201
 
 @app.route('/api/reconciliations', methods=['GET'])
@@ -964,8 +983,8 @@ def api_get_reconciliations():
     date_to = request.args.get('date_to', '')
     reconciled_by = request.args.get('reconciled_by', '')
 
-    where = 'WHERE user_id=?'
-    params = [g.user_id]
+    where = 'WHERE 1=1'
+    params = []
     if bill_date_from:
         where += ' AND bill_date >= ?'
         params.append(bill_date_from)
