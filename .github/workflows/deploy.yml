@@ -54,8 +54,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/snail-books-backend
-            git checkout main
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books
