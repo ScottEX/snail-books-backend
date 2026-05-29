@@ -680,9 +680,10 @@ def api_background():
             url = f'/user-images/home-bg.jpg?t={int(os.path.getmtime(save_path))}'
         opacity = 0.55
         with get_db() as db:
-            row = db.execute('SELECT background_opacity FROM user_settings WHERE user_id=?', (g.user_id,)).fetchone()
-            if row and row['background_opacity'] is not None:
-                opacity = row['background_opacity']
+            row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='background_opacity'", (g.user_id,)).fetchone()
+            if row and row['value'] is not None:
+                try: opacity = float(row['value'])
+                except: pass
         return jsonify({'url': url, 'opacity': opacity})
 
     if request.method == 'POST':
@@ -709,8 +710,8 @@ def api_background():
         data = request.get_json()
         if data and 'opacity' in data:
             with get_db() as db:
-                db.execute('INSERT OR REPLACE INTO user_settings (user_id, background_opacity) VALUES (?,?)',
-                           (g.user_id, data['opacity']))
+                db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'background_opacity', ?)",
+                           (g.user_id, str(data['opacity'])))
                 db.commit()
         return jsonify({'status': 'ok'})
 
