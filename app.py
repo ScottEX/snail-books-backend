@@ -418,6 +418,8 @@ def login_page():
             session.permanent = True
             session['user_id'] = user['id']
             session['username'] = user['username']
+            # 清理 90 天前的旧 token
+            db.execute("DELETE FROM user_tokens WHERE created_at < datetime('now', '-90 days')")
             token = secrets.token_hex(32)
             db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
             db.commit()
