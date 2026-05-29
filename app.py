@@ -354,6 +354,16 @@ def init_db():
                 PRIMARY KEY (user_id, key),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+            CREATE TABLE IF NOT EXISTS daily_revenue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL UNIQUE,
+                revenue REAL NOT NULL DEFAULT 0,
+                turnover REAL NOT NULL DEFAULT 0,
+                jd_revenue REAL DEFAULT 0,
+                note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -1104,6 +1114,90 @@ def api_update_platform_fee(id):
                       WHERE id=?''',
                    (data.get('meituan_cashier', 0), data.get('meituan_waimai', 0),
                     data.get('eleme_waimai', 0), data.get('meituan_tuan', 0), id))
+        return jsonify({'status': 'ok'})
+
+# ====== Daily Revenue (每日营收) ======
+
+@app.route('/api/daily-revenue', methods=['GET'])
+@login_required
+def api_get_daily_revenue():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 30, type=int)
+    with get_db() as db:
+        where = ''
+        params = []
+        if year and month:
+            where = "WHERE substr(date,1,7)=?"
+            params.append(f'{year}-{month:02d}')
+        elif year:
+            where = "WHERE substr(date,1,4)=?"
+            params.append(str(year))
+        count = db.execute(f'SELECT COUNT(*) FROM daily_revenue {where}', params).fetchone()[0]
+        total_pages = max(1, (count + per_page - 1) // per_page)
+        offset = (page - 1) * per_page
+        rows = db.execute(
+            f'SELECT * FROM daily_revenue {where} ORDER BY date DESC LIMIT ? OFFSET ?',
+            params + [per_page, offset]
+        ).fetchall()
+        return jsonify({
+            'records': [dict(r) for r in rows],
+            'total': count,
+            'pages': total_pages,
+            'page': page,
+            'per_page': per_page,
+        })
+
+@app.route('/api/daily-revenue', methods=['POST'])
+@login_required
+def api_create_daily_revenue():
+    data = request.get_json()
+    missing = validate_required(data, 'date', 'turnover')
+    if missing:
+        return jsonify({'status': 'error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
+    date = data['date']
+    revenue = float(data.get('revenue', 0))
+    turnover = float(data['turnover'])
+    jd_revenue = float(data.get('jd_revenue', 0))
+    note = data.get('note', '')
+    with get_db() as db:
+        try:
+            db.execute(
+                'INSERT INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id) VALUES (?,?,?,?,?,?)',
+                (date, revenue, turnover, jd_revenue, note, g.user_id)
+            )
+            row = db.execute('SELECT * FROM daily_revenue WHERE date=?', (date,)).fetchone()
+            return jsonify({'status': 'ok', 'data': dict(row)})
+        except sqlite3.IntegrityError:
+            return jsonify({'status': 'error', 'message': '该日期已有营收记录'}), 409
+
+@app.route('/api/daily-revenue/<int:id>', methods=['PUT'])
+@login_required
+def api_update_daily_revenue(id):
+    data = request.get_json()
+    with get_db() as db:
+        row = db.execute('SELECT * FROM daily_revenue WHERE id=?', (id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': '记录不存在'}), 404
+        fields = []
+        params = []
+        for k in ['revenue', 'turnover', 'jd_revenue', 'note']:
+            if k in data:
+                fields.append(f'{k}=?')
+                params.append(float(data[k]) if k != 'note' else data[k])
+        if not fields:
+            return jsonify({'status': 'error', 'message': '无更新字段'}), 400
+        params.append(id)
+        db.execute(f"UPDATE daily_revenue SET {', '.join(fields)} WHERE id=?", params)
+        updated = db.execute('SELECT * FROM daily_revenue WHERE id=?', (id,)).fetchone()
+        return jsonify({'status': 'ok', 'data': dict(updated)})
+
+@app.route('/api/daily-revenue/<int:id>', methods=['DELETE'])
+@login_required
+def api_delete_daily_revenue(id):
+    with get_db() as db:
+        db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
         return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
