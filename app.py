@@ -754,7 +754,7 @@ def api_save_lang():
     return jsonify({'status': 'ok'})
 
     if request.method == 'DELETE':
-        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         if os.path.exists(save_path):
             os.remove(save_path)
         return jsonify({'status': 'ok'})
