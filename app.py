@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """🍜 蓝姐螺蛳粉 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re, json
+import sqlite3, os, secrets, functools, re, json, time
 from datetime import datetime, date
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
@@ -36,6 +36,8 @@ FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
 IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
 EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
+# User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
+BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
 
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
@@ -58,6 +60,17 @@ def serve_expense_image(subpath):
     mime, _ = mimetypes.guess_type(file_path)
     resp = make_response(send_file(file_path, mimetype=mime or 'image/jpeg'))
     resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+# -- User-uploaded background serving --
+@app.route('/user-images/<path:subpath>')
+def serve_user_image(subpath):
+    file_path = os.path.normpath(os.path.join(BG_DIR, subpath))
+    if not file_path.startswith(BG_DIR) or not os.path.isfile(file_path):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    mime, _ = mimetypes.guess_type(file_path)
+    resp = make_response(send_file(file_path, mimetype=mime or 'image/jpeg'))
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
 
 
@@ -657,41 +670,55 @@ def api_delete_dividend(id):
 ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
 MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
 
-@app.route('/api/settings/background', methods=['POST'])
+@app.route('/api/settings/background', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @login_required
-def api_upload_background():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': '未选择文件'}), 400
-    f = request.files['file']
-    if f.filename == '':
-        return jsonify({'status': 'error', 'message': '文件名为空'}), 400
-    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-    if ext not in ALLOWED_BG_EXT:
-        return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
-    # check size
-    f.seek(0, 2)
-    size = f.tell()
-    f.seek(0)
-    if size > MAX_BG_SIZE:
-        return jsonify({'status': 'error', 'message': f'文件最大 5MB'}), 400
-    os.makedirs(IMG_DIR, exist_ok=True)
-    save_path = os.path.join(IMG_DIR, 'home-bg.jpg')
-    f.save(save_path)
-    return jsonify({'status': 'ok'})
+def api_background():
+    if request.method == 'GET':
+        url = None
+        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        if os.path.exists(save_path):
+            url = f'/user-images/home-bg.jpg?t={int(os.path.getmtime(save_path))}'
+        opacity = 0.55
+        with get_db() as db:
+            row = db.execute('SELECT background_opacity FROM user_settings WHERE user_id=?', (g.user_id,)).fetchone()
+            if row and row['background_opacity'] is not None:
+                opacity = row['background_opacity']
+        return jsonify({'url': url, 'opacity': opacity})
 
-@app.route('/api/settings/background', methods=['DELETE'])
-@login_required
-def api_reset_background():
-    save_path = os.path.join(IMG_DIR, 'home-bg.jpg')
-    # Remove uploaded image
-    if os.path.exists(save_path):
-        os.remove(save_path)
-    # Restore default bg
-    default_bg = os.path.join(IMG_DIR, 'bg.jpg')
-    if os.path.exists(default_bg):
-        import shutil
-        shutil.copy(default_bg, save_path)
-    return jsonify({'status': 'ok'})
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+        f = request.files['file']
+        if f.filename == '':
+            return jsonify({'status': 'error', 'message': '文件名为空'}), 400
+        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+        if ext not in ALLOWED_BG_EXT:
+            return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
+        f.seek(0, 2)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_BG_SIZE:
+            return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
+        os.makedirs(BG_DIR, exist_ok=True)
+        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        f.save(save_path)
+        url = f'/user-images/home-bg.jpg?t={int(time.time())}'
+        return jsonify({'status': 'ok', 'url': url})
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        if data and 'opacity' in data:
+            with get_db() as db:
+                db.execute('INSERT OR REPLACE INTO user_settings (user_id, background_opacity) VALUES (?,?)',
+                           (g.user_id, data['opacity']))
+                db.commit()
+        return jsonify({'status': 'ok'})
+
+    if request.method == 'DELETE':
+        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        return jsonify({'status': 'ok'})
 
 @app.route('/api/partners/<int:id>', methods=['PUT'])
 @login_required
