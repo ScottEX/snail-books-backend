@@ -85,6 +85,8 @@ ssh root@8.135.58.90 'systemctl restart snail-books'
 - `secret_key` 不要用 `secrets.token_hex(32)`（重启后 session 全部失效）
 - 不要用 shell `sed` 改 Python 代码
 - 不要在 VPS 上直接改代码——所有改动先在 Mac 完成再部署
+- **用户上传的文件（背景图、凭证图片等）禁止存入 `dist/` 或 `FRONTEND_DIR` 下**——CI 每次部署会覆盖 dist/，文件会丢失。必须用独立的持久目录（如 `user-images/`、`expense-imgs/`），并通过 Flask 路由 serve。
+- **API 路由必须成对出现**——前端调用的每个 API 方法（GET/POST/PUT/DELETE），后端必须有对应的路由。不允许只写 POST 漏掉 GET。
 
 ### 必须事项
 - 每个新路由必须加 `@login_required`
