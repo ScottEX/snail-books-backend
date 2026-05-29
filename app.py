@@ -976,7 +976,13 @@ def api_create_reconciliation():
 @app.route('/api/reconciliations', methods=['GET'])
 @login_required
 def api_get_reconciliations():
-    limit = request.args.get('limit', 30, type=int)
+    # New: page-based pagination (returns { records, total, pages, ... })
+    page = request.args.get('page', 0, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+
+    # Old: limit-based (0=all, returns plain array)
+    limit = request.args.get('limit', page > 0 and 0 or 30, type=int)
+
     bill_date_from = request.args.get('bill_date_from', '')
     bill_date_to = request.args.get('bill_date_to', '')
     date_from = request.args.get('date_from', '')
@@ -1002,17 +1008,32 @@ def api_get_reconciliations():
         params.append(reconciled_by)
 
     with get_db() as db:
-        if limit <= 0:
+        if page > 0:
+            # New pagination mode
+            count = db.execute(f'SELECT COUNT(*) FROM reconciliations {where}', params).fetchone()[0]
+            pages = max(1, (count + per_page - 1) // per_page)
+            offset = (page - 1) * per_page
             rows = db.execute(
-                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC',
-                params
+                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ? OFFSET ?',
+                params + [per_page, offset]
             ).fetchall()
+            return jsonify({
+                'records': [dict(r) for r in rows],
+                'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+            })
         else:
-            rows = db.execute(
-                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ?',
-                params + [limit]
-            ).fetchall()
-    return jsonify([dict(r) for r in rows])
+            # Old mode: limit-based (0=all)
+            if limit <= 0:
+                rows = db.execute(
+                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC',
+                    params
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ?',
+                    params + [limit]
+                ).fetchall()
+            return jsonify([dict(r) for r in rows])
 
 # ── Platform Fees ──
 
