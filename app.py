@@ -1123,12 +1123,16 @@ def api_update_platform_fee(id):
 def api_get_daily_revenue():
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
+    date = request.args.get('date', type=str)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 30, type=int)
     with get_db() as db:
         where = ''
         params = []
-        if year and month:
+        if date:
+            where = 'WHERE date=?'
+            params.append(date)
+        elif year and month:
             where = "WHERE substr(date,1,7)=?"
             params.append(f'{year}-{month:02d}')
         elif year:
