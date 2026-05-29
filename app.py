@@ -399,7 +399,7 @@ with get_db() as db:
 # ── Validation helper ──
 def validate_required(data, *fields):
     """Return list of missing field names; empty if all present."""
-    return [f for f in fields if not data.get(f)]
+    return [f for f in fields if data.get(f) is None]
 
 # ====== Auth ======
 
