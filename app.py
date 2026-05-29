@@ -1124,12 +1124,27 @@ def api_get_daily_revenue():
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
     date = request.args.get('date', type=str)
+    days = request.args.get('days', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 30, type=int)
     with get_db() as db:
         where = ''
         params = []
-        if date:
+        if days:
+            # Last N days summary
+            rows = db.execute('''
+                SELECT date, revenue, turnover, jd_revenue
+                FROM daily_revenue
+                WHERE date >= date('now', ? ) 
+                ORDER BY date DESC
+            ''', (f'-{days} days',)).fetchall()
+            totals = {'revenue': 0, 'turnover': 0, 'jd_revenue': 0}
+            for r in rows:
+                totals['revenue'] += (r['revenue'] or 0)
+                totals['turnover'] += (r['turnover'] or 0)
+                totals['jd_revenue'] += (r['jd_revenue'] or 0)
+            return jsonify({'records': [], 'total': len(rows), 'pages': 1, 'page': 1, 'per_page': per_page, 'totals': totals})
+        elif date:
             where = 'WHERE date=?'
             params.append(date)
         elif year and month:
