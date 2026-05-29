@@ -362,6 +362,7 @@ def init_db():
                 jd_revenue REAL DEFAULT 0,
                 note TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id),
+                archived INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         ''')
@@ -1196,6 +1197,7 @@ def api_last_7_days():
                     'date': d,
                     'revenue': 0, 'turnover': 0, 'jd_revenue': 0, 'note': '',
                     'recorded_by': None,
+                    'archived': 0,
                     'status': '未录入',
                 })
         return jsonify({'records': result})
@@ -1212,11 +1214,12 @@ def api_create_daily_revenue():
     turnover = float(data['turnover'])
     jd_revenue = float(data.get('jd_revenue', 0))
     note = data.get('note', '')
+    archived = int(data.get('archived', 0))
     with get_db() as db:
         try:
             db.execute(
-                'INSERT INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id) VALUES (?,?,?,?,?,?)',
-                (date, revenue, turnover, jd_revenue, note, g.user_id)
+                'INSERT INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id, archived) VALUES (?,?,?,?,?,?,?)',
+                (date, revenue, turnover, jd_revenue, note, g.user_id, archived)
             )
             row = db.execute('''SELECT dr.*, u.username as recorded_by
                                 FROM daily_revenue dr
@@ -1236,7 +1239,7 @@ def api_update_daily_revenue(id):
             return jsonify({'status': 'error', 'message': '记录不存在'}), 404
         fields = []
         params = []
-        for k in ['revenue', 'turnover', 'jd_revenue', 'note']:
+        for k in ['revenue', 'turnover', 'jd_revenue', 'note', 'archived']:
             if k in data:
                 fields.append(f'{k}=?')
                 params.append(float(data[k]) if k != 'note' else data[k])
