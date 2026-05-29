@@ -33,8 +33,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/snail-books-backend-staging
-            git checkout develop
-            git pull origin develop
+            git fetch origin develop
+            git reset --hard origin/develop
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
