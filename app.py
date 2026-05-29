@@ -347,6 +347,13 @@ def init_db():
                 meituan_tuan REAL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT,
+                PRIMARY KEY (user_id, key),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -1060,6 +1067,9 @@ def api_get_platform_fees():
 @login_required
 def api_add_platform_fee_entry():
     data = request.get_json()
+    missing = validate_required(data, 'year', 'month', 'entry_date')
+    if missing:
+        return jsonify({'status': 'error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
     year = data.get('year')
     month = data.get('month')
     entry_date = data.get('entry_date')
