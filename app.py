@@ -694,9 +694,9 @@ MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
 def api_background():
     if request.method == 'GET':
         url = None
-        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         if os.path.exists(save_path):
-            url = f'/user-images/home-bg.jpg?t={int(os.path.getmtime(save_path))}'
+            url = f'/user-images/home-bg-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
         opacity = 0.55
         with get_db() as db:
             row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='background_opacity'", (g.user_id,)).fetchone()
@@ -720,9 +720,9 @@ def api_background():
         if size > MAX_BG_SIZE:
             return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
         os.makedirs(BG_DIR, exist_ok=True)
-        save_path = os.path.join(BG_DIR, 'home-bg.jpg')
+        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         f.save(save_path)
-        url = f'/user-images/home-bg.jpg?t={int(time.time())}'
+        url = f'/user-images/home-bg-{g.user_id}.jpg?t={int(time.time())}'
         return jsonify({'status': 'ok', 'url': url})
 
     if request.method == 'PUT':
