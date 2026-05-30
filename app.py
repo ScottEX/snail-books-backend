@@ -759,6 +759,27 @@ def api_save_lang():
             db.commit()
     return jsonify({'status': 'ok'})
 
+
+@app.route('/api/settings/theme', methods=['GET'])
+@login_required
+def api_get_theme():
+    with get_db() as db:
+        row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='theme'", (g.user_id,)).fetchone()
+    theme = row['value'] if row else 'burgundy-warm'
+    return jsonify({'theme': theme})
+
+
+@app.route('/api/settings/theme', methods=['PUT'])
+@login_required
+def api_save_theme():
+    data = request.get_json()
+    if data and 'theme' in data:
+        with get_db() as db:
+            db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'theme', ?)",
+                       (g.user_id, data['theme']))
+            db.commit()
+    return jsonify({'status': 'ok'})
+
     if request.method == 'DELETE':
         save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         if os.path.exists(save_path):
