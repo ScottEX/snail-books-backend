@@ -419,6 +419,38 @@ def validate_required(data, *fields):
 
 # ====== Auth ======
 
+# ── Email validation ──
+EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+
+def validate_email(email):
+    return bool(EMAIL_RE.match(email))
+
+# ── Rate limiting (in-memory, resets on process restart) ──
+_login_attempts = {}  # { ip: [attempt_timestamps...] }
+_RATE_LIMIT_MAX = 5
+_RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
+
+
+def check_rate_limit(ip):
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    # Prune expired attempts
+    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= _RATE_LIMIT_MAX:
+        wait = int(_RATE_LIMIT_WINDOW - (now - attempts[0]))
+        return False, wait
+    return True, 0
+
+
+def record_failed_attempt(ip):
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+    attempts.append(now)
+    _login_attempts[ip] = attempts
+
+
 @app.route('/login', methods=['GET','POST'])
 def login_page():
     if request.method == 'GET':
@@ -431,14 +463,26 @@ def login_page():
     data = request.get_json()
     username = data.get('username','').strip()
     password = data.get('password','')
+    remember = data.get('remember', False)
     if not username or not password:
         return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
+    # Rate limit check
+    ip = request.remote_addr or 'unknown'
+    allowed, wait = check_rate_limit(ip)
+    if not allowed:
+        mins = wait // 60
+        secs = wait % 60
+        return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username)).fetchone()
         if user and check_password_hash(user['password'], password):
             if not user['is_verified']:
                 return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
             session.permanent = True
+            if remember:
+                app.permanent_session_lifetime = timedelta(days=30)
+            else:
+                app.permanent_session_lifetime = timedelta(hours=24)
             session['user_id'] = user['id']
             session['username'] = user['username']
             # 清理 90 天前的旧 token
@@ -447,6 +491,7 @@ def login_page():
             db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
             db.commit()
             return jsonify({'status':'ok','token':token,'username':user['username']})
+    record_failed_attempt(ip)
     return jsonify({'status':'error','message':_t('err_wrong_credentials', g.lang)}), 401
 
 @app.route('/register', methods=['POST'])
@@ -459,6 +504,8 @@ def register():
         return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
     if not email:
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
+    if not validate_email(email):
+        return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
     # 密码强度校验
     ok, msg = validate_password(password, g.lang)
     if not ok:
