@@ -6,9 +6,7 @@ from datetime import datetime, date
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
-import smtplib, random, string
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests, random, string
 from datetime import datetime, timedelta
 from i18n_backend import get_lang, t as _t
 
@@ -115,27 +113,28 @@ def serve_spa_root(path):
     return jsonify({'status':'error','message':'Frontend not built'}), 503
 
 
-# Email config — QQ SMTP
-SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')  # QQ邮箱授权码
-SMTP_FROM = os.environ.get('SMTP_FROM', 'rowan.lan@qq.com')
-DEV_MODE = not SMTP_PASSWORD  # 无授权码 → dev 模式：验证码返给前端
+# Email config — Resend HTTP API
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
+DEV_MODE = not RESEND_API_KEY  # 无 key → dev 模式：验证码返给前端
 
 def _send_email(to_email, subject, body, code):
-    """发信：无授权码时 dev mode，否则走 QQ SMTP (SSL 465)"""
-    if not SMTP_PASSWORD:
+    """发信：无 key 时 dev mode，否则走 Resend HTTP API"""
+    if not RESEND_API_KEY:
         print(f"[EMAIL] Dev mode: code={code} for {to_email} ({subject})")
         return True
     try:
-        msg = MIMEMultipart()
-        msg['From'] = SMTP_FROM
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'html'))
-        with smtplib.SMTP_SSL('smtp.qq.com', 465) as server:
-            server.login(SMTP_FROM, SMTP_PASSWORD)
-            server.send_message(msg)
-        print(f"[EMAIL] Sent to {to_email}: {subject}")
-        return True
+        r = requests.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
+            json={'from': RESEND_FROM, 'to': [to_email], 'subject': subject, 'html': body},
+            timeout=15
+        )
+        if r.status_code == 200:
+            print(f"[EMAIL] Sent to {to_email}: {subject}")
+            return True
+        print(f"[EMAIL] Resend error {r.status_code}: {r.text}")
+        return False
     except Exception as e:
         print(f"[EMAIL] Error: {e}")
         return False
