@@ -117,7 +117,7 @@ def serve_spa_root(path):
 
 # Email config — QQ SMTP
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')  # QQ邮箱授权码
-SMTP_FROM = os.environ.get('SMTP_FROM', '1047476510@qq.com')
+SMTP_FROM = os.environ.get('SMTP_FROM', 'rowan.lan@qq.com')
 DEV_MODE = not SMTP_PASSWORD  # 无授权码 → dev 模式：验证码返给前端
 
 def _send_email(to_email, subject, body, code):
