@@ -115,25 +115,24 @@ def serve_spa_root(path):
     return jsonify({'status':'error','message':'Frontend not built'}), 503
 
 
-# Email config
-SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
-SENDGRID_FROM = os.environ.get('SENDGRID_FROM', 'noreply@lan-noodles.com')
-DEV_MODE = not SENDGRID_API_KEY  # 无 API key → dev 模式：验证码返给前端
+# Email config — QQ SMTP
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')  # QQ邮箱授权码
+SMTP_FROM = os.environ.get('SMTP_FROM', '1047476510@qq.com')
+DEV_MODE = not SMTP_PASSWORD  # 无授权码 → dev 模式：验证码返给前端
 
 def _send_email(to_email, subject, body, code):
-    """通用发信：无 API key 时打印到 stdout，否则走 SendGrid SMTP"""
-    if not SENDGRID_API_KEY:
+    """发信：无授权码时 dev mode，否则走 QQ SMTP (SSL 465)"""
+    if not SMTP_PASSWORD:
         print(f"[EMAIL] Dev mode: code={code} for {to_email} ({subject})")
         return True
     try:
         msg = MIMEMultipart()
-        msg['From'] = SENDGRID_FROM
+        msg['From'] = SMTP_FROM
         msg['To'] = to_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'html'))
-        with smtplib.SMTP('smtp.sendgrid.net', 587) as server:
-            server.starttls()
-            server.login('apikey', SENDGRID_API_KEY)
+        with smtplib.SMTP_SSL('smtp.qq.com', 465) as server:
+            server.login(SMTP_FROM, SMTP_PASSWORD)
             server.send_message(msg)
         print(f"[EMAIL] Sent to {to_email}: {subject}")
         return True
