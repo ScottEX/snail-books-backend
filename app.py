@@ -1124,6 +1124,22 @@ def api_summary():
         'month': {'income': month_income, 'expense': month_expense, 'profit': month_income - month_expense, 'procurement': month_procurement}
     })
 
+# ── Procurement Stats ──
+@app.route('/api/procurement-stats')
+@login_required
+def api_procurement_stats():
+    with get_db() as db:
+        total_spent = db.execute("SELECT COALESCE(SUM(total),0) FROM procurement_batches").fetchone()[0]
+        total_income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income'").fetchone()[0]
+        batch_count = db.execute("SELECT COUNT(*) FROM procurement_batches").fetchone()[0]
+        margin_pct = round((total_income - total_spent) / total_spent * 100, 1) if total_spent > 0 else 0
+    return jsonify({
+        'total_spent': round(total_spent, 2),
+        'total_income': round(total_income, 2),
+        'batch_count': batch_count,
+        'margin_pct': margin_pct
+    })
+
 # ── Chart: 12-month trend ──
 @app.route('/api/chart')
 @login_required
