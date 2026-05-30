@@ -503,6 +503,11 @@ def init_db():
             db.execute("ALTER TABLE products ADD COLUMN supplier TEXT DEFAULT ''")
         except:
             pass
+        # Migration (2026.5.30): add date column to transactions
+        try:
+            db.execute("ALTER TABLE transactions ADD COLUMN date TEXT DEFAULT ''")
+        except:
+            pass
 
 init_db()
 # Auto-verify existing users (backward compat)
