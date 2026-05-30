@@ -192,24 +192,87 @@ PARTNER_DATA = [
 ]
 
 DEFAULT_PRODUCTS = [
-    ('猪脚','大号猪脚B14','84个/件',490),('猪脚','大号猪脚B13','78个/件',490),
-    ('鸭脚','大号卤鸭脚','300个/件',540),('鸡爪','炸虎皮鸡爪（大号）','30个/包',81),
-    ('锅烧','锅烧（一级超薄精品）','20斤/件',370),
-    ('卤蛋','爆丫丫（卤鸡蛋）','30个/包',29),('卤蛋','爆丫丫（卤鹌鹑蛋）','1.5kg/包',26),
-    ('卤蛋','爆丫丫（流心蛋）','180个/件',405),
-    ('米粉','金稲香米粉','25kg/件',150),('米粉','华A干米粉','25kg/件',146),
-    ('米粉','柳纯米粉','25kg/件',151),
-    ('螺蛳汤料','老柳州升级版汤料','10包/件',318),('螺蛳汤料','三合一调料包','10包/件',345),
-    ('螺蛳汤料','卤香红油','4桶/件',530),
-    ('螺蛳卤味','卤七寸','10条/包',200),('螺蛳卤味','卤味肥肠（特级净油）','30条/包',159),
-    ('螺蛳卤味','卤味鸭胗','30个/包',84),('螺蛳卤味','卤牛肚','1kg/包',109),
-    ('牛杂串','','100串/包',82),('豆腐串','','100串/件',48),
-    ('纯米醋','','20包/件',10),('老坛酸笋丝','','20斤/件',56),
-    ('老坛酸豆角','','20斤/件',53),('熬汤筒骨','','10kg/件',58),
-    ('青柠猪皮','','3斤/包',23),('香辣猪肺','','3斤/包',42),
-    ('干捞酱','爆丫丫干捞酱','20包/件',350),('秘制炒肉沫','爆丫丫','15包/件',540),
-    ('秘制炒螺肉','爆丫丫','10包/件',600),('牛筋丸','','20斤/件',239),
-    ('广味腊肠','','10斤/箱',116),
+    # ── 蓝姐螺蛳粉 (49) ──
+    ('大号猪脚B14','84个/件','',490,'蓝姐螺蛳粉'),
+    ('大号猪脚B13','78个/件','',490,'蓝姐螺蛳粉'),
+    ('大号卤鸭脚','300个/件','',510,'蓝姐螺蛳粉'),
+    ('炸虎皮鸡爪（大号）','30个/包','',78,'蓝姐螺蛳粉'),
+    ('锅烧（一级超薄精品）','20斤/件','',370,'蓝姐螺蛳粉'),
+    ('爆丫丫（卤鸡蛋）','30个/包','',29,'蓝姐螺蛳粉'),
+    ('爆丫丫（卤鹌鹑蛋）','1.5kg/包','',25.5,'蓝姐螺蛳粉'),
+    ('爆丫丫（流心蛋）','180个/件','',405,'蓝姐螺蛳粉'),
+    ('金稻香米粉','25kg/件','',150,'蓝姐螺蛳粉'),
+    ('华A干米粉','25kg/件','',146,'蓝姐螺蛳粉'),
+    ('柳纯米粉','25kg/件','',151,'蓝姐螺蛳粉'),
+    ('老柳州升级版汤料','10包/件','',317.5,'蓝姐螺蛳粉'),
+    ('三合一调料包','10包/件','',345,'蓝姐螺蛳粉'),
+    ('卤香红油','4桶/件','',530,'蓝姐螺蛳粉'),
+    ('卤七寸','10条/包','',200,'蓝姐螺蛳粉'),
+    ('卤味肥肠（特级净油）','30条/包','',159,'蓝姐螺蛳粉'),
+    ('卤味鸭胗','30个/包','',84,'蓝姐螺蛳粉'),
+    ('卤牛肚','1kg/包','',109,'蓝姐螺蛳粉'),
+    ('牛杂串','100串/包','',82,'蓝姐螺蛳粉'),
+    ('豆腐串','100串/件','',48,'蓝姐螺蛳粉'),
+    ('纯米醋','20包/件','',9.6,'蓝姐螺蛳粉'),
+    ('老坛酸笋丝','20斤/件','',56,'蓝姐螺蛳粉'),
+    ('老坛酸豆角','20斤/件','',52,'蓝姐螺蛳粉'),
+    ('熬汤筒骨','10kg/件','',58,'蓝姐螺蛳粉'),
+    ('青柠猪皮','3斤/包','',22.5,'蓝姐螺蛳粉'),
+    ('香辣猪肺','3斤/包','',42,'蓝姐螺蛳粉'),
+    ('爆丫丫干捞酱','20包/件','',350,'蓝姐螺蛳粉'),
+    ('爆丫丫秘制炒肉沫','15包/件','',540,'蓝姐螺蛳粉'),
+    ('爆丫丫秘制炒螺肉','10包/件','',600,'蓝姐螺蛳粉'),
+    ('牛筋丸','20斤/件','',239,'蓝姐螺蛳粉'),
+    ('广味腊肠','10斤/箱','',116,'蓝姐螺蛳粉'),
+    ('天然之宝螺肉','9kg/件','',86,'蓝姐螺蛳粉'),
+    ('木耳丝','10kg/件','',244,'蓝姐螺蛳粉'),
+    ('黄金卷（腐竹）','24盒/件','',137,'蓝姐螺蛳粉'),
+    ('豆皮（清蔓雨）','18斤/箱','',136,'蓝姐螺蛳粉'),
+    ('精品腐竹（红箱）','18斤/箱','',185,'蓝姐螺蛳粉'),
+    ('油炸腐竹','10斤/件','',125,'蓝姐螺蛳粉'),
+    ('炸花生','30斤/件','',255,'蓝姐螺蛳粉'),
+    ('老卤王','10包/件','',180,'蓝姐螺蛳粉'),
+    ('台湾风味热狗肠','8包/件','',316,'蓝姐螺蛳粉'),
+    ('原味地道肠','20包/件','',300,'蓝姐螺蛳粉'),
+    ('奥尔良琵琶鸡腿','20斤/件','',206,'蓝姐螺蛳粉'),
+    ('黄花菜','20斤/箱','',585,'蓝姐螺蛳粉'),
+    ('优奶仕（豆花粉）','20包/件','',750,'蓝姐螺蛳粉'),
+    ('黄片糖','20斤/件','',83,'蓝姐螺蛳粉'),
+    ('螺味全辣椒油（微辣）','30包/件','',450,'蓝姐螺蛳粉'),
+    ('螺味全辣椒油（中辣）','30包/件','',450,'蓝姐螺蛳粉'),
+    ('螺味全辣椒油（特辣）','30包/件','',510,'蓝姐螺蛳粉'),
+    ('香辛料调味油','5升/桶','',130,'蓝姐螺蛳粉'),
+    # ── 粉仔 (2) ──
+    ('米粉','60斤/包','',170,'粉仔'),
+    ('豆皮','18斤/箱','',135,'粉仔'),
+    # ── 鲜禾配送 (4) ──
+    ('米粉（绿水人家）','60斤/包','',172,'鲜禾配送'),
+    ('豆皮（王中王）','18斤/箱','',138,'鲜禾配送'),
+    ('白背木耳丝','20斤/件','',265,'鲜禾配送'),
+    ('八度笋-原味','10斤×5包','',150,'鲜禾配送'),
+    # ── 蒙方 (20) ──
+    ('融水片红豆角','10斤×5包','',130,'蒙方'),
+    ('原味酸笋','50斤/件','',112,'蒙方'),
+    ('融水红油豆角','50斤/件','',135,'蒙方'),
+    ('原味酸豆角','50斤/件','',115,'蒙方'),
+    ('融水米粉','48斤/件','',124,'蒙方'),
+    ('增香红油（微辣）','4桶/件','',345,'蒙方'),
+    ('增香红油（中辣）','4桶/件','',370,'蒙方'),
+    ('增香红油（特辣）','4桶/件','',365,'蒙方'),
+    ('增香红油（魔鬼辣）','4桶/件','',400,'蒙方'),
+    ('卤鸡脚','200个/件','',400,'蒙方'),
+    ('魔鬼辣椒粉末','10斤/件','',145,'蒙方'),
+    ('特红粉末','10斤/件','',90,'蒙方'),
+    ('黄金卷（腐竹）','32盒/件','',185,'蒙方'),
+    ('木耳丝（特级）','30斤/件','',335,'蒙方'),
+    ('木耳丝（A级）','30斤/件','',300,'蒙方'),
+    ('木耳丝（B级）','30斤/件','',280,'蒙方'),
+    ('豆皮（正山）','20斤/件','',142,'蒙方'),
+    ('豆皮（薄款）','20斤/件','',137,'蒙方'),
+    ('豆皮（王中王）','20斤/件','',135,'蒙方'),
+    ('干石螺肉','5斤/件','',225,'蒙方'),
+    # ── 桂螺帮 (1) ──
+    ('桂螺帮螺蛳粉1.2-1.4','60斤/件','',160,'桂螺帮'),
 ]
 
 def login_required(f):
@@ -295,6 +358,7 @@ def init_db():
                 spec TEXT DEFAULT '',
                 unit TEXT DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
+                supplier TEXT DEFAULT '',
                 note TEXT DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS procurements (
@@ -307,6 +371,32 @@ def init_db():
                 note TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            -- 进货批次表（2026.5.30）
+            CREATE TABLE IF NOT EXISTS procurement_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_number INTEGER NOT NULL DEFAULT 0,
+                date TEXT NOT NULL,
+                payment_method TEXT NOT NULL DEFAULT '微信',
+                category TEXT DEFAULT '采购',
+                total REAL NOT NULL DEFAULT 0,
+                images TEXT DEFAULT '[]',
+                note TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            -- 进货明细表（2026.5.30）
+            CREATE TABLE IF NOT EXISTS procurement_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id INTEGER REFERENCES procurement_batches(id),
+                product_id INTEGER REFERENCES products(id),
+                product_name TEXT NOT NULL,
+                spec TEXT DEFAULT '',
+                unit_price REAL NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                subtotal REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_proc_batch_date ON procurement_batches(date);
+            CREATE INDEX IF NOT EXISTS idx_proc_items_batch ON procurement_items(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at);
             CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions(type);
             CREATE INDEX IF NOT EXISTS idx_div_date ON dividends(created_at);
@@ -392,8 +482,8 @@ def init_db():
         count = db.execute('SELECT COUNT(*) FROM products').fetchone()[0]
         if count == 0:
             for p in DEFAULT_PRODUCTS:
-                db.execute('INSERT INTO products (name,spec,unit,price) VALUES (?,?,?,?)',
-                          (p[0],p[1],p[2],p[3]))
+                db.execute('INSERT INTO products (name,spec,unit,price,supplier) VALUES (?,?,?,?,?)',
+                          (p[0],p[1],p[2],p[3],p[4]))
         db.commit()
         # Migration: add bill_date column (ignore if exists)
         try:
@@ -405,7 +495,12 @@ def init_db():
         except:
             pass
         try:
-            db.execute('ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT \'\'')
+            db.execute("ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT ''")
+        except:
+            pass
+        # Migration (2026.5.30): add supplier column to products
+        try:
+            db.execute("ALTER TABLE products ADD COLUMN supplier TEXT DEFAULT ''")
         except:
             pass
 
@@ -866,8 +961,8 @@ def api_products():
         if missing:
             return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
-            db.execute('INSERT INTO products (name,spec,unit,price,note) VALUES (?,?,?,?,?)',
-                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('note','')))
+            db.execute('INSERT INTO products (name,spec,unit,price,supplier,note) VALUES (?,?,?,?,?,?)',
+                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('supplier',''), data.get('note','')))
             db.commit()
         return jsonify({'status':'ok'})
     if request.method == 'PUT':
@@ -876,8 +971,8 @@ def api_products():
         if missing:
             return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
-            db.execute('UPDATE products SET name=?, spec=?, unit=?, price=?, note=? WHERE id=?',
-                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('note',''), data['id']))
+            db.execute('UPDATE products SET name=?, spec=?, unit=?, price=?, supplier=?, note=? WHERE id=?',
+                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('supplier',''), data.get('note',''), data['id']))
             db.commit()
         return jsonify({'status':'ok'})
     if request.method == 'DELETE':
@@ -915,6 +1010,87 @@ def api_delete_procurement(id):
         db.commit()
     return jsonify({'status':'ok'})
 
+# ── 进货批次 API（2026.5.30）──
+@app.route('/api/procurement-batches', methods=['GET','POST'])
+@login_required
+def api_procurement_batches():
+    """POST: 创建进货批次 + 明细"""
+    if request.method == 'POST':
+        data = request.get_json()
+        missing = validate_required(data, 'date', 'payment_method', 'items')
+        if missing:
+            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
+        items = data.get('items', [])
+        if not items or not isinstance(items, list):
+            return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+        with get_db() as db:
+            cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
+            batch_no = cur[0] + 1
+            total = 0.0
+            item_rows = []
+            for item in items:
+                pid = item.get('product_id')
+                qty = item.get('quantity', 0)
+                if not pid or qty <= 0:
+                    continue
+                product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
+                if not product:
+                    continue
+                unit_price = product['price']
+                subtotal = unit_price * qty
+                total += subtotal
+                item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
+            if total == 0:
+                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            cur = db.execute(
+                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,note) VALUES (?,?,?,?,?,?,?)',
+                (batch_no, data['date'], data['payment_method'], data.get('category','采购'), round(total, 2),
+                 json.dumps(data.get('images', [])), data.get('note', ''))
+            )
+            batch_id = cur.lastrowid
+            for name, spec, up, qty, sub, pid in item_rows:
+                db.execute(
+                    'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
+                    (batch_id, pid, name, spec, up, qty, round(sub, 2))
+                )
+            db.execute(
+                "INSERT INTO transactions (type,amount,category,account,note,date,images) VALUES ('expense',?,?,?,?,?,?)",
+                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], json.dumps(data.get('images', [])))
+            )
+            db.commit()
+        return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
+    # GET: 进货记录列表（分页）
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    with get_db() as db:
+        total = db.execute('SELECT COUNT(*) FROM procurement_batches').fetchone()[0]
+        rows = db.execute(
+            'SELECT * FROM procurement_batches ORDER BY date DESC, id DESC LIMIT ? OFFSET ?',
+            (per_page, (page - 1) * per_page)
+        ).fetchall()
+        batches = []
+        for row in rows:
+            b = dict(row)
+            b['images'] = json.loads(b['images']) if b['images'] else []
+            items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (b['id'],)).fetchall()
+            b['items'] = [dict(it) for it in items]
+            batches.append(b)
+    return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
+
+@app.route('/api/procurement-batches/<int:id>', methods=['GET'])
+@login_required
+def api_procurement_batch_detail(id):
+    """单次进货详情"""
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        if not row:
+            return jsonify({'status':'error','message':'Not found'}), 404
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    return jsonify(b)
+
 @app.route('/api/stats')
 @login_required
 def api_stats():
@@ -937,7 +1113,7 @@ def api_summary():
         # Month
         month_income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND strftime('%Y-%m', created_at)=?", (month_str,)).fetchone()[0]
         month_expense = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND strftime('%Y-%m', created_at)=?", (month_str,)).fetchone()[0]
-        month_procurement = db.execute("SELECT COALESCE(SUM(total),0) FROM procurements WHERE strftime('%Y-%m', created_at)=?", (month_str,)).fetchone()[0]
+        month_procurement = db.execute("SELECT COALESCE(SUM(total),0) FROM procurement_batches WHERE strftime('%Y-%m', date)=?", (month_str,)).fetchone()[0]
     return jsonify({
         'today': {'income': today_income, 'expense': today_expense, 'profit': today_income - today_expense},
         'month': {'income': month_income, 'expense': month_expense, 'profit': month_income - month_expense, 'procurement': month_procurement}
