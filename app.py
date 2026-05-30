@@ -131,8 +131,12 @@ def _send_email(to_email, subject, body, code):
             timeout=15
         )
         if r.status_code == 200:
-            print(f"[EMAIL] Sent to {to_email}: {subject}")
-            return True
+            resp_data = r.json()
+            if resp_data.get('id'):
+                print(f"[EMAIL] Sent to {to_email}: {subject}")
+                return True
+            print(f"[EMAIL] Resend API error: {r.text}")
+            return False
         print(f"[EMAIL] Resend error {r.status_code}: {r.text}")
         return False
     except Exception as e:
