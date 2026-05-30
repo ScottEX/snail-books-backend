@@ -118,6 +118,7 @@ def serve_spa_root(path):
 # Email config
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 SENDGRID_FROM = os.environ.get('SENDGRID_FROM', 'noreply@lan-noodles.com')
+DEV_MODE = not SENDGRID_API_KEY  # 无 API key → dev 模式：验证码返给前端
 
 def _send_email(to_email, subject, body, code):
     """通用发信：无 API key 时打印到 stdout，否则走 SendGrid SMTP"""
@@ -523,7 +524,10 @@ def register():
         db.commit()
         if not send_verification_email(email, code):
             return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
-    return jsonify({'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email})
+    resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
+    if DEV_MODE:
+        resp['dev_code'] = code
+    return jsonify(resp)
 
 @app.route('/verify', methods=['POST'])
 def verify_email():
@@ -558,7 +562,10 @@ def resend_code_route():
         db.commit()
         if not send_verification_email(email, code):
             return jsonify({'status':'error','message':_t('err_resend_failed', g.lang)}), 500
-    return jsonify({'status':'ok','message':_t('msg_code_resent', g.lang)})
+    resp = {'status':'ok','message':_t('msg_code_resent', g.lang)}
+    if DEV_MODE:
+        resp['dev_code'] = code
+    return jsonify(resp)
 
 # ====== 忘记密码 / 重置密码 ======
 
@@ -580,7 +587,10 @@ def forgot_password():
         db.commit()
         if not send_reset_email(email, code):
             return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
-    return jsonify({'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email})
+    resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
+    if DEV_MODE:
+        resp['dev_code'] = code
+    return jsonify(resp)
 
 @app.route('/reset-password', methods=['POST'])
 def reset_password():
