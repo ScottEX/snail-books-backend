@@ -3,8 +3,6 @@ name: CI/CD
 on:
   push:
     branches: [develop, main]
-  pull_request:
-    branches: [develop, main]
 
 jobs:
   test:
@@ -13,32 +11,32 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: 语法检查
-        run: |
-          python -m py_compile app.py
-          python -m py_compile i18n_backend.py
-          echo "✅ 语法检查通过"
+          python-version: '3.11'
+      - run: python -m py_compile app.py i18n_backend.py
 
   deploy-staging:
     needs: test
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
-      - name: SSH 部署到测试服务器
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
+      - name: 部署后端源码到测试服务器
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /opt/snail-books-backend-staging
-            git fetch origin develop
-            git reset --hard origin/develop
-            systemctl restart snail-books-staging
-            sleep 2
-            systemctl is-active snail-books-staging
-            echo "✅ Staging 部署完成"
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: app.py,i18n_backend.py,templates,static
+          target: /opt/snail-books-backend-staging/
+          strip_components: 0
+          overwrite: true
+      - name: 重启测试环境服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -46,17 +44,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: SSH 部署到生产服务器
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
+      - name: 部署后端源码到生产服务器
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /opt/snail-books-backend
-            git fetch origin main
-            git reset --hard origin/main
-            systemctl restart snail-books
-            sleep 2
-            systemctl is-active snail-books
-            echo "✅ 生产部署完成"
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: app.py,i18n_backend.py,templates,static
+          target: /opt/snail-books-backend/
+          strip_components: 0
+          overwrite: true
+      - name: 重启生产环境服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: systemctl restart snail-books
