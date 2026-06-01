@@ -20,28 +20,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 打包源码
-        run: tar czf /tmp/source.tgz app.py i18n_backend.py static
-      - name: 上传源码到 VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: /tmp/source.tgz
-          target: /tmp/
-          strip_components: 1
-      - name: 解压并重启
+      - name: 部署并重启 (VPS git pull)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            cd /opt/snail-books-backend-staging
-            tar xzf /tmp/source.tgz
-            rm /tmp/source.tgz
+            set -e
+            cd /opt/snail-books-backend-staging || exit 1
+            echo "=== fetching ==="
+            git fetch https://github.com/ScottEX/snail-books-backend.git develop 2>&1
+            echo "=== resetting ==="
+            git reset --hard FETCH_HEAD
+            echo "=== restarting ==="
             systemctl restart snail-books-staging
+            echo "=== done ==="
 
   deploy-production:
     needs: test
@@ -50,25 +44,15 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: 打包源码
-        run: tar czf /tmp/source.tgz app.py i18n_backend.py static
-      - name: 上传源码到 VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: /tmp/source.tgz
-          target: /tmp/
-          strip_components: 1
-      - name: 解压并重启
+      - name: 部署并重启 (VPS git pull)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            cd /opt/snail-books-backend
-            tar xzf /tmp/source.tgz
-            rm /tmp/source.tgz
+            set -e
+            cd /opt/snail-books-backend || exit 1
+            git fetch https://github.com/ScottEX/snail-books-backend.git main 2>&1
+            git reset --hard FETCH_HEAD
             systemctl restart snail-books
