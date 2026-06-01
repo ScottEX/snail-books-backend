@@ -19,22 +19,17 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: 安装 sshpass
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-      - name: 部署后端源码到测试服务器
-        run: |
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' scp -o StrictHostKeyChecking=no \
-            app.py i18n_backend.py \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/snail-books-backend-staging/
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' scp -o StrictHostKeyChecking=no -r \
-            static \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/snail-books-backend-staging/
-      - name: 重启测试环境服务
-        run: |
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            'systemctl restart snail-books-staging'
+      - name: VPS 拉取代码并重启服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /opt/snail-books-backend-staging
+            git fetch origin develop
+            git reset --hard origin/develop
+            systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -42,19 +37,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - name: 安装 sshpass
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-      - name: 部署后端源码到生产服务器
-        run: |
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' scp -o StrictHostKeyChecking=no \
-            app.py i18n_backend.py \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/snail-books-backend/
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' scp -o StrictHostKeyChecking=no -r \
-            static \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/snail-books-backend/
-      - name: 重启生产环境服务
-        run: |
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            'systemctl restart snail-books'
+      - name: VPS 拉取代码并重启服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /opt/snail-books-backend
+            git fetch origin main
+            git reset --hard origin/main
+            systemctl restart snail-books
