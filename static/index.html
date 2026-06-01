@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { 'inter': ['Inter', 'sans-serif'], 'noto': ['Noto Sans SC', 'sans-serif'] }
+          }
+        }
+      }
+    </script>
+
+<script>(function(){
+  if(window.Capacitor||navigator.userAgent.indexOf('Capacitor')!==-1){
+    if(!localStorage.getItem('api_base')){
+      localStorage.setItem('api_base','http://8.135.58.90:8600');
+    }
+  }
+})();</script>
+<script>
+(function(){
+  var IDLE_MS = 180*60*1000; // 3 hours
+  var lastActivity = Date.now();
+
+  // Hook fetch to track API calls
+  var _fetch = window.fetch;
+  window.fetch = function(){
+    lastActivity = Date.now();
+    return _fetch.apply(this, arguments);
+  };
+
+  // Check every 10 seconds
+  setInterval(function(){
+    if(Date.now() - lastActivity > IDLE_MS){
+      localStorage.removeItem('user');
+      localStorage.removeItem('active_tab');
+      window.location.href = '/login';
+    }
+  }, 10000);
+})();
+</script>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>蓝姐螺蛳粉</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter','Noto Sans SC',sans-serif; -webkit-font-smoothing:antialiased; }
+    /* Keep #root flex for React Native Web layout — don't override */
+    .bg-wrapper { position: fixed; inset: 0; z-index: 0; background: url(/img/bg.jpg) center/cover no-repeat; }
+    .bg-overlay { position: fixed; inset: 0; z-index: 1; background: rgba(0,0,0,0.15); }
+    .bg-content { position: relative; z-index: 2; }
+    .glass-card { background: rgba(255,255,255,0.10); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.10); text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+    .glass-input { background: rgba(255,255,255,0.10); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.10); color: #fff; }
+    .glass-input::placeholder { color: rgba(255,255,255,0.55); }
+    .glass-input:focus { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.10); box-shadow: 0 0 0 3px rgba(255,255,255,0.10); outline: none; }
+    .glass-tabs { background: rgba(255,255,255,0.10); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.10); }
+    .tab-active { background: rgba(255,255,255,0.10); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .tab-inactive { color: rgba(255,255,255,0.65); }
+    .btn-dark { background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.10); color: #fff; }
+    .btn-dark:hover { background: rgba(0,0,0,0.7); }
+    .btn-red { background: rgba(139,30,34,0.7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.10); color: #fff; }
+    .btn-red:hover { background: rgba(139,30,34,0.85); }
+    .lang-btn { color: rgba(255,255,255,0.10); font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: all .2s; }
+    .lang-btn:hover { color: rgba(255,255,255,0.10); background: rgba(255,255,255,0.10); }
+    .lang-btn.active { color: #fff; background: rgba(255,255,255,0.10); }
+    .shake { animation: shake .4s ease; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-5px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
+    .fade-in { animation: fadeIn .4s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes modalIn { from{opacity:0;transform:translateY(-300px)} to{opacity:1;transform:translateY(0)} }
+</style>
+  <link rel="icon" href="/favicon.ico" /></head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  <script src="/_expo/static/js/web/index-d95ceea8ef278d23a4a491bea76f516f.js" defer></script>
+</body>
+</html>
