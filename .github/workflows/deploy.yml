@@ -20,22 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 部署并重启 (VPS git pull)
+      - name: 部署到测试环境
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            set -e
-            cd /opt/snail-books-backend-staging || exit 1
-            echo "=== fetching ==="
-            git fetch https://github.com/ScottEX/snail-books-backend.git develop 2>&1
-            echo "=== resetting ==="
-            git reset --hard FETCH_HEAD
-            echo "=== restarting ==="
-            systemctl restart snail-books-staging
-            echo "=== done ==="
+          script: cd /opt/snail-books-backend-staging && /usr/bin/git fetch https://github.com/ScottEX/snail-books-backend.git develop && /usr/bin/git reset --hard FETCH_HEAD && /usr/bin/systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -44,15 +35,10 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: 部署并重启 (VPS git pull)
+      - name: 部署到生产环境
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            set -e
-            cd /opt/snail-books-backend || exit 1
-            git fetch https://github.com/ScottEX/snail-books-backend.git main 2>&1
-            git reset --hard FETCH_HEAD
-            systemctl restart snail-books
+          script: cd /opt/snail-books-backend && /usr/bin/git fetch https://github.com/ScottEX/snail-books-backend.git main && /usr/bin/git reset --hard FETCH_HEAD && /usr/bin/systemctl restart snail-books
