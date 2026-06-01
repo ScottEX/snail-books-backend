@@ -27,8 +27,10 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend-staging
-            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519' git fetch origin develop
+            git remote set-url origin https://github.com/ScottEX/snail-books-backend.git
+            git fetch origin develop
             git reset --hard origin/develop
+            git remote set-url origin git@github.com:ScottEX/snail-books-backend.git
       - name: 重启测试环境服务
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -51,8 +53,10 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend
-            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519' git fetch origin main
+            git remote set-url origin https://github.com/ScottEX/snail-books-backend.git
+            git fetch origin main
             git reset --hard origin/main
+            git remote set-url origin git@github.com:ScottEX/snail-books-backend.git
       - name: 重启生产环境服务
         uses: appleboy/ssh-action@v1.0.3
         with:
