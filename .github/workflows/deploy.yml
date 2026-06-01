@@ -20,13 +20,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 部署到测试环境
+      - name: 准备部署文件
+        run: |
+          mkdir -p deploy
+          cp app.py i18n_backend.py deploy/
+          cp -r static deploy/ 2>/dev/null || true
+      - name: 部署前端静态文件到测试服务器
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: deploy/
+          target: /opt/snail-books-backend-staging/
+          strip_components: 1
+      - name: 重启测试环境服务
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: cd /opt/snail-books-backend-staging && /usr/bin/git fetch https://github.com/ScottEX/snail-books-backend.git develop && /usr/bin/git reset --hard FETCH_HEAD && /usr/bin/systemctl restart snail-books-staging
+          script: systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -35,10 +49,24 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: 部署到生产环境
+      - name: 准备部署文件
+        run: |
+          mkdir -p deploy
+          cp app.py i18n_backend.py deploy/
+          cp -r static deploy/ 2>/dev/null || true
+      - name: 部署前端静态文件到生产服务器
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: deploy/
+          target: /opt/snail-books-backend/
+          strip_components: 1
+      - name: 重启生产环境服务
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: cd /opt/snail-books-backend && /usr/bin/git fetch https://github.com/ScottEX/snail-books-backend.git main && /usr/bin/git reset --hard FETCH_HEAD && /usr/bin/systemctl restart snail-books
+          script: systemctl restart snail-books
