@@ -27,8 +27,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend-staging
-            git checkout develop
-            git fetch origin develop
+            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519' git fetch origin develop
             git reset --hard origin/develop
       - name: 重启测试环境服务
         uses: appleboy/ssh-action@v1.0.3
@@ -52,8 +51,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend
-            git checkout main
-            git fetch origin main
+            GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519' git fetch origin main
             git reset --hard origin/main
       - name: 重启生产环境服务
         uses: appleboy/ssh-action@v1.0.3
