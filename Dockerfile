@@ -1,5 +1,5 @@
 FROM python:3.12-slim
-RUN pip install flask gunicorn werkzeug -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install flask gunicorn werkzeug Pillow -i https://pypi.tuna.tsinghua.edu.cn/simple
 WORKDIR /app
 COPY app.py i18n_backend.py /app/
 COPY static /app/static/

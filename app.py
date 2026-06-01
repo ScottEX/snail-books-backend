@@ -4,6 +4,12 @@
 import sqlite3, os, secrets, functools, re, json, time
 from datetime import datetime, date
 from contextlib import contextmanager
+try:
+    from PIL import Image as _PILImage  # type: ignore[import-not-found,import]
+    HAS_PIL = True
+except ImportError:
+    _PILImage = None  # type: ignore
+    HAS_PIL = False
 from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests, random, string
@@ -380,6 +386,7 @@ def init_db():
                 category TEXT DEFAULT '采购',
                 total REAL NOT NULL DEFAULT 0,
                 images TEXT DEFAULT '[]',
+                thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -506,6 +513,15 @@ def init_db():
         # Migration (2026.5.30): add date column to transactions
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN date TEXT DEFAULT ''")
+        except:
+            pass
+        # Migration (2026.6.1): add thumb_images to transactions and procurement_batches
+        try:
+            db.execute("ALTER TABLE transactions ADD COLUMN thumb_images TEXT DEFAULT '[]'")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE procurement_batches ADD COLUMN thumb_images TEXT DEFAULT '[]'")
         except:
             pass
 
@@ -736,9 +752,11 @@ def api_transactions():
         if missing:
             return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
-            db.execute('INSERT INTO transactions (type,amount,category,account,note,images) VALUES (?,?,?,?,?,?)',
+            db.execute('INSERT INTO transactions (type,amount,category,account,note,images,thumb_images) VALUES (?,?,?,?,?,?,?)',
                        (data['type'], data['amount'], data['category'], data['account'],
-                        data.get('note',''), json.dumps(data.get('images', []))))
+                        data.get('note',''),
+                        json.dumps(data.get('images', [])),
+                        json.dumps(data.get('thumb_images', []))))
             db.commit()
         return jsonify({'status':'ok'})
     # GET with pagination & filtering
@@ -795,7 +813,9 @@ def api_delete_transaction(id):
 @app.route('/api/expenses/upload-images', methods=['POST'])
 @login_required
 def api_upload_expense_images():
-    """Upload receipt images. Returns { images: ['/expense-imgs/<user_id>/<file>', ...] }."""
+    """Upload receipt images. Returns { images: [...], thumb_images: [...], has_thumbs: bool }.
+    thumb_images[i] is the 128×128 thumbnail URL (or images[i] fallback if Pillow unavailable).
+    """
     if 'files' not in request.files:
         return jsonify({'status': 'error', 'message': 'No files'}), 400
     files = request.files.getlist('files')
@@ -805,6 +825,7 @@ def api_upload_expense_images():
     user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
     os.makedirs(user_dir, exist_ok=True)
     urls = []
+    thumb_urls = []
     import uuid
     for f in files:
         if f.filename == '':
@@ -812,9 +833,35 @@ def api_upload_expense_images():
         # Keep original extension, generate unique name
         ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
         safe_name = f"{uuid.uuid4().hex}{ext}"
-        f.save(os.path.join(user_dir, safe_name))
+        save_path = os.path.join(user_dir, safe_name)
+        f.save(save_path)
         urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-    return jsonify({'status': 'ok', 'images': urls})
+        # Generate 128×128 thumbnail for list rendering (faster load, less bandwidth)
+        # Graceful degradation: if Pillow fails, fall back to original image URL
+        if HAS_PIL:
+            try:
+                thumb_name = f"{os.path.splitext(safe_name)[0]}_thumb.jpg"
+                thumb_path = os.path.join(user_dir, thumb_name)
+                with _PILImage.open(save_path) as img:  # type: ignore[union-attr]
+                    img.thumbnail((128, 128), _PILImage.LANCZOS)  # type: ignore[union-attr]
+                    # Convert to RGB if needed (PNG with alpha, etc.)
+                    if img.mode in ('RGBA', 'P', 'LA'):
+                        bg = _PILImage.new('RGB', img.size, (255, 255, 255))  # type: ignore[union-attr]
+                        if img.mode in ('RGBA', 'LA'):
+                            bg.paste(img, mask=img.split()[-1])
+                        else:
+                            bg.paste(img.convert('RGBA'))
+                        img = bg
+                    img.save(thumb_path, 'JPEG', quality=85, optimize=True)
+                thumb_urls.append(f'/expense-imgs/{user_id}/{thumb_name}')
+            except Exception:
+                # Thumbnail generation failed (corrupt image, unsupported format, etc.)
+                # Fall back to original so frontend still has something to display
+                thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
+        else:
+            # Pillow not installed: fall back to original
+            thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
+    return jsonify({'status': 'ok', 'images': urls, 'thumb_images': thumb_urls, 'has_thumbs': HAS_PIL})
 
 @app.route('/api/partners')
 @login_required
@@ -1047,10 +1094,12 @@ def api_procurement_batches():
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
             if total == 0:
                 return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            images_json = json.dumps(data.get('images', []))
+            thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
-                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,note) VALUES (?,?,?,?,?,?,?)',
+                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
                 (batch_no, data['date'], data['payment_method'], data.get('category','采购'), round(total, 2),
-                 json.dumps(data.get('images', [])), data.get('note', ''))
+                 images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
             for name, spec, up, qty, sub, pid in item_rows:
@@ -1058,9 +1107,10 @@ def api_procurement_batches():
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
                     (batch_id, pid, name, spec, up, qty, round(sub, 2))
                 )
+            # Sync an expense transaction (with thumb_images so history list can show thumbnail)
             db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images) VALUES ('expense',?,?,?,?,?,?)",
-                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], json.dumps(data.get('images', [])))
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json)
             )
             db.commit()
         return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -1077,6 +1127,7 @@ def api_procurement_batches():
         for row in rows:
             b = dict(row)
             b['images'] = json.loads(b['images']) if b['images'] else []
+            b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
             items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (b['id'],)).fetchall()
             b['items'] = [dict(it) for it in items]
             batches.append(b)
