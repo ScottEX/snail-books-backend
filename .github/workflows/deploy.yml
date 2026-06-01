@@ -45,7 +45,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend-staging/static/"
           strip_components: 0
@@ -92,7 +92,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend/static/"
           strip_components: 0
