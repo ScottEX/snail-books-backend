@@ -1596,39 +1596,5 @@ def api_delete_daily_revenue(id):
         db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
         return jsonify({'status': 'ok'})
 
-# === TEMPORARY one-shot admin endpoint — 一次性,创建测试用户后立即 git revert ===
-# Token: rvvVf6nCFosO2hcuIQD8vQ  (will be removed by revert commit)
-ADMIN_SEED_TOKEN = 'rvvVf6nCFosO2hcuIQD8vQ'
-@app.route('/admin/seed_user', methods=['POST'])
-def admin_seed_user():
-    if request.headers.get('X-Admin-Token') != ADMIN_SEED_TOKEN:
-        return jsonify({'status': 'error', 'message': 'forbidden'}), 403
-    data = request.get_json() or {}
-    username = (data.get('username') or '').strip()
-    password = data.get('password') or ''
-    email = (data.get('email') or '').strip()
-    if not username or not password or not email:
-        return jsonify({'status': 'error', 'message': 'username/password/email required'}), 400
-    with get_db() as db:
-        exists = db.execute(
-            'SELECT id,username,email,is_verified FROM users WHERE username=? OR email=?',
-            (username, email)
-        ).fetchone()
-        if exists:
-            return jsonify({
-                'status': 'exists',
-                'user_id': exists['id'],
-                'username': exists['username'],
-                'email': exists['email'],
-                'is_verified': exists['is_verified']
-            }), 200
-        db.execute(
-            'INSERT INTO users (username,password,email,is_verified) VALUES (?,?,?,1)',
-            (username, generate_password_hash(password), email)
-        )
-        row = db.execute('SELECT id,username,email,is_verified FROM users WHERE username=?',
-                        (username,)).fetchone()
-    return jsonify({'status': 'ok', 'user': dict(row)})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
