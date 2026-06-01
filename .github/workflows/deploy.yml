@@ -19,7 +19,7 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
-      - name: VPS 拉取代码并重启服务
+      - name: VPS 拉取代码
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -27,9 +27,16 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend-staging
+            git checkout develop
             git fetch origin develop
             git reset --hard origin/develop
-            systemctl restart snail-books-staging
+      - name: 重启测试环境服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -37,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: VPS 拉取代码并重启服务
+      - name: VPS 拉取代码
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -45,6 +52,13 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend
+            git checkout main
             git fetch origin main
             git reset --hard origin/main
-            systemctl restart snail-books
+      - name: 重启生产环境服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: systemctl restart snail-books
