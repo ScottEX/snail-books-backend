@@ -19,7 +19,19 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
-      - name: VPS 拉取代码
+      - uses: actions/checkout@v4
+      - name: 打包源码
+        run: tar czf /tmp/source.tgz app.py i18n_backend.py static
+      - name: 上传源码到 VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: /tmp/source.tgz
+          target: /tmp/
+          strip_components: 1
+      - name: 解压并重启
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -27,17 +39,9 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend-staging
-            git remote set-url origin https://github.com/ScottEX/snail-books-backend.git
-            git fetch origin develop
-            git reset --hard origin/develop
-            git remote set-url origin git@github.com:ScottEX/snail-books-backend.git
-      - name: 重启测试环境服务
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: systemctl restart snail-books-staging
+            tar xzf /tmp/source.tgz
+            rm /tmp/source.tgz
+            systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -45,7 +49,19 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: VPS 拉取代码
+      - uses: actions/checkout@v4
+      - name: 打包源码
+        run: tar czf /tmp/source.tgz app.py i18n_backend.py static
+      - name: 上传源码到 VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: /tmp/source.tgz
+          target: /tmp/
+          strip_components: 1
+      - name: 解压并重启
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -53,14 +69,6 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /opt/snail-books-backend
-            git remote set-url origin https://github.com/ScottEX/snail-books-backend.git
-            git fetch origin main
-            git reset --hard origin/main
-            git remote set-url origin git@github.com:ScottEX/snail-books-backend.git
-      - name: 重启生产环境服务
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: systemctl restart snail-books
+            tar xzf /tmp/source.tgz
+            rm /tmp/source.tgz
+            systemctl restart snail-books
