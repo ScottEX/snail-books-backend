@@ -25,7 +25,7 @@ jobs:
           mkdir -p deploy
           cp app.py i18n_backend.py deploy/
           cp -r static deploy/ 2>/dev/null || true
-      - name: 部署前端静态文件到测试服务器
+      - name: 部署到测试服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -33,14 +33,19 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           source: deploy/
           target: /opt/snail-books-backend-staging/
-          strip_components: 1
-      - name: 重启测试环境服务
+          strip_components: 0
+      - name: 移动文件并重启
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: systemctl restart snail-books-staging
+          script: |
+            cd /opt/snail-books-backend-staging/deploy
+            cp -f app.py i18n_backend.py ../
+            cp -rf static ../ 2>/dev/null || true
+            cd .. && rm -rf deploy
+            systemctl restart snail-books-staging
 
   deploy-production:
     needs: test
@@ -54,7 +59,7 @@ jobs:
           mkdir -p deploy
           cp app.py i18n_backend.py deploy/
           cp -r static deploy/ 2>/dev/null || true
-      - name: 部署前端静态文件到生产服务器
+      - name: 部署到生产服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -62,11 +67,16 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           source: deploy/
           target: /opt/snail-books-backend/
-          strip_components: 1
-      - name: 重启生产环境服务
+          strip_components: 0
+      - name: 移动文件并重启
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: systemctl restart snail-books
+          script: |
+            cd /opt/snail-books-backend/deploy
+            cp -f app.py i18n_backend.py ../
+            cp -rf static ../ 2>/dev/null || true
+            cd .. && rm -rf deploy
+            systemctl restart snail-books
