@@ -151,21 +151,21 @@ def _send_email(to_email, subject, body, code):
 
 def send_verification_email(to_email, code):
     body = f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">蓝姐螺蛳粉 记账系统</h2>
-        <p>你的验证码是：</p>
+        <h2 style="color:#8B1E22">[柳味探秘] 记账系统</h2>
+        <p>您正在进行记账系统验证。验证码：</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，请勿泄露</p>
+        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，为保障账户安全，请勿向他人泄露。</p>
     </div>'''
-    return _send_email(to_email, '蓝姐螺蛳粉 - 邮箱验证码', body, code)
+    return _send_email(to_email, '[柳味探秘] 邮箱验证码', body, code)
 
 def send_reset_email(to_email, code):
     body = f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">蓝姐螺蛳粉 记账系统</h2>
-        <p>你正在重置密码，验证码是：</p>
+        <h2 style="color:#8B1E22">[柳味探秘] 记账系统</h2>
+        <p>您正在进行密码重置。验证码：</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，如非本人操作请忽略</p>
+        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，如非本人操作请忽略。</p>
     </div>'''
-    return _send_email(to_email, '蓝姐螺蛳粉 - 重置密码', body, code)
+    return _send_email(to_email, '[柳味探秘] 重置密码', body, code)
 
 def generate_code():
     return ''.join(random.choices(string.digits, k=6))
@@ -630,12 +630,15 @@ def register():
     if not ok:
         return jsonify({'status':'error','message':msg}), 400
     with get_db() as db:
-        exists = db.execute('SELECT id FROM users WHERE username=?',(username,)).fetchone()
+        exists = db.execute('SELECT id FROM users WHERE username=? AND is_verified=1',(username,)).fetchone()
         if exists:
             return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
         email_exists = db.execute('SELECT id FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
         if email_exists:
             return jsonify({'status':'error','message':_t('err_email_registered', g.lang)}), 409
+        # Clean up any unverified record with same username (e.g., from a previous failed verification)
+        db.execute('DELETE FROM users WHERE username=? AND is_verified=0',(username,))
+        db.execute('DELETE FROM users WHERE email=? AND is_verified=0',(email,))
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)', (username, generate_password_hash(password), email, code, expires))
