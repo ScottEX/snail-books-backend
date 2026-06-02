@@ -1309,7 +1309,7 @@ def api_migrate_recon():
 @app.route('/api/reconciliations/clear', methods=['POST'])
 @login_required
 def api_clear_reconciliations():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     if data.get('confirm') != 'YES':
         return jsonify({'ok': False, 'message': '需要 confirm="YES" 二次确认'}), 400
     with get_db() as db:
