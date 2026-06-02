@@ -1309,6 +1309,9 @@ def api_migrate_recon():
 @app.route('/api/reconciliations/clear', methods=['POST'])
 @login_required
 def api_clear_reconciliations():
+    data = request.get_json() or {}
+    if data.get('confirm') != 'YES':
+        return jsonify({'ok': False, 'message': '需要 confirm="YES" 二次确认'}), 400
     with get_db() as db:
         db.execute('DELETE FROM reconciliations')
         db.commit()
@@ -1320,16 +1323,41 @@ def api_create_reconciliation():
     data = request.get_json() or {}
     if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
     date = data['date']
+    # validate date format
+    try:
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': '日期格式必须为 YYYY-MM-DD'}), 400
     bill_date = data.get('bill_date', date)
+    if bill_date:
+        try:
+            datetime.strptime(bill_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': '账单日期格式必须为 YYYY-MM-DD'}), 400
     reconciled_by = data.get('reconciled_by', g.username)
+    if not re.match(r'^[\w\u4e00-\u9fa5@.\-]{1,32}$', reconciled_by):
+        return jsonify({'error': '录入人格式无效'}), 400
 
-    card_balance = float(data.get('card_balance', 0))
-    cash_balance = float(data.get('cash_balance', 0))
-    dine_in = float(data.get('dine_in', 0))
-    meituan = float(data.get('meituan', 0))
-    flash_sale = float(data.get('flash_sale', 0))
-    jd = float(data.get('jd', 0))
-    tuan = float(data.get('tuan', 0))
+    balances = {}
+    for field in ['card_balance','cash_balance','dine_in','meituan','flash_sale','jd','tuan']:
+        raw = data.get(field)
+        try:
+            v = float(raw) if raw is not None else 0.0
+        except (TypeError, ValueError):
+            return jsonify({'error': f'{field} 必须是有效数字'}), 400
+        if v < 0:
+            return jsonify({'error': f'{field} 不能为负'}), 400
+        if abs(v) > 1e10:
+            return jsonify({'error': f'{field} 数值超出合理范围'}), 400
+        balances[field] = v
+
+    card_balance = balances['card_balance']
+    cash_balance = balances['cash_balance']
+    dine_in = balances['dine_in']
+    meituan = balances['meituan']
+    flash_sale = balances['flash_sale']
+    jd = balances['jd']
+    tuan = balances['tuan']
     channel_total = round(dine_in + meituan + flash_sale + jd + tuan, 2)
     real_total = round(card_balance + cash_balance, 2)
     diff = round(real_total - channel_total, 2)
@@ -1347,6 +1375,8 @@ def api_create_reconciliation():
                 WHERE id=?''',
                 (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
                  channel_total, real_total, diff, reconciled_by, existing['id']))
+            db.commit()
+            return jsonify({'ok': True, 'action': 'updated', 'id': existing['id']}), 200
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
@@ -1354,7 +1384,9 @@ def api_create_reconciliation():
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
                  channel_total, real_total, diff, reconciled_by))
-    return jsonify({'ok': True}), 201
+            db.commit()
+            new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
 
 @app.route('/api/reconciliations', methods=['GET'])
 @login_required
@@ -1362,9 +1394,15 @@ def api_get_reconciliations():
     # New: page-based pagination (returns { records, total, pages, ... })
     page = request.args.get('page', 0, type=int)
     per_page = request.args.get('per_page', 10, type=int)
+    per_page = max(1, min(per_page, 100))
 
     # Old: limit-based (0=all, returns plain array)
     limit = request.args.get('limit', page > 0 and 0 or 30, type=int)
+    if page <= 0:
+        if limit < 0:
+            return jsonify({'error': 'limit 不能为负'}), 400
+        elif limit > 200:
+            limit = 200
 
     bill_date_from = request.args.get('bill_date_from', '')
     bill_date_to = request.args.get('bill_date_to', '')
