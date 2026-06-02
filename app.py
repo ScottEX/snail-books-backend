@@ -1303,9 +1303,9 @@ def api_create_reconciliation():
     flash_sale = float(data.get('flash_sale', 0))
     jd = float(data.get('jd', 0))
     tuan = float(data.get('tuan', 0))
-    channel_total = dine_in + meituan + flash_sale + jd + tuan
-    real_total = card_balance + cash_balance
-    diff = real_total - channel_total
+    channel_total = round(dine_in + meituan + flash_sale + jd + tuan, 2)
+    real_total = round(card_balance + cash_balance, 2)
+    diff = round(real_total - channel_total, 2)
 
     with get_db() as db:
         # Upsert: same bill_date updates existing, otherwise inserts
