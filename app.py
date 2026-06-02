@@ -714,6 +714,7 @@ def forgot_password():
         mins = wait // 60
         secs = wait % 60
         return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
+    record_failed_attempt(ip)
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
         if not user:
