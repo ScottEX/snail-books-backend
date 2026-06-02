@@ -201,7 +201,11 @@ EXPENSE_CATS = [
 ACCOUNTS = ['💚 微信收款', '💙 支付宝收款', '💵 现金', '🏦 银行卡']
 
 # 实际合伙人数据
-PARTNER_DATA = []
+PARTNER_DATA = [
+    ('张安武', 34, 54455.08, '完结', '董事长 | 初始44200 + 追加10255.08'),
+    ('蓝柳富', 33, 52853.46, '完结', '打杂 | 初始42900 + 追加9953.46'),
+    ('江宽',  33, 52853.46, '完结', 'CEO | 初始42900 + 追加9953.46'),
+]
 
 DEFAULT_PRODUCTS = [
     # ── 蓝姐 → 蓝姐 (49) ──
@@ -492,7 +496,7 @@ def init_db():
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
             for p in PARTNER_DATA:
-                db.execute('INSERT INTO partners (name,share,investment,status) VALUES (?,?,?,?)', p)
+                db.execute('INSERT INTO partners (name,share,investment,status,note) VALUES (?,?,?,?,?)', p)
         # Seed products
         count = db.execute('SELECT COUNT(*) FROM products').fetchone()[0]
         if count == 0:
