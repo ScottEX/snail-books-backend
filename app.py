@@ -1335,7 +1335,13 @@ def api_create_reconciliation():
         except ValueError:
             return jsonify({'error': '账单日期格式必须为 YYYY-MM-DD'}), 400
     reconciled_by = data.get('reconciled_by', g.username)
-    if not re.match(r'^[\w\u4e00-\u9fa5@.\-]{1,32}$', reconciled_by):
+    # fetch username from DB if session doesn't have it (Bearer token path)
+    if not reconciled_by and g.user_id:
+        with get_db() as db:
+            user = db.execute('SELECT username FROM users WHERE id=?', (g.user_id,)).fetchone()
+            reconciled_by = user['username'] if user else str(g.user_id)
+    # only validate explicit input (not the auto-filled default)
+    if 'reconciled_by' in data and not re.match(r'^[\w\u4e00-\u9fa5@.\-]{1,32}$', reconciled_by):
         return jsonify({'error': '录入人格式无效'}), 400
 
     balances = {}
