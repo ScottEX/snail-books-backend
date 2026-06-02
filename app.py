@@ -171,14 +171,24 @@ def generate_code():
     return ''.join(random.choices(string.digits, k=6))
 
 def validate_password(password, lang='zh-CN'):
-    """返回 (bool, str)。密码强度：最少6位，必须含字母和数字"""
-    if len(password) < 6:
+    """返回 (bool, str)。密码强度：最少8位，必须含字母、数字和特殊字符"""
+    if len(password) < 8:
         return False, _t('err_pw_too_short', lang)
     if not re.search(r'[A-Za-z]', password):
         return False, _t('err_pw_no_letter', lang)
     if not re.search(r'[0-9]', password):
         return False, _t('err_pw_no_digit', lang)
+    if not re.search(r'[!@#$%^&*(),.?\":{}|<>]', password):
+        return False, _t('err_pw_no_special', lang)
     return True, ''
+
+def validate_username(username):
+    """返回 (bool, str)。用户名：2-32位，字母数字下划线中文"""
+    if len(username) < 2 or len(username) > 32:
+        return False
+    if not re.match(r'^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$', username):
+        return False
+    return True
 
 DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
 
@@ -589,7 +599,7 @@ def login_page():
         secs = wait % 60
         return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
     with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username)).fetchone()
+        user = db.execute('SELECT * FROM users WHERE username=? OR email=? OR email=?',(username, username, username.lower())).fetchone()
         if user and check_password_hash(user['password'], password):
             if not user['is_verified']:
                 return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
@@ -614,27 +624,27 @@ def register():
     data = request.get_json()
     username = data.get('username','').strip()
     password = data.get('password','')
-    email = data.get('email','').strip()
+    email = data.get('email','').strip().lower()
     if not username or not password:
         return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
     if not email:
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
     if not validate_email(email):
         return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
+    # 用户名格式校验
+    if not validate_username(username):
+        return jsonify({'status':'error','message':_t('err_username_invalid', g.lang) or '用户名仅支持字母、数字、下划线和中文，2-32位'}), 400
     # 密码强度校验
     ok, msg = validate_password(password, g.lang)
     if not ok:
         return jsonify({'status':'error','message':msg}), 400
     with get_db() as db:
-        exists = db.execute('SELECT id FROM users WHERE username=? AND is_verified=1',(username,)).fetchone()
+        # 检查重复（不区分验证状态）
+        exists = db.execute('SELECT id FROM users WHERE username=? OR email=?',(username, email)).fetchone()
         if exists:
             return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
-        email_exists = db.execute('SELECT id FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
-        if email_exists:
-            return jsonify({'status':'error','message':_t('err_email_registered', g.lang)}), 409
-        # Clean up any unverified record with same username (e.g., from a previous failed verification)
-        db.execute('DELETE FROM users WHERE username=? AND is_verified=0',(username,))
-        db.execute('DELETE FROM users WHERE email=? AND is_verified=0',(email,))
+        # 仅清理验证码已过期的未验证记录
+        db.execute("DELETE FROM users WHERE (username=? OR email=?) AND is_verified=0 AND code_expires < datetime('now')",(username, email))
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)', (username, generate_password_hash(password), email, code, expires))
@@ -644,12 +654,12 @@ def register():
     resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
     if DEV_MODE:
         resp['dev_code'] = code
-    return jsonify(resp)
+    return jsonify(resp), 201
 
 @app.route('/verify', methods=['POST'])
 def verify_email():
     data = request.get_json()
-    email = data.get('email','').strip()
+    email = data.get('email','').strip().lower()
     code = data.get('code','').strip()
     if not email or not code:
         return jsonify({'status':'error','message':_t('err_empty_email_code', g.lang)}), 400
@@ -666,13 +676,13 @@ def verify_email():
 @app.route('/resend-code', methods=['POST'])
 def resend_code_route():
     data = request.get_json()
-    email = data.get('email','').strip()
+    email = data.get('email','').strip().lower()
     if not email:
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=0',(email,)).fetchone()
         if not user:
-            return jsonify({'status':'error','message':_t('err_email_not_found', g.lang)}), 404
+            return jsonify({'status':'ok','message':_t('msg_code_resent', g.lang)})
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',(code, expires, user['id']))
@@ -690,9 +700,18 @@ def resend_code_route():
 def forgot_password():
     """发送重置密码验证码到已注册邮箱"""
     data = request.get_json()
-    email = data.get('email','').strip()
+    email = data.get('email','').strip().lower()
     if not email:
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
+    if not validate_email(email):
+        return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
+    # 限流：IP 15分钟5次
+    ip = request.remote_addr or 'unknown'
+    allowed, wait = check_rate_limit(ip)
+    if not allowed:
+        mins = wait // 60
+        secs = wait % 60
+        return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
         if not user:
@@ -713,7 +732,7 @@ def forgot_password():
 def reset_password():
     """用验证码重置密码"""
     data = request.get_json()
-    email = data.get('email','').strip()
+    email = data.get('email','').strip().lower()
     code = data.get('code','').strip()
     new_password = data.get('password','')
     if not email or not code or not new_password:
@@ -734,10 +753,11 @@ def reset_password():
 
 # ====== End Auth ======
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
+@login_required
 def logout():
     session.clear()
-    return redirect('/login')
+    return jsonify({'status':'ok'})
 
 # Page routes are now served by the SPA fallback (serve_spa_static / serve_spa_root).
 # API routes follow below — all unchanged.
