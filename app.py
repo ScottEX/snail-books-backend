@@ -772,6 +772,11 @@ def logout():
     session.clear()
     return jsonify({'status':'ok'})
 
+@app.route('/logout', methods=['GET'])
+def logout_get():
+    """GET /logout — reject with 405 to prevent CSRF and SPA catch-all hijack."""
+    return jsonify({'status':'error','message':'Use POST /logout'}), 405
+
 # Page routes are now served by the SPA fallback (serve_spa_static / serve_spa_root).
 # API routes follow below — all unchanged.
 
