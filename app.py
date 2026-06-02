@@ -358,6 +358,7 @@ def init_db():
                 partner TEXT NOT NULL,
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
+                date TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
@@ -534,6 +535,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE procurement_batches ADD COLUMN thumb_images TEXT DEFAULT '[]'")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
 
@@ -908,11 +913,12 @@ def api_dividends():
                 return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             for item in items:
-                db.execute('INSERT INTO dividends (partner,amount,note) VALUES (?,?,?)', (item['partner'], item['amount'], item.get('note','')))
+                db.execute('INSERT INTO dividends (partner,amount,note,date) VALUES (?,?,?,?)',
+                    (item['partner'], item['amount'], item.get('note',''), item.get('date','')))
             db.commit()
         return jsonify({'status':'ok'})
     with get_db() as db:
-        rows = db.execute('SELECT * FROM dividends ORDER BY created_at DESC').fetchall()
+        rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/dividends/<int:id>', methods=['DELETE'])
