@@ -486,6 +486,8 @@ def init_db():
             db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
         except:
             pass
+        # 邮箱大小写迁移：将所有存量 email 转为小写
+        db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
         # Seed partners
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
