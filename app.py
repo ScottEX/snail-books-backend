@@ -42,6 +42,7 @@ IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
 EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
 # User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
 BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
+AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
@@ -1272,6 +1273,48 @@ def api_users():
     with get_db() as db:
         rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
     return jsonify([dict(r) for r in rows])
+
+# ── Avatar ──
+@app.route('/api/users/avatar', methods=['GET'])
+def api_get_avatar():
+    """Public: get avatar by username or user_id. Returns the image or 404."""
+    username = request.args.get('username', '')
+    user_id = request.args.get('user_id', '')
+    if not username and not user_id:
+        return jsonify({'status': 'error', 'message': 'username or user_id required'}), 400
+    with get_db() as db:
+        if user_id:
+            user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
+        else:
+            user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
+    if not user:
+        return '', 404
+    for ext in ('jpg', 'jpeg', 'png', 'webp'):
+        path = os.path.join(AVATAR_DIR, f'{user["id"]}.{ext}')
+        if os.path.isfile(path):
+            return send_file(path, mimetype=f'image/{ext if ext != "jpg" else "jpeg"}')
+    return '', 404
+
+@app.route('/api/users/avatar', methods=['POST'])
+@login_required
+def api_upload_avatar():
+    """Upload avatar. Replaces existing."""
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({'status': 'error', 'message': '文件名为空'}), 400
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in ('jpg', 'jpeg', 'png', 'webp'):
+        return jsonify({'status': 'error', 'message': '仅支持 jpg/png/webp'}), 400
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+    # Remove old avatar (any extension)
+    for old_ext in ('jpg', 'jpeg', 'png', 'webp'):
+        old = os.path.join(AVATAR_DIR, f'{g.user_id}.{old_ext}')
+        if os.path.isfile(old):
+            os.remove(old)
+    f.save(os.path.join(AVATAR_DIR, f'{g.user_id}.{ext}'))
+    return jsonify({'status': 'ok', 'url': f'/user-images/avatars/{g.user_id}.{ext}?t={int(time.time())}'})
 
 # ── Reconciliations ──
 @app.route('/api/migrate-recon', methods=['POST'])
