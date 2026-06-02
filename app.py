@@ -191,11 +191,7 @@ EXPENSE_CATS = [
 ACCOUNTS = ['💚 微信收款', '💙 支付宝收款', '💵 现金', '🏦 银行卡']
 
 # 实际合伙人数据
-PARTNER_DATA = [
-    ('张安武', 0.34, 44200, '完结'),
-    ('蓝柳富', 0.33, 42900, '完结'),
-    ('江宽',   0.33, 42900, '完结'),
-]
+PARTNER_DATA = []
 
 DEFAULT_PRODUCTS = [
     # ── 蓝姐 → 蓝姐 (49) ──
@@ -994,6 +990,14 @@ def api_save_theme():
         if os.path.exists(save_path):
             os.remove(save_path)
         return jsonify({'status': 'ok'})
+
+@app.route('/api/partners/<int:id>', methods=['DELETE'])
+@login_required
+def api_delete_partner(id):
+    with get_db() as db:
+        db.execute('DELETE FROM partners WHERE id=?', (id,))
+        db.commit()
+    return jsonify({'status':'ok'})
 
 @app.route('/api/partners/<int:id>', methods=['PUT'])
 @login_required
