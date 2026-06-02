@@ -627,7 +627,7 @@ def login_page():
             token = secrets.token_hex(32)
             db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
             db.commit()
-            return jsonify({'status':'ok','token':token,'username':user['username']})
+            return jsonify({'status':'ok','token':token,'username':user['username'],'user_id':user['id']})
     record_failed_attempt(ip)
     return jsonify({'status':'error','message':_t('err_wrong_credentials', g.lang)}), 401
 
