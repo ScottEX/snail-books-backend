@@ -824,7 +824,7 @@ def api_upload_expense_images():
     files = request.files.getlist('files')
     if not files:
         return jsonify({'status': 'error', 'message': 'No files'}), 400
-    user_id = str(g.user['id'])
+    user_id = str(g.user_id)
     user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
     os.makedirs(user_dir, exist_ok=True)
     urls = []
