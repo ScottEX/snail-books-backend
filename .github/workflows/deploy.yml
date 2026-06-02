@@ -51,16 +51,30 @@ jobs:
           strip_components: 0
           rm: true
 
-      - name: SSH deploy backend (staging)
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-backend
+          ref: develop
+          path: backend
+
+      - name: SCP backend code → staging
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/app.py,backend/i18n_backend.py"
+          target: "/opt/snail-books-backend-staging/"
+          strip_components: 1
+
+      - name: Restart backend (staging)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/snail-books-backend-staging
-            git fetch origin develop
-            git reset --hard origin/develop
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
@@ -98,16 +112,30 @@ jobs:
           strip_components: 0
           rm: true
 
-      - name: SSH deploy backend (production)
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-backend
+          ref: main
+          path: backend
+
+      - name: SCP backend code → production
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/app.py,backend/i18n_backend.py"
+          target: "/opt/snail-books-backend/"
+          strip_components: 1
+
+      - name: Restart backend (production)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/snail-books-backend
-            git fetch origin main
-            git reset --hard origin/main
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books
