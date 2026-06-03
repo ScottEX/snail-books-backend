@@ -1738,10 +1738,11 @@ def api_business_summary():
     with get_db() as db:
         # Daily revenue aggregates
         rev = db.execute(
-            'SELECT COALESCE(SUM(revenue),0) as actual_received, COALESCE(SUM(turnover),0) as receivable'
+            'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
+            ' COALESCE(SUM(jd_revenue),0) as total_jd'
             ' FROM daily_revenue'
         ).fetchone()
-        actual_received = rev['actual_received']
+        actual_received = rev['total_revenue'] + rev['total_jd']
         receivable = rev['receivable']
         discount = receivable - actual_received
         # Platform fees total (all months)
