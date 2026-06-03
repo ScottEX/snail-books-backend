@@ -1444,14 +1444,10 @@ def api_users():
 @login_required
 def api_delete_user(uid):
     with get_db() as db:
+        db.execute('PRAGMA foreign_keys = ON')
         user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
         if not user:
             return jsonify({'status':'error','message':'User not found'}), 404
-        db.execute('DELETE FROM transactions WHERE user_id=?', (uid,))
-        db.execute('DELETE FROM daily_revenue WHERE user_id=?', (uid,))
-        db.execute('DELETE FROM procurements WHERE user_id=?', (uid,))
-        db.execute('DELETE FROM user_tokens WHERE user_id=?', (uid,))
-        db.execute('DELETE FROM user_settings WHERE user_id=?', (uid,))
         db.execute('DELETE FROM users WHERE id=?', (uid,))
         db.commit()
     return jsonify({'status':'ok','message':f'User {uid} deleted'})
