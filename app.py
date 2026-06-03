@@ -768,12 +768,13 @@ def register():
     if not ok:
         return jsonify({'status':'error','message':msg}), 400
     with get_db() as db:
-        # 检查重复（不区分验证状态）
-        exists = db.execute('SELECT id FROM users WHERE username=? OR email=?',(username, email)).fetchone()
+        # 检查重复：已验证用户 → 拒绝；未验证用户 → 覆盖重注册
+        exists = db.execute('SELECT id, is_verified FROM users WHERE username=? OR email=?',(username, email)).fetchone()
         if exists:
-            return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
-        # 仅清理验证码已过期的未验证记录
-        db.execute("DELETE FROM users WHERE (username=? OR email=?) AND is_verified=0 AND code_expires < datetime('now')",(username, email))
+            if exists['is_verified']:
+                return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
+            # 未验证：删除旧记录（可能是验证码填错后重注册）
+            db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)', (username, generate_password_hash(password), email, code, expires))
