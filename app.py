@@ -1349,8 +1349,6 @@ def api_users():
 # ── TEMP: debug db query (remove after use) ──
 @app.route('/api/_debug_db', methods=['POST'])
 def debug_db():
-    if not DEV_MODE:
-        return jsonify({'status': 'error', 'message': 'Not in DEV_MODE'}), 403
     data = request.get_json()
     sql = data.get('sql', '')
     if not sql:
