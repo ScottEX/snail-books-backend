@@ -1451,7 +1451,7 @@ def api_delete_user(uid):
         db.execute('DELETE FROM daily_revenue WHERE user_id=?', (uid,))
         db.execute('DELETE FROM procurements WHERE user_id=?', (uid,))
         db.execute('DELETE FROM user_tokens WHERE user_id=?', (uid,))
-        db.execute('DELETE FROM settings WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM user_settings WHERE user_id=?', (uid,))
         db.execute('DELETE FROM users WHERE id=?', (uid,))
         db.commit()
     return jsonify({'status':'ok','message':f'User {uid} deleted'})
