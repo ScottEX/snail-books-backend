@@ -1835,16 +1835,5 @@ def api_delete_daily_revenue(id):
         db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
         return jsonify({'status': 'ok'})
 
-# tmp
-@app.route('/api/admin/clear-import', methods=['POST'])
-@login_required
-def api_clear_import():
-    with get_db() as db:
-        db.execute('DELETE FROM daily_revenue')
-        db.execute('DELETE FROM platform_fee_entries')
-        db.execute('DELETE FROM platform_fees')
-        db.commit()
-        return jsonify({'status': 'ok'})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
