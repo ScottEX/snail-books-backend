@@ -1719,6 +1719,17 @@ def api_last_7_days():
                 })
         return jsonify({'records': result})
 
+@app.route('/api/daily-revenue/total', methods=['GET'])
+@login_required
+def api_daily_revenue_total():
+    """Return aggregate totals across all daily revenue records."""
+    with get_db() as db:
+        row = db.execute(
+            'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as total_turnover, COALESCE(SUM(jd_revenue),0) as total_jd'
+            ' FROM daily_revenue'
+        ).fetchone()
+        return jsonify(dict(row))
+
 @app.route('/api/daily-revenue', methods=['POST'])
 @login_required
 def api_create_daily_revenue():
