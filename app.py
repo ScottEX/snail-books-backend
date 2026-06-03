@@ -1440,6 +1440,22 @@ def api_users():
         rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/users/<int:uid>', methods=['DELETE'])
+@login_required
+def api_delete_user(uid):
+    with get_db() as db:
+        user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
+        if not user:
+            return jsonify({'status':'error','message':'User not found'}), 404
+        db.execute('DELETE FROM transactions WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM daily_revenue WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM procurements WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM user_tokens WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM settings WHERE user_id=?', (uid,))
+        db.execute('DELETE FROM users WHERE id=?', (uid,))
+        db.commit()
+    return jsonify({'status':'ok','message':f'User {uid} deleted'})
+
 # ── Avatar ──
 @app.route('/api/users/avatar', methods=['GET'])
 def api_get_avatar():
