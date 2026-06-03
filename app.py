@@ -341,7 +341,7 @@ def init_db():
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
                 token TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -439,7 +439,7 @@ def init_db():
                 channel_total REAL NOT NULL DEFAULT 0,
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 bill_date TEXT,
                 reconciled_by TEXT
@@ -470,7 +470,7 @@ def init_db():
                 key TEXT NOT NULL,
                 value TEXT,
                 PRIMARY KEY (user_id, key),
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS daily_revenue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -479,7 +479,7 @@ def init_db():
                 turnover REAL NOT NULL DEFAULT 0,
                 jd_revenue REAL DEFAULT 0,
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 archived INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -1400,7 +1400,7 @@ def api_migrate_recon():
                 channel_total REAL NOT NULL DEFAULT 0,
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
-                user_id INTEGER REFERENCES users(id),
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 bill_date TEXT
             )''')
