@@ -320,6 +320,14 @@ def login_required(f):
                 return redirect('/login')
         g.user_id = session['user_id']
         g.username = session.get('username', '')
+        # Verify user still exists (may have been deleted from DB)
+        with get_db() as db:
+            exists = db.execute('SELECT id FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not exists:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
+            return redirect('/login')
         return f(*a, **kw)
     return wrap
 
