@@ -591,25 +591,52 @@ _login_attempts = {}  # { ip: [attempt_timestamps...] }
 _RATE_LIMIT_MAX = 5
 _RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 
+# Forgot-password has its own independent limiter (lower threshold)
+_forgot_attempts = {}
+_FORGOT_MAX = 3  # stricter: 3 attempts per 15 min
+_FORGOT_WINDOW = 900
 
-def check_rate_limit(ip):
+
+def _check_rate_limit(ip, store, max_attempts, window):
+    """Generic rate limit check. Returns (allowed, wait_seconds)."""
     now = time.time()
-    attempts = _login_attempts.get(ip, [])
+    attempts = store.get(ip, [])
     # Prune expired attempts
-    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
-    _login_attempts[ip] = attempts
-    if len(attempts) >= _RATE_LIMIT_MAX:
-        wait = int(_RATE_LIMIT_WINDOW - (now - attempts[0]))
+    attempts = [t for t in attempts if now - t < window]
+    store[ip] = attempts
+    if len(attempts) >= max_attempts:
+        wait = int(window - (now - attempts[0]))
         return False, wait
     return True, 0
 
 
-def record_failed_attempt(ip):
+def _record_attempt(ip, store, window):
+    """Record an attempt in the given store."""
     now = time.time()
-    attempts = _login_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+    attempts = store.get(ip, [])
+    attempts = [t for t in attempts if now - t < window]
     attempts.append(now)
-    _login_attempts[ip] = attempts
+    store[ip] = attempts
+
+
+def check_rate_limit(ip):
+    """Login rate limit (backward compat wrapper)."""
+    return _check_rate_limit(ip, _login_attempts, _RATE_LIMIT_MAX, _RATE_LIMIT_WINDOW)
+
+
+def record_failed_attempt(ip):
+    """Record a failed login attempt."""
+    _record_attempt(ip, _login_attempts, _RATE_LIMIT_WINDOW)
+
+
+def check_forgot_limit(ip):
+    """Forgot-password rate limit (independent counter)."""
+    return _check_rate_limit(ip, _forgot_attempts, _FORGOT_MAX, _FORGOT_WINDOW)
+
+
+def record_forgot_attempt(ip):
+    """Record a forgot-password attempt."""
+    _record_attempt(ip, _forgot_attempts, _FORGOT_WINDOW)
 
 
 @app.route('/login', methods=['GET','POST'])
@@ -741,18 +768,18 @@ def forgot_password():
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
     if not validate_email(email):
         return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
-    # 限流：IP 15分钟5次
+    # 限流：IP 15分钟3次（独立计数器，不与登录共享）
     ip = request.remote_addr or 'unknown'
-    allowed, wait = check_rate_limit(ip)
+    allowed, wait = check_forgot_limit(ip)
     if not allowed:
         mins = wait // 60
         secs = wait % 60
         return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
-    record_failed_attempt(ip)
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
         if not user:
-            # 不暴露邮箱是否已注册，统一返回
+            # 邮箱未注册 → 记录失败 + 统一返回（防探测）
+            record_forgot_attempt(ip)
             return jsonify({'status':'ok','message':_t('msg_forgot_sent', g.lang),'email':email})
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
