@@ -1284,12 +1284,15 @@ def api_users():
 def api_get_avatar():
     """Public: get avatar by username or user_id. Returns the image or 404."""
     username = request.args.get('username', '')
+    email = request.args.get('email', '')
     user_id = request.args.get('user_id', '')
-    if not username and not user_id:
-        return jsonify({'status': 'error', 'message': 'username or user_id required'}), 400
+    if not username and not email and not user_id:
+        return jsonify({'status': 'error', 'message': 'username, email, or user_id required'}), 400
     with get_db() as db:
         if user_id:
             user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
+        elif email:
+            user = db.execute('SELECT id FROM users WHERE email=LOWER(?)', (email,)).fetchone()
         else:
             user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
     if not user:
