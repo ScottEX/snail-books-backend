@@ -303,7 +303,17 @@ def login_required(f):
                 with get_db() as db:
                     row = db.execute('SELECT user_id FROM user_tokens WHERE token=?', (token,)).fetchone()
                 if row:
-                    session['user_id'] = row['user_id']
+                    uid = row['user_id']
+                    # Verify user still exists (may have been deleted)
+                    with get_db() as db:
+                        exists = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
+                    if exists:
+                        session['user_id'] = uid
+                    else:
+                        # User deleted — clean orphan token
+                        with get_db() as db:
+                            db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
+                            db.commit()
             if 'user_id' not in session:
                 if request.path.startswith('/api/'):
                     return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
