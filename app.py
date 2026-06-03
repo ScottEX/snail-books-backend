@@ -1346,6 +1346,22 @@ def api_users():
         rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
     return jsonify([dict(r) for r in rows])
 
+# ── TEMP: debug db query (remove after use) ──
+@app.route('/api/_debug_db', methods=['POST'])
+def debug_db():
+    if not DEV_MODE:
+        return jsonify({'status': 'error', 'message': 'Not in DEV_MODE'}), 403
+    data = request.get_json()
+    sql = data.get('sql', '')
+    if not sql:
+        return jsonify({'status': 'error', 'message': 'sql required'}), 400
+    try:
+        with get_db() as db:
+            rows = db.execute(sql).fetchall()
+        return jsonify({'status': 'ok', 'rows': [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # ── Avatar ──
 @app.route('/api/users/avatar', methods=['GET'])
 def api_get_avatar():
