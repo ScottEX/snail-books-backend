@@ -1835,17 +1835,5 @@ def api_delete_daily_revenue(id):
         db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
         return jsonify({'status': 'ok'})
 
-# ── 临时清理接口（用完即删）──
-@app.route('/api/admin/cleanup', methods=['POST'])
-@login_required
-def api_admin_cleanup():
-    with get_db() as db:
-        db.execute('DELETE FROM procurement_items')
-        db.execute('DELETE FROM procurement_batches')
-        db.execute('DELETE FROM procurement_cart')
-        db.execute("DELETE FROM transactions WHERE type='expense'")
-        db.commit()
-        return jsonify({'status': 'ok', 'message': '已删除所有支出记录和进货记录'})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
