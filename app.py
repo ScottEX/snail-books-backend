@@ -150,23 +150,89 @@ def _send_email(to_email, subject, body, code):
         print(f"[EMAIL] Error: {e}")
         return False
 
-def send_verification_email(to_email, code):
-    body = f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">[柳味探秘] 记账系统</h2>
-        <p>您正在进行记账系统验证。验证码：</p>
+def send_verification_email(to_email, code, lang='zh-CN'):
+    templates = {
+        'zh-CN': {
+            'subject': f'【柳味探秘】您的账户注册验证码：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您好！您正在注册柳味探秘科技账户，以下是您的电子邮箱验证码：</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，为保障账户安全，请勿向他人泄露。</p>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在注册页面输入此验证码以完成身份验证。</p>
+        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，可能是其他用户不小心输入了您的邮箱，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
     </div>'''
-    return _send_email(to_email, '[柳味探秘] 邮箱验证码', body, code)
+        },
+        'zh-TW': {
+            'subject': f'【柳味探秘】您的帳戶註冊驗證碼：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您好！您正在註冊柳味探秘科技帳戶，以下是您的電子郵箱驗證碼：</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在註冊頁面輸入此驗證碼以完成身份驗證。</p>
+        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，可能是其他用戶不小心輸入了您的郵箱，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
+    </div>'''
+        },
+        'en': {
+            'subject': f'[LiuWei TanMi] Your Account Registration Code: {code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
+        <p>Hello! You are registering a LiuWei TanMi account. Here is your email verification code:</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the registration page to complete verification.</p>
+        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, someone may have accidentally entered your email. You can safely ignore this message — your account will not be affected.</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
+    </div>'''
+        },
+    }
+    t = templates.get(lang, templates['zh-CN'])
+    return _send_email(to_email, t['subject'], t['body'], code)
 
-def send_reset_email(to_email, code):
-    body = f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">[柳味探秘] 记账系统</h2>
-        <p>您正在进行密码重置。验证码：</p>
+def send_reset_email(to_email, code, lang='zh-CN'):
+    templates = {
+        'zh-CN': {
+            'subject': f'【柳味探秘】密码重置验证码：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您好！您正在为柳味探秘科技账户重置密码，以下是您的验证码：</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">10 分钟内有效，如非本人操作请忽略。</p>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在重置密码页面输入此验证码以完成操作。</p>
+        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
     </div>'''
-    return _send_email(to_email, '[柳味探秘] 重置密码', body, code)
+        },
+        'zh-TW': {
+            'subject': f'【柳味探秘】密碼重置驗證碼：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您好！您正在為柳味探秘科技帳戶重置密碼，以下是您的驗證碼：</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在重置密碼頁面輸入此驗證碼以完成操作。</p>
+        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
+    </div>'''
+        },
+        'en': {
+            'subject': f'[LiuWei TanMi] Password Reset Code: {code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
+        <p>Hello! You are resetting your LiuWei TanMi account password. Here is your verification code:</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the password reset page to complete the process.</p>
+        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, you can safely ignore this message — your account will not be affected.</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
+        <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
+    </div>'''
+        },
+    }
+    t = templates.get(lang, templates['zh-CN'])
+    return _send_email(to_email, t['subject'], t['body'], code)
 
 def generate_code():
     return ''.join(random.choices(string.digits, k=6))
@@ -712,7 +778,7 @@ def register():
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)', (username, generate_password_hash(password), email, code, expires))
         db.commit()
-        if not send_verification_email(email, code):
+        if not send_verification_email(email, code, g.lang):
             return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
     resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
     if DEV_MODE:
@@ -750,7 +816,7 @@ def resend_code_route():
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',(code, expires, user['id']))
         db.commit()
-        if not send_verification_email(email, code):
+        if not send_verification_email(email, code, g.lang):
             return jsonify({'status':'error','message':_t('err_resend_failed', g.lang)}), 500
     resp = {'status':'ok','message':_t('msg_code_resent', g.lang)}
     if DEV_MODE:
@@ -785,7 +851,7 @@ def forgot_password():
         expires = datetime.utcnow() + timedelta(minutes=10)
         db.execute('UPDATE users SET reset_code=?, reset_expires=? WHERE id=?',(code, expires, user['id']))
         db.commit()
-        if not send_reset_email(email, code):
+        if not send_reset_email(email, code, g.lang):
             return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
     resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
     if DEV_MODE:
