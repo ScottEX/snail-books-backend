@@ -1835,45 +1835,5 @@ def api_delete_daily_revenue(id):
         db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
         return jsonify({'status': 'ok'})
 
-# ── 临时批量导入（用完即删）──
-@app.route('/api/admin/import', methods=['POST'])
-@login_required
-def api_admin_import():
-    data = request.get_json()
-    user_id = data.get('user_id', 1)
-    counts = {'daily_revenue': 0, 'platform_fees': 0}
-    with get_db() as db:
-        for rec in data.get('daily_revenue', []):
-            try:
-                db.execute(
-                    'INSERT OR REPLACE INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id) VALUES (?,?,?,?,?,?)',
-                    (rec['date'], rec['revenue'], rec['turnover'], rec.get('jd_revenue', 0), rec.get('note', ''), user_id)
-                )
-                counts['daily_revenue'] += 1
-            except Exception as e:
-                pass  # skip duplicates
-        for rec in data.get('platform_fees', []):
-            d = rec['date']
-            year, month = int(d[:4]), int(d[5:7])
-            mc = rec.get('meituan_cashier', 0)
-            mw = rec.get('meituan_waimai', 0)
-            ew = rec.get('eleme_waimai', 0)
-            mt = rec.get('meituan_tuan', 0)
-            db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
-                          VALUES (?,?,?,?,?,?)
-                          ON CONFLICT(year, month) DO UPDATE SET
-                          meituan_cashier=meituan_cashier+excluded.meituan_cashier,
-                          meituan_waimai=meituan_waimai+excluded.meituan_waimai,
-                          eleme_waimai=eleme_waimai+excluded.eleme_waimai,
-                          meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
-                       (year, month, mc, mw, ew, mt))
-            fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
-            db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
-                          VALUES (?,?,?,?,?,?)''',
-                       (fee_id, d, mc, mw, ew, mt))
-            counts['platform_fees'] += 1
-        db.commit()
-    return jsonify({'status': 'ok', 'counts': counts})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
