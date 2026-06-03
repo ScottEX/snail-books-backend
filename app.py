@@ -1730,6 +1730,52 @@ def api_daily_revenue_total():
         ).fetchone()
         return jsonify(dict(row))
 
+
+@app.route('/api/business-summary')
+@login_required
+def api_business_summary():
+    """Return aggregated business metrics for the operations dashboard."""
+    with get_db() as db:
+        # Daily revenue aggregates
+        rev = db.execute(
+            'SELECT COALESCE(SUM(revenue),0) as actual_received, COALESCE(SUM(turnover),0) as receivable'
+            ' FROM daily_revenue'
+        ).fetchone()
+        actual_received = rev['actual_received']
+        receivable = rev['receivable']
+        discount = receivable - actual_received
+        # Platform fees total (all months)
+        pf = db.execute(
+            'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
+            ' COALESCE(SUM(eleme_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf'
+            ' FROM platform_fees'
+        ).fetchone()
+        platform_fees_total = pf['total_pf']
+        cumulative_revenue = actual_received - platform_fees_total
+        # Cumulative expense (all expense transactions)
+        exp = db.execute(
+            'SELECT COALESCE(SUM(amount),0) as total_exp FROM transactions WHERE type = ?', ('expense',)
+        ).fetchone()
+        cumulative_expense = exp['total_exp']
+        # Partner totals
+        pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
+        total_investment = pinv['total_inv']
+        pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
+        total_dividends = pdiv['total_div']
+        # Cash on hand
+        cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
+        return jsonify({
+            'actual_received': actual_received,
+            'receivable': receivable,
+            'discount': discount,
+            'cumulative_revenue': cumulative_revenue,
+            'cumulative_expense': cumulative_expense,
+            'cash_on_hand': cash_on_hand,
+            'total_investment': total_investment,
+            'total_dividends': total_dividends,
+        })
+
+
 @app.route('/api/daily-revenue', methods=['POST'])
 @login_required
 def api_create_daily_revenue():
