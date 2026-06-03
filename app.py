@@ -416,6 +416,12 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_proc_batch_date ON procurement_batches(date);
             CREATE INDEX IF NOT EXISTS idx_proc_items_batch ON procurement_items(batch_id);
+            CREATE TABLE IF NOT EXISTS procurement_cart (
+                product_id INTEGER PRIMARY KEY,
+                product_name TEXT NOT NULL DEFAULT '',
+                quantity INTEGER NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at);
             CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions(type);
             CREATE INDEX IF NOT EXISTS idx_div_date ON dividends(created_at);
@@ -1107,6 +1113,49 @@ def api_delete_procurement(id):
         db.execute('DELETE FROM procurements WHERE id=?', (id,))
         db.commit()
     return jsonify({'status':'ok'})
+
+# ── 购物车暂存 API ──
+@app.route('/api/procurement-cart', methods=['GET'])
+@login_required
+def api_get_cart():
+    with get_db() as db:
+        rows = db.execute('SELECT * FROM procurement_cart ORDER BY updated_at DESC').fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route('/api/procurement-cart', methods=['POST'])
+@login_required
+def api_add_cart():
+    data = request.get_json() or {}
+    product_id = data.get('product_id')
+    quantity = data.get('quantity', 1)
+    if not product_id or quantity < 1:
+        return jsonify({'status': 'error', 'message': 'product_id and quantity>=1 required'}), 400
+    with get_db() as db:
+        product = db.execute('SELECT name FROM products WHERE id=?', (product_id,)).fetchone()
+        if not product:
+            return jsonify({'status': 'error', 'message': 'product not found'}), 404
+        db.execute(
+            'INSERT OR REPLACE INTO procurement_cart (product_id, product_name, quantity, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',
+            (product_id, product['name'], quantity)
+        )
+        db.commit()
+        return jsonify({'status': 'ok'})
+
+@app.route('/api/procurement-cart/<int:product_id>', methods=['DELETE'])
+@login_required
+def api_remove_cart_item(product_id):
+    with get_db() as db:
+        db.execute('DELETE FROM procurement_cart WHERE product_id=?', (product_id,))
+        db.commit()
+        return jsonify({'status': 'ok'})
+
+@app.route('/api/procurement-cart', methods=['DELETE'])
+@login_required
+def api_clear_cart():
+    with get_db() as db:
+        db.execute('DELETE FROM procurement_cart')
+        db.commit()
+        return jsonify({'status': 'ok'})
 
 # ── 进货批次 API（2026.5.30）──
 @app.route('/api/procurement-batches', methods=['GET','POST'])
