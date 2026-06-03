@@ -1643,10 +1643,12 @@ def api_get_daily_revenue():
     month = request.args.get('month', type=int)
     date = request.args.get('date', type=str)
     days = request.args.get('days', type=int)
+    date_from = request.args.get('date_from', type=str)
+    date_to = request.args.get('date_to', type=str)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 30, type=int)
     with get_db() as db:
-        where = ''
+        where_parts = []
         params = []
         if days:
             # Last N days summary
@@ -1662,15 +1664,23 @@ def api_get_daily_revenue():
                 totals['turnover'] += (r['turnover'] or 0)
                 totals['jd_revenue'] += (r['jd_revenue'] or 0)
             return jsonify({'records': [], 'total': len(rows), 'pages': 1, 'page': 1, 'per_page': per_page, 'totals': totals})
-        elif date:
-            where = 'WHERE dr.date=?'
+        if date:
+            where_parts.append('dr.date=?')
             params.append(date)
-        elif year and month:
-            where = "WHERE substr(dr.date,1,7)=?"
-            params.append(f'{year}-{month:02d}')
-        elif year:
-            where = "WHERE substr(dr.date,1,4)=?"
-            params.append(str(year))
+        else:
+            if year and month:
+                where_parts.append("substr(dr.date,1,7)=?")
+                params.append(f'{year}-{month:02d}')
+            elif year:
+                where_parts.append("substr(dr.date,1,4)=?")
+                params.append(str(year))
+        if date_from:
+            where_parts.append('dr.date >= ?')
+            params.append(date_from)
+        if date_to:
+            where_parts.append('dr.date <= ?')
+            params.append(date_to)
+        where = ('WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
         base = f'''SELECT dr.*, u.username as recorded_by
                    FROM daily_revenue dr
                    LEFT JOIN users u ON dr.user_id = u.id
