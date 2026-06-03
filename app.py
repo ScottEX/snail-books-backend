@@ -1440,7 +1440,7 @@ def api_users():
         rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
     return jsonify([dict(r) for r in rows])
 
-@app.route('/api/users/<int:uid>', methods=['DELETE'])
+@app.route('/api/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def api_delete_user(uid):
     with get_db() as db:
