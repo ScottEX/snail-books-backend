@@ -2,6 +2,7 @@
 """🍜 蓝姐 · 记账系统"""
 
 import sqlite3, os, secrets, functools, re, json, time
+from io import BytesIO
 from datetime import datetime, date
 from contextlib import contextmanager
 try:
@@ -1385,6 +1386,85 @@ def api_procurement_batch_detail(id):
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
         b['items'] = [dict(it) for it in items]
     return jsonify(b)
+
+# ── 进货单 PDF ──
+@app.route('/api/procurement-batches/<int:id>/pdf', methods=['GET'])
+@login_required
+def api_procurement_batch_pdf(id):
+    """生成进货单 PDF"""
+    import weasyprint
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        if not row:
+            return jsonify({'status':'error','message':'Not found'}), 404
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+
+    # 商品行 HTML
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += (
+            f"<tr><td>{it['product_name']}</td>"
+            f"<td>{spec}</td>"
+            f"<td>¥{it['unit_price']:,.2f}</td>"
+            f"<td>{it['quantity']}</td>"
+            f"<td>¥{it['subtotal']:,.2f}</td></tr>"
+        )
+
+    # 凭证图片 HTML
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                # WeasyPrint supports file:// or direct path
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = (
+                '<div class="images-section">'
+                '<div class="img-label">📎 采购凭证</div>'
+                f'<div class="images-grid">{imgs}</div>'
+                '</div>'
+            )
+
+    # 日期格式化: 2026-06-04 → 2026年6月4日
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+
+    # 读取模板
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+
+    # 填充数据
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}",
+        date=date_str,
+        payment_method=b.get('payment_method', '微信'),
+        category=b.get('category', '采购'),
+        items_html=items_html,
+        total=b['total'],
+        note=b.get('note', '') or '无',
+        images_html=images_html,
+    )
+
+    # 生成 PDF
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+
+    # 返回文件下载
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 @app.route('/api/stats')
 @login_required

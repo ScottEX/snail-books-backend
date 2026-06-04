@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {{ size: A4; margin: 0; }}
+  body {{
+    font-family: 'Noto Sans SC', 'Inter', sans-serif;
+    margin: 0; padding: 36px 40px 32px;
+    width: 210mm; min-height: 297mm;
+    box-sizing: border-box;
+    background: #fff;
+    color: #2C2626;
+  }}
+  .v2-inner {{
+    border: 1px solid #7D2329;
+    padding: 32px 36px 28px;
+    position: relative;
+    min-height: 256mm;
+    box-sizing: border-box;
+  }}
+  .co-header {{ text-align: center; margin-bottom: 20px; }}
+  .co-header .co-name {{ font-size: 13px; font-weight: 500; color: #2C2626; letter-spacing: 3px; }}
+  .co-header .co-sub {{ font-size: 9px; color: #8C8583; letter-spacing: 1px; margin-top: 2px; }}
+  .title-block {{
+    text-align: center; border-top: 1px solid #7D2329; border-bottom: 1px solid #7D2329;
+    padding: 12px 0; margin-bottom: 24px;
+  }}
+  .title-block .title {{ font-size: 20px; font-weight: 700; color: #7D2329; letter-spacing: 8px; }}
+  .title-block .sub {{ font-size: 10px; color: #8C8583; letter-spacing: 1px; margin-top: 2px; }}
+  .meta-row {{
+    display: flex; justify-content: space-between; margin-bottom: 22px;
+    font-size: 11px; padding: 0 4px;
+  }}
+  .meta-row .label {{ color: #8C8583; }}
+  .meta-row .val {{ font-weight: 500; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+  thead th {{
+    background: #7D2329; color: #fff; font-weight: 500;
+    padding: 10px 12px; text-align: center; font-size: 11px; letter-spacing: 1px;
+  }}
+  thead th:first-child {{ text-align: left; padding-left: 16px; }}
+  tbody td {{
+    padding: 11px 12px; text-align: center; border-bottom: 1px solid #EAE5E0;
+  }}
+  tbody td:first-child {{ text-align: left; padding-left: 16px; font-weight: 500; }}
+  tbody td:last-child {{ font-weight: 600; }}
+  tbody tr:last-child td {{ border-bottom: 2px solid #7D2329; }}
+  .total-row td {{
+    font-size: 16px; font-weight: 700; color: #7D2329; padding: 16px 12px; border-bottom: none;
+  }}
+  .total-row td:last-child {{ font-size: 18px; }}
+  .images-section {{ margin-top: 28px; padding-top: 16px; border-top: 1px dashed #EAE5E0; }}
+  .images-section .img-label {{ font-size: 10px; color: #8C8583; letter-spacing: 1px; margin-bottom: 10px; }}
+  .images-grid {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+  .images-grid img {{ width: 100px; height: 75px; object-fit: cover; border-radius: 3px; }}
+  .divider {{ border-bottom: 1px dashed #EAE5E0; margin: 12px 0; }}
+  .footer {{
+    margin-top: 36px; display: flex; justify-content: space-between; align-items: flex-end;
+    font-size: 11px; color: #8C8583;
+  }}
+  .footer .note {{ max-width: 50%; line-height: 1.6; font-size: 10px; }}
+  .footer .signatures {{ display: flex; gap: 24px; font-size: 12px; color: #2C2626; }}
+  .footer .signatures span {{ font-weight: 500; }}
+  .sign-line {{
+    display: inline-block; width: 72px; border-bottom: 1px solid #2C2626;
+    margin-left: 6px; position: relative; top: -2px;
+  }}
+  .seal {{
+    position: absolute; bottom: 64px; right: 64px; width: 64px; height: 64px;
+    transform: rotate(-15deg);
+  }}
+  .seal-square {{
+    width: 64px; height: 64px; border: 2.5px solid rgba(125, 35, 41, 0.25);
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    position: relative;
+  }}
+  .seal-square::before {{
+    content: ''; position: absolute; inset: 4px; border: 0.5px solid rgba(125, 35, 41, 0.12);
+  }}
+  .seal-square .seal-text {{
+    font-family: 'Noto Serif SC', 'Noto Sans SC', serif;
+    font-size: 15px; font-weight: 700; color: rgba(125, 35, 41, 0.35);
+    letter-spacing: 2px; line-height: 1;
+  }}
+  .seal-square .seal-sub {{
+    font-family: 'Inter', sans-serif; font-size: 6.5px; font-weight: 600;
+    color: rgba(125, 35, 41, 0.2); letter-spacing: 1px; margin-top: 2px;
+  }}
+</style>
+</head>
+<body>
+<div class="v2-inner">
+
+  <div class="co-header">
+    <div class="co-name">柳 味 探 秘 科 技</div>
+    <div class="co-sub">LIUWEI TECHNOLOGY · 餐饮供应链管理</div>
+  </div>
+
+  <div class="title-block">
+    <div class="title">进 货 单</div>
+    <div class="sub">PURCHASE ORDER / RECEIPT</div>
+  </div>
+
+  <div class="meta-row">
+    <div><span class="label">编号</span> <span class="val">NO. {batch_number}</span></div>
+    <div><span class="label">日期</span> <span class="val">{date}</span></div>
+    <div><span class="label">支付</span> <span class="val">{payment_method}</span></div>
+    <div><span class="label">类别</span> <span class="val">{category}</span></div>
+  </div>
+
+  <table>
+    <thead><tr><th>商品名称</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
+    <tbody>
+      {items_html}
+      <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:20px;">合计（人民币）</td><td>¥{total:,.2f}</td></tr>
+    </tbody>
+  </table>
+
+  {images_html}
+
+  <div class="divider"></div>
+
+  <div class="footer" style="margin-top:16px;">
+    <div class="note">备注：{note}</div>
+    <div class="signatures">
+      <span>经手人<span class="sign-line"></span></span>
+      <span>日期<span class="sign-line"></span></span>
+    </div>
+  </div>
+
+  <div class="seal">
+    <div class="seal-square">
+      <div class="seal-text">柳味探秘</div>
+      <div class="seal-sub">LIUWEI</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
