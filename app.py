@@ -660,6 +660,10 @@ def init_db():
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
+        except:
+            pass
 
 init_db()
 # Auto-verify existing users (backward compat)
