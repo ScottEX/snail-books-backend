@@ -43,6 +43,7 @@ EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname
 # User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
 BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
+COVER_DIR = os.path.join(BG_DIR, 'covers')
 
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
@@ -1496,6 +1497,43 @@ def api_upload_avatar():
             os.remove(old)
     f.save(os.path.join(AVATAR_DIR, f'{g.user_id}.{ext}'))
     return jsonify({'status': 'ok', 'url': f'/user-images/avatars/{g.user_id}.{ext}?t={int(time.time())}'})
+
+# ── Profile Cover ──
+@app.route('/api/profile/cover', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def api_profile_cover():
+    if request.method == 'GET':
+        url = None
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
+        return jsonify({'url': url})
+
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+        f = request.files['file']
+        if f.filename == '':
+            return jsonify({'status': 'error', 'message': '文件名为空'}), 400
+        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+        if ext not in ALLOWED_BG_EXT:
+            return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
+        f.seek(0, 2)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_BG_SIZE:
+            return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
+        os.makedirs(COVER_DIR, exist_ok=True)
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        f.save(save_path)
+        url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(time.time())}'
+        return jsonify({'status': 'ok', 'url': url})
+
+    if request.method == 'DELETE':
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        return jsonify({'status': 'ok'})
 
 # ── Reconciliations ──
 @app.route('/api/migrate-recon', methods=['POST'])
