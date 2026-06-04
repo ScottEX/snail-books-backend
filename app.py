@@ -665,6 +665,29 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
         except:
             pass
+        # Migration (2026.6.4): link transactions to procurement_batches for cascade delete/edit
+        try:
+            db.execute("ALTER TABLE transactions ADD COLUMN procurement_batch_id INTEGER")
+        except:
+            pass
+        # Backfill: link existing transactions to their procurement batches by date+amount
+        # Only fill for expense/category=采购 with no link yet
+        try:
+            db.execute("""
+                UPDATE transactions
+                SET procurement_batch_id = (
+                    SELECT pb.id FROM procurement_batches pb
+                    WHERE pb.date = transactions.date
+                      AND pb.total = transactions.amount
+                      AND pb.payment_method = transactions.account
+                    ORDER BY pb.id DESC LIMIT 1
+                )
+                WHERE transactions.type = 'expense'
+                  AND transactions.category = '采购'
+                  AND transactions.procurement_batch_id IS NULL
+            """)
+        except:
+            pass
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -1348,9 +1371,9 @@ def api_procurement_batches():
                     (batch_id, pid, name, spec, up, qty, round(sub, 2))
                 )
             # Sync an expense transaction (with thumb_images so history list can show thumbnail)
-            db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json)
+            cur = db.execute(
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json, batch_id)
             )
             db.commit()
         return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -1373,16 +1396,78 @@ def api_procurement_batches():
             batches.append(b)
     return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
 
-@app.route('/api/procurement-batches/<int:id>', methods=['GET'])
+@app.route('/api/procurement-batches/<int:id>', methods=['GET','PUT','DELETE'])
 @login_required
 def api_procurement_batch_detail(id):
-    """单次进货详情"""
+    """单次进货详情 + 编辑 + 删除"""
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
         if not row:
             return jsonify({'status':'error','message':'Not found'}), 404
+
+        if request.method == 'DELETE':
+            # Cascade delete: items + linked transaction
+            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
+            # Remove the linked expense transaction (any with this procurement_batch_id, plus fallback for orphan history)
+            batch = dict(row)
+            db.execute(
+                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category='采购' AND date=? AND amount=? AND account=?)",
+                (id, batch['date'], batch['total'], batch['payment_method'])
+            )
+            db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
+            db.commit()
+            return jsonify({'status':'ok'})
+
+        if request.method == 'PUT':
+            data = request.get_json()
+            items = data.get('items', [])
+            if not items or not isinstance(items, list):
+                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            # Recompute total from current products
+            total = 0.0
+            item_rows = []
+            for item in items:
+                pid = item.get('product_id')
+                qty = item.get('quantity', 0)
+                if not pid or qty <= 0:
+                    continue
+                product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
+                if not product:
+                    continue
+                unit_price = product['price']
+                subtotal = unit_price * qty
+                total += subtotal
+                item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
+            if total == 0:
+                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            images_json = json.dumps(data.get('images', []))
+            thumbs_json = json.dumps(data.get('thumb_images', []))
+            # Replace items (delete + re-insert)
+            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
+            for name, spec, up, qty, sub, pid in item_rows:
+                db.execute(
+                    'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
+                    (id, pid, name, spec, up, qty, round(sub, 2))
+                )
+            # Update batch header (batch_number immutable)
+            db.execute(
+                "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
+                (data['date'], data['payment_method'], data.get('category','采购'),
+                 round(total, 2), images_json, thumbs_json, data.get('note',''), id)
+            )
+            # Sync linked transaction
+            db.execute(
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
+                (round(total, 2), data.get('category','采购'), data['payment_method'],
+                 data.get('note',''), data['date'], images_json, thumbs_json, id)
+            )
+            db.commit()
+            return jsonify({'status':'ok', 'batch_id': id, 'total': round(total, 2)})
+
+        # GET: detail
         b = dict(row)
         b['images'] = json.loads(b['images']) if b['images'] else []
+        b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
         b['items'] = [dict(it) for it in items]
     return jsonify(b)
