@@ -1466,6 +1466,94 @@ def api_procurement_batch_pdf(id):
     response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+# ── 分享链接 ──
+import hmac, base64, hashlib
+
+def _make_share_token(batch_id, expires_ts):
+    payload = f"{batch_id}:{expires_ts}"
+    sig = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    raw = f"{payload}:{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip('=')
+
+def _verify_share_token(token):
+    try:
+        # Add padding back
+        raw = base64.urlsafe_b64decode(token + '=' * (4 - len(token) % 4)).decode()
+        parts = raw.split(':')
+        if len(parts) != 3:
+            return None
+        batch_id, expires_ts, sig = parts
+        expected = hmac.new(app.secret_key.encode(), f"{batch_id}:{expires_ts}".encode(), hashlib.sha256).hexdigest()[:16]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(expires_ts) < time.time():
+            return None
+        return int(batch_id)
+    except:
+        return None
+
+@app.route('/api/procurement-batches/<int:id>/share-link', methods=['GET'])
+@login_required
+def api_share_link(id):
+    """生成 24 小时有效的分享链接"""
+    expires = int(time.time()) + 86400  # 24 hours
+    token = _make_share_token(id, expires)
+    return jsonify({'url': f'/api/share/{token}'})
+
+@app.route('/api/share/<token>', methods=['GET'])
+def api_share_pdf(token):
+    """通过 token 访问 PDF（无需登录）"""
+    batch_id = _verify_share_token(token)
+    if not batch_id:
+        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
+    # 直接复用 PDF 生成逻辑（内联版本，无需 login_required）
+    import weasyprint
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+        if not row:
+            return jsonify({'status':'error','message':'Not found'}), 404
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    # 商品行
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
+    # 凭证图片
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+    # 日期
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+    # 渲染
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
+        payment_method=b.get('payment_method', '微信'), category=b.get('category', '采购'),
+        items_html=items_html, total=b['total'],
+        note=b.get('note', '') or '无', images_html=images_html)
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
 @app.route('/api/stats')
 @login_required
 def api_stats():
