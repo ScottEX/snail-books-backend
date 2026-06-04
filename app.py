@@ -443,6 +443,7 @@ def init_db():
                 username TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
                 email TEXT,
+                signature TEXT DEFAULT '',
                 verification_code TEXT,
                 code_expires TIMESTAMP,
                 is_verified INTEGER DEFAULT 0,
@@ -1471,10 +1472,22 @@ def api_users():
 @login_required
 def api_users_me():
     with get_db() as db:
-        user = db.execute('SELECT id, username, email, created_at FROM users WHERE id=?', (g.user_id,)).fetchone()
+        user = db.execute('SELECT id, username, email, signature, created_at FROM users WHERE id=?', (g.user_id,)).fetchone()
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'}), 404
     return jsonify(dict(user))
+
+@app.route('/api/users/signature', methods=['POST'])
+@login_required
+def api_update_signature():
+    data = request.get_json() or {}
+    signature = (data.get('signature', '') or '').strip()
+    if len(signature) > 200:
+        return jsonify({'status': 'error', 'message': '签名不能超过200字'}), 400
+    with get_db() as db:
+        db.execute('UPDATE users SET signature=? WHERE id=?', (signature, g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'signature': signature})
 
 @app.route('/api/users/<int:uid>/delete', methods=['POST'])
 @login_required
