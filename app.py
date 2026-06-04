@@ -235,6 +235,32 @@ def send_reset_email(to_email, code, lang='zh-CN'):
     t = templates.get(lang, templates['zh-CN'])
     return _send_email(to_email, t['subject'], t['body'], code)
 
+def send_email_change_code(to_email, code, lang='zh-CN'):
+    templates = {
+        'zh-CN': {
+            'subject': f'【柳味探秘】邮箱更换验证码：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您正在更换账户的绑定邮箱，验证码如下：</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。</p>
+        <p style="color:#9C9A95;font-size:12px">如非本人操作，请忽略此邮件。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p></div>'''
+        },
+        'en': {
+            'subject': f'[LiuWei TanMi] Email Change Code: {code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
+        <p>You are changing your account's email address. Your verification code is:</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">This code expires in 10 minutes.</p>
+        <p style="color:#9C9A95;font-size:12px">If this wasn't you, please ignore this email.</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p></div>'''
+        },
+    }
+    t = templates.get(lang, templates['zh-CN'])
+    return _send_email(to_email, t['subject'], t['body'], code)
+
 def generate_code():
     return ''.join(random.choices(string.digits, k=6))
 
@@ -1564,10 +1590,10 @@ def api_change_password():
         db.commit()
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
 
-# ── Profile: Change Email ──
-@app.route('/api/profile/email', methods=['POST'])
+# ── Profile: Change Email (two-step verification) ──
+@app.route('/api/profile/email/send-code', methods=['POST'])
 @login_required
-def api_change_email():
+def api_profile_email_send_code():
     data = request.get_json()
     new_email = data.get('email', '').strip() if data else ''
     if not new_email:
@@ -1578,7 +1604,29 @@ def api_change_email():
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
             return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
-        db.execute('UPDATE users SET email=? WHERE id=?', (new_email, g.user_id))
+        code = generate_code()
+        db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
+                   (code, datetime.now() + timedelta(minutes=10), g.user_id))
+        db.commit()
+    send_email_change_code(new_email, code, g.lang)
+    return jsonify({'status': 'ok', 'message': '验证码已发送'})
+
+@app.route('/api/profile/email/verify', methods=['POST'])
+@login_required
+def api_profile_email_verify():
+    data = request.get_json()
+    new_email = data.get('email', '').strip() if data else ''
+    code = data.get('code', '').strip() if data else ''
+    if not new_email or not code:
+        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+    with get_db() as db:
+        user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not user or user['verification_code'] != code:
+            return jsonify({'status': 'error', 'message': '验证码错误'}), 400
+        if user['code_expires'] and datetime.now() > datetime.fromisoformat(user['code_expires']):
+            return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
+        db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
+                   (new_email, g.user_id))
         db.commit()
     return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
 
