@@ -1535,6 +1535,44 @@ def api_profile_cover():
             os.remove(save_path)
         return jsonify({'status': 'ok'})
 
+# ── Profile: Change Password ──
+@app.route('/api/profile/password', methods=['POST'])
+@login_required
+def api_change_password():
+    data = request.get_json()
+    old_pw = data.get('old_password', '') if data else ''
+    new_pw = data.get('new_password', '') if data else ''
+    if not old_pw or not new_pw:
+        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+    ok, err = validate_password(new_pw, g.lang)
+    if not ok:
+        return jsonify({'status': 'error', 'message': err}), 400
+    with get_db() as db:
+        user = db.execute('SELECT password FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not user or not check_password_hash(user['password'], old_pw):
+            return jsonify({'status': 'error', 'message': '当前密码错误'}), 400
+        db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'message': '密码修改成功'})
+
+# ── Profile: Change Email ──
+@app.route('/api/profile/email', methods=['POST'])
+@login_required
+def api_change_email():
+    data = request.get_json()
+    new_email = data.get('email', '').strip() if data else ''
+    if not new_email:
+        return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
+    if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
+        return jsonify({'status': 'error', 'message': '邮箱格式不正确'}), 400
+    with get_db() as db:
+        existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
+        if existing:
+            return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
+        db.execute('UPDATE users SET email=? WHERE id=?', (new_email, g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
+
 # ── Reconciliations ──
 @app.route('/api/migrate-recon', methods=['POST'])
 @login_required
