@@ -1471,7 +1471,7 @@ def api_users():
 @login_required
 def api_users_me():
     with get_db() as db:
-        user = db.execute('SELECT id, username, email FROM users WHERE id=?', (g.user_id,)).fetchone()
+        user = db.execute('SELECT id, username, email, created_at FROM users WHERE id=?', (g.user_id,)).fetchone()
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'}), 404
     return jsonify(dict(user))
