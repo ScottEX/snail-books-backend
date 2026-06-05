@@ -1919,11 +1919,31 @@ def api_users_me_auth_prefs():
     with get_db() as db:
         if enforce_sso is not None:
             if int(enforce_sso) == 1:
-                # Turning SSO on: lock current session as the only valid one.
-                # If session has no session_id (legacy), the new login_required check
-                # will kick it on next request — user will re-login cleanly.
+                # Robustly resolve the current session_id from EITHER the
+                # Flask session cookie (web path) or the Bearer token (iOS path).
+                # Without this fallback, iOS turns SSO on with current_session_id=NULL,
+                # which short-circuits the SSO global check
+                # (`if cur['current_session_id']:`) and lets other devices
+                # stay logged in even with SSO on.
+                cur_sid = session.get('session_id')
+                if cur_sid is None:
+                    auth = request.headers.get('Authorization', '')
+                    if auth.startswith('Bearer '):
+                        tk = auth[7:]
+                        row = db.execute('SELECT session_id FROM user_tokens WHERE token=?', (tk,)).fetchone()
+                        if row and row['session_id']:
+                            cur_sid = row['session_id']
+                # Revoke all OTHER sessions and delete their tokens so they
+                # can no longer authenticate. The current session is preserved.
+                if cur_sid:
+                    db.execute('UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
+                               (g.user_id, cur_sid))
+                    db.execute('DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id != ?)',
+                               (g.user_id, cur_sid))
+                # Lock SSO to current session (NULL if legacy — login_required
+                # will kick legacy sessions on next request).
                 db.execute('UPDATE users SET enforce_single_session=?, current_session_id=? WHERE id=?',
-                           (1, session.get('session_id'), g.user_id))
+                           (1, cur_sid, g.user_id))
             else:
                 # Turning SSO off: clear the marker so all sessions pass the check
                 db.execute('UPDATE users SET enforce_single_session=?, current_session_id=NULL WHERE id=?',
