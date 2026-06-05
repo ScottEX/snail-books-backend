@@ -17,22 +17,6 @@ import requests, random, string
 from datetime import datetime, timedelta
 from i18n_backend import get_lang, t as _t
 
-# Date range guard — strict calendar months between two ISO dates
-def _date_range_too_long(date_from: str, date_to: str, max_months: int = 24) -> bool:
-    """Returns True if (date_to - date_from) > max_months in strict calendar months.
-    Prevents excessive date range queries on history endpoints."""
-    if not (date_from and date_to):
-        return False
-    try:
-        df = date.fromisoformat(date_from)
-        dt = date.fromisoformat(date_to)
-    except ValueError:
-        return False
-    m = (dt.year - df.year) * 12 + (dt.month - df.month)
-    if dt.day < df.day:
-        m -= 1
-    return m > max_months
-
 app = Flask(__name__)
 # Persistent secret key (survives restarts)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'snail-books-lanxu-2026-secret-key-v1')
@@ -993,10 +977,6 @@ def api_transactions():
     date_from = request.args.get('date_from')    # 'YYYY-MM-DD'
     date_to = request.args.get('date_to')
     category = request.args.get('category')      # comma-separated: '日常,房租'
-
-    # Hard cap: 24-month max span (defense-in-depth — UI also disables Apply)
-    if _date_range_too_long(date_from, date_to, max_months=24):
-        return jsonify({'error': 'date_range_too_long', 'max_months': 24}), 400
 
     where = []
     params = []
@@ -2078,10 +2058,6 @@ def api_get_reconciliations():
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
     reconciled_by = request.args.get('reconciled_by', '')
-
-    # Hard cap: 24-month max span (defense-in-depth — UI also disables Apply)
-    if _date_range_too_long(date_from, date_to, max_months=24):
-        return jsonify({'error': 'date_range_too_long', 'max_months': 24}), 400
 
     where = 'WHERE 1=1'
     params = []
