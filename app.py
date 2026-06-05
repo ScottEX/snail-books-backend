@@ -1530,6 +1530,7 @@ def api_procurement_batch_pdf(id):
         html = f.read()
 
     # 填充数据
+    now = datetime.now()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
@@ -1539,6 +1540,8 @@ def api_procurement_batch_pdf(id):
         total=b['total'],
         note=b.get('note', '') or '无',
         images_html=images_html,
+        operator=g.username,
+        gen_date=now.strftime('%Y年%m月%d日'),
     )
 
     # 生成 PDF
@@ -1631,7 +1634,8 @@ def api_share_pdf(token):
         batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
         payment_method=b.get('payment_method', '微信'), category=b.get('category', '采购'),
         items_html=items_html, total=b['total'],
-        note=b.get('note', '') or '无', images_html=images_html)
+        note=b.get('note', '') or '无', images_html=images_html,
+        operator='—', gen_date='—')
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
