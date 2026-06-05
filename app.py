@@ -1301,6 +1301,19 @@ def api_background():
                 db.commit()
         return jsonify({'status': 'ok'})
 
+    if request.method == 'DELETE':
+        # Reset to default — delete the user's custom background file.
+        # The frontend then reverts to /img/bg.jpg and dispatches a
+        # 'bg-changed' event so HomeScreen refreshes immediately.
+        # Without this branch the function fell through and returned
+        # None, which Flask turned into a 500. Frontend caught the
+        # 500 silently (catch (err) { /* ignore */ }) so the user saw
+        # the "恢复默认" button as a no-op.
+        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        return jsonify({'status': 'ok'})
+
 @app.route('/api/settings/lang', methods=['GET'])
 @login_required
 def api_get_lang():
