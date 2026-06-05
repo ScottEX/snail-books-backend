@@ -973,7 +973,7 @@ def api_transactions():
     # GET with pagination & filtering
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
-    tx_type = request.args.get('type')           # 'income' or 'expense'
+    tx_type = request.args.get('type')           # 业务上固定为 'expense'，字段保留为 schema 扩展性
     date_from = request.args.get('date_from')    # 'YYYY-MM-DD'
     date_to = request.args.get('date_to')
     category = request.args.get('category')      # comma-separated: '日常,房租'
@@ -1000,6 +1000,7 @@ def api_transactions():
 
     with get_db() as db:
         count = db.execute(f'SELECT COUNT(*) FROM transactions WHERE {where_sql}', params).fetchone()[0]
+        total_all = db.execute("SELECT COUNT(*) FROM transactions WHERE type='expense'").fetchone()[0]
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
@@ -1009,6 +1010,7 @@ def api_transactions():
     return jsonify({
         'transactions': [dict(r) for r in rows],
         'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+        'total_all': total_all,
     })
 
 @app.route('/api/transactions/<int:id>', methods=['DELETE'])
