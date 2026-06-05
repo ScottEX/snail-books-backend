@@ -2221,6 +2221,7 @@ def api_get_daily_revenue():
                    LEFT JOIN users u ON dr.user_id = u.id
                    {where}'''
         count = db.execute(f'SELECT COUNT(*) FROM daily_revenue dr {where}', params).fetchone()[0]
+        total_all = db.execute('SELECT COUNT(*) FROM daily_revenue').fetchone()[0]
         total_pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
@@ -2233,6 +2234,7 @@ def api_get_daily_revenue():
             'pages': total_pages,
             'page': page,
             'per_page': per_page,
+            'total_all': total_all,
         })
 
 @app.route('/api/daily-revenue/last-7', methods=['GET'])
