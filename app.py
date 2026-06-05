@@ -389,29 +389,68 @@ DEFAULT_PRODUCTS = [
 def login_required(f):
     @functools.wraps(f)
     def wrap(*a, **kw):
+        # Track which session_id was used (for last_seen_at updates)
+        validated_session_id = None
+        kicked = False
+        expired = False
         if 'user_id' not in session:
             # Check Bearer token as fallback
             auth = request.headers.get('Authorization','')
             if auth.startswith('Bearer '):
                 token = auth[7:]
                 with get_db() as db:
-                    row = db.execute('SELECT user_id FROM user_tokens WHERE token=?', (token,)).fetchone()
+                    row = db.execute('SELECT user_id, session_id FROM user_tokens WHERE token=?', (token,)).fetchone()
                 if row:
                     uid = row['user_id']
                     # Verify user still exists (may have been deleted)
                     with get_db() as db:
                         exists = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
                     if exists:
+                        # Check session validity (only if token has session_id — new format)
+                        token_sid = row['session_id']
+                        if token_sid:
+                            with get_db() as db:
+                                srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (token_sid,)).fetchone()
+                            if srow and srow['revoked_at']:
+                                kicked = True
+                            elif srow and _session_expired(srow['expires_at']):
+                                expired = True
+                            elif srow:
+                                validated_session_id = token_sid
                         session['user_id'] = uid
+                        if token_sid:
+                            session['session_id'] = token_sid
                     else:
                         # User deleted — clean orphan token
                         with get_db() as db:
                             db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
                             db.commit()
-            if 'user_id' not in session:
-                if request.path.startswith('/api/'):
-                    return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
-                return redirect('/login')
+        else:
+            # Cookie path: also validate session_id if present
+            cookie_sid = session.get('session_id')
+            if cookie_sid:
+                with get_db() as db:
+                    srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (cookie_sid,)).fetchone()
+                if srow and srow['revoked_at']:
+                    kicked = True
+                elif srow and _session_expired(srow['expires_at']):
+                    expired = True
+                elif srow:
+                    validated_session_id = cookie_sid
+        if 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
+            return redirect('/login')
+        if kicked:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_kicked', g.lang) or 'Account logged in elsewhere','code':'session_kicked'}), 401
+            return redirect('/login')
+        if expired:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
+            return redirect('/login')
         g.user_id = session['user_id']
         g.username = session.get('username', '')
         # Verify user still exists (may have been deleted from DB)
@@ -420,10 +459,34 @@ def login_required(f):
         if not exists:
             session.clear()
             if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
             return redirect('/login')
+        # Update last_seen_at (best-effort, no failure path)
+        if validated_session_id:
+            try:
+                with get_db() as db:
+                    db.execute("UPDATE user_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?", (validated_session_id,))
+                    db.commit()
+            except:
+                pass
         return f(*a, **kw)
     return wrap
+
+
+def _session_expired(expires_at_str):
+    """Check if an expires_at string (YYYY-MM-DD HH:MM:SS) is in the past (UTC)."""
+    if not expires_at_str:
+        return True
+    try:
+        # SQLite stores TIMESTAMP as 'YYYY-MM-DD HH:MM:SS'
+        expires = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+        return datetime.utcnow() > expires
+    except (ValueError, TypeError):
+        try:
+            expires = datetime.fromisoformat(expires_at_str)
+            return datetime.utcnow() > expires
+        except:
+            return True
 
 @contextmanager
 def get_db():
@@ -450,14 +513,29 @@ def init_db():
                 is_verified INTEGER DEFAULT 0,
                 reset_code TEXT,
                 reset_expires TIMESTAMP,
+                enforce_single_session INTEGER DEFAULT 1,
+                session_timeout_hours INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 token TEXT NOT NULL UNIQUE,
+                session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL UNIQUE,
+                device_info TEXT DEFAULT '',
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
+                ON user_sessions(user_id, revoked_at);
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -665,6 +743,19 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
         except:
             pass
+        # Migration (2026.6.5): SSO / session timeout auth preferences
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN enforce_single_session INTEGER DEFAULT 1")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN session_timeout_hours INTEGER DEFAULT 1")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE user_tokens ADD COLUMN session_id TEXT")
+        except:
+            pass
         # Migration (2026.6.4): link transactions to procurement_batches for cascade delete/edit
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN procurement_batch_id INTEGER")
@@ -788,17 +879,34 @@ def login_page():
         if user and check_password_hash(user['password'], password):
             if not user['is_verified']:
                 return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
+            # Read per-user auth prefs (2026.6.5)
+            enforce_sso = int(user['enforce_single_session']) if user['enforce_single_session'] is not None else 1
+            timeout_hours = int(user['session_timeout_hours']) if user['session_timeout_hours'] else 1
+            if timeout_hours < 1:
+                timeout_hours = 1
             session.permanent = True
-            if remember:
-                app.permanent_session_lifetime = timedelta(days=30)
-            else:
-                app.permanent_session_lifetime = timedelta(hours=24)
+            # Note: app.permanent_session_lifetime is a process-global setting.
+            # For per-user timeout, the authoritative check is user_sessions.expires_at
+            # (see login_required). Cookie max age is just a hint to the browser.
+            app.permanent_session_lifetime = timedelta(hours=max(timeout_hours, 24))
+            # SSO enforcement: revoke all other active sessions for this user
+            if enforce_sso:
+                db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL", (user['id'],))
+                # Best-effort: clean up invalidated tokens (they'd fail validation anyway)
+                db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))", (user['id'], user['id']))
+            # Generate new session
+            new_session_id = secrets.token_hex(16)
+            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
+            device_info = (request.user_agent.string or '')[:200]
+            db.execute('INSERT INTO user_sessions (user_id, session_id, device_info, expires_at) VALUES (?,?,?,?)',
+                       (user['id'], new_session_id, device_info, expires_at))
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['session_id'] = new_session_id
             # 清理 90 天前的旧 token
             db.execute("DELETE FROM user_tokens WHERE created_at < datetime('now', '-90 days')")
             token = secrets.token_hex(32)
-            db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
+            db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user['id'], token, new_session_id))
             db.commit()
             return jsonify({'status':'ok','token':token,'username':user['username'],'user_id':user['id']})
     record_failed_attempt(ip)
@@ -943,6 +1051,23 @@ def reset_password():
 @app.route('/logout', methods=['POST'])
 @login_required
 def logout():
+    # Clean up the user_sessions row for this session (best-effort)
+    sid = session.get('session_id')
+    if sid:
+        try:
+            with get_db() as db:
+                db.execute('DELETE FROM user_sessions WHERE session_id=?', (sid,))
+                db.commit()
+        except:
+            pass
+    # Also invalidate any Bearer tokens tied to this session
+    if sid:
+        try:
+            with get_db() as db:
+                db.execute('DELETE FROM user_tokens WHERE session_id=?', (sid,))
+                db.commit()
+        except:
+            pass
     session.clear()
     return jsonify({'status':'ok'})
 
@@ -1735,10 +1860,59 @@ def api_users():
 @login_required
 def api_users_me():
     with get_db() as db:
-        user = db.execute('SELECT id, username, email, signature, created_at FROM users WHERE id=?', (g.user_id,)).fetchone()
+        user = db.execute('SELECT id, username, email, signature, created_at, enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'}), 404
-    return jsonify(dict(user))
+    d = dict(user)
+    # Normalize defaults for legacy users with NULL
+    if d.get('enforce_single_session') is None:
+        d['enforce_single_session'] = 1
+    if d.get('session_timeout_hours') is None:
+        d['session_timeout_hours'] = 1
+    return jsonify(d)
+
+
+# ── Auth preferences (single-device login + session timeout) ──
+@app.route('/api/users/me/auth-prefs', methods=['GET', 'PATCH'])
+@login_required
+def api_users_me_auth_prefs():
+    if request.method == 'GET':
+        with get_db() as db:
+            row = db.execute('SELECT enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'User not found'}), 404
+        d = dict(row)
+        if d.get('enforce_single_session') is None:
+            d['enforce_single_session'] = 1
+        if d.get('session_timeout_hours') is None:
+            d['session_timeout_hours'] = 1
+        return jsonify(d)
+    # PATCH
+    data = request.get_json() or {}
+    enforce_sso = data.get('enforce_single_session')
+    timeout_hours = data.get('session_timeout_hours')
+    if enforce_sso is not None and enforce_sso not in (0, 1):
+        return jsonify({'status': 'error', 'message': 'enforce_single_session must be 0 or 1'}), 400
+    if timeout_hours is not None:
+        try:
+            timeout_hours = int(timeout_hours)
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be an integer'}), 400
+        if timeout_hours not in (1, 2, 6, 24):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
+    with get_db() as db:
+        if enforce_sso is not None:
+            db.execute('UPDATE users SET enforce_single_session=? WHERE id=?', (int(enforce_sso), g.user_id))
+        if timeout_hours is not None:
+            db.execute('UPDATE users SET session_timeout_hours=? WHERE id=?', (int(timeout_hours), g.user_id))
+        db.commit()
+        row = db.execute('SELECT enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
+    d = dict(row)
+    if d.get('enforce_single_session') is None:
+        d['enforce_single_session'] = 1
+    if d.get('session_timeout_hours') is None:
+        d['session_timeout_hours'] = 1
+    return jsonify({'status': 'ok', **d})
 
 @app.route('/api/users/signature', methods=['POST'])
 @login_required
