@@ -2079,6 +2079,7 @@ def api_get_reconciliations():
         if page > 0:
             # New pagination mode
             count = db.execute(f'SELECT COUNT(*) FROM reconciliations {where}', params).fetchone()[0]
+            total_all = db.execute('SELECT COUNT(*) FROM reconciliations').fetchone()[0]
             pages = max(1, (count + per_page - 1) // per_page)
             offset = (page - 1) * per_page
             rows = db.execute(
@@ -2088,6 +2089,7 @@ def api_get_reconciliations():
             return jsonify({
                 'records': [dict(r) for r in rows],
                 'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+                'total_all': total_all,
             })
         else:
             # Old mode: limit-based (0=all)
