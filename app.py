@@ -461,6 +461,14 @@ def login_required(f):
             if request.path.startswith('/api/'):
                 return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
             return redirect('/login')
+        # SSO enforcement: if user has current_session_id set, only that session is valid.
+        # This catches LEGACY sessions (no session_id in cookie) which the per-row check above skips.
+        with get_db() as db:
+            cur = db.execute('SELECT current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if cur and cur['current_session_id']:
+            request_sid = session.get('session_id')
+            if request_sid != cur['current_session_id']:
+                kicked = True
         # Update last_seen_at (best-effort, no failure path)
         if validated_session_id:
             try:
@@ -515,6 +523,7 @@ def init_db():
                 reset_expires TIMESTAMP,
                 enforce_single_session INTEGER DEFAULT 1,
                 session_timeout_hours INTEGER DEFAULT 1,
+                current_session_id TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
@@ -753,6 +762,10 @@ def init_db():
         except:
             pass
         try:
+            db.execute("ALTER TABLE users ADD COLUMN current_session_id TEXT DEFAULT NULL")
+        except:
+            pass
+        try:
             db.execute("ALTER TABLE user_tokens ADD COLUMN session_id TEXT")
         except:
             pass
@@ -889,15 +902,18 @@ def login_page():
             # For per-user timeout, the authoritative check is user_sessions.expires_at
             # (see login_required). Cookie max age is just a hint to the browser.
             app.permanent_session_lifetime = timedelta(hours=max(timeout_hours, 24))
+            # Generate new session id first (used by both SSO and non-SSO paths)
+            new_session_id = secrets.token_hex(16)
+            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
+            device_info = (request.user_agent.string or '')[:200]
             # SSO enforcement: revoke all other active sessions for this user
             if enforce_sso:
                 db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL", (user['id'],))
                 # Best-effort: clean up invalidated tokens (they'd fail validation anyway)
                 db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))", (user['id'], user['id']))
-            # Generate new session
-            new_session_id = secrets.token_hex(16)
-            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
-            device_info = (request.user_agent.string or '')[:200]
+                # Mark this user as having SSO active, pointing at the new session
+                # (legacy sessions without session_id in cookie will be kicked on next request)
+                db.execute('UPDATE users SET current_session_id=? WHERE id=?', (new_session_id, user['id']))
             db.execute('INSERT INTO user_sessions (user_id, session_id, device_info, expires_at) VALUES (?,?,?,?)',
                        (user['id'], new_session_id, device_info, expires_at))
             session['user_id'] = user['id']
@@ -1902,11 +1918,20 @@ def api_users_me_auth_prefs():
             return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
     with get_db() as db:
         if enforce_sso is not None:
-            db.execute('UPDATE users SET enforce_single_session=? WHERE id=?', (int(enforce_sso), g.user_id))
+            if int(enforce_sso) == 1:
+                # Turning SSO on: lock current session as the only valid one.
+                # If session has no session_id (legacy), the new login_required check
+                # will kick it on next request — user will re-login cleanly.
+                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=? WHERE id=?',
+                           (1, session.get('session_id'), g.user_id))
+            else:
+                # Turning SSO off: clear the marker so all sessions pass the check
+                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=NULL WHERE id=?',
+                           (0, g.user_id))
         if timeout_hours is not None:
             db.execute('UPDATE users SET session_timeout_hours=? WHERE id=?', (int(timeout_hours), g.user_id))
         db.commit()
-        row = db.execute('SELECT enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
+        row = db.execute('SELECT enforce_single_session, session_timeout_hours, current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
     d = dict(row)
     if d.get('enforce_single_session') is None:
         d['enforce_single_session'] = 1
