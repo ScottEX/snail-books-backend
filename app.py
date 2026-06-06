@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify, session, redirect, g, make_response, 
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests, random, string
 from datetime import datetime, timedelta
-from i18n_backend import get_lang, t as _t
+from i18n_backend import t as _t
 
 app = Flask(__name__)
 # Persistent secret key (survives restarts)
@@ -25,7 +25,6 @@ app.permanent_session_lifetime = timedelta(hours=24)
 
 FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
-IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
 EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
 # User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
 BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
@@ -265,14 +264,6 @@ def validate_username(username):
     return True
 
 DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
-
-INCOME_CATS = ['🍜 堂食', '🛵 美团外卖', '🛵 饿了吗外卖', '🎫 美团团购', '📦 京东', '🔧 其他收入']
-EXPENSE_CATS = [
-    '📦 原材料进货', '🏠 房租', '⚡ 水电煤气', '👨‍🍳 人工工资',
-    '🔧 设备/工具', '🏗️ 装修', '📋 培训/证件', '🧹 卫生/清洁',
-    '🧻 餐具/纸巾', '📦 包装/打包', '📢 广告/推广', '💊 杂项/烟酒', '📝 其他'
-]
-ACCOUNTS = ['💚 微信收款', '💙 支付宝收款', '💵 现金', '🏦 银行卡']
 
 # 实际合伙人数据
 PARTNER_DATA = [
