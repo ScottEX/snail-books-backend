@@ -1803,6 +1803,8 @@ def _render_procurement_png(batch_id):
     """Render page 1 of a procurement PDF to a PNG blob.
     Used by /api/share/<token>/first-page.png for the
     "保存图片" share action. Returns (png_bytes, batch_number) or (None, None) on error."""
+    import weasyprint  # local import: app.py defers weasyprint so its
+                        # 30s import cost doesn't sit on the cold-start path
     try:
         import pymupdf
     except ImportError:
