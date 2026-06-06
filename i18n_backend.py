@@ -25,6 +25,7 @@ TRANSLATIONS = {
         'err_incomplete': '请填写完整信息',
         'err_missing_fields': '缺少必填字段: {fields}',
         'err_session_expired': '登录已过期，请重新登录',
+        'err_session_kicked': '您的账号在其他设备登录，当前会话已退出',
         'err_too_many_attempts': '尝试次数过多，请等待 {mins} 分 {secs} 秒后再试',
         'err_email_invalid': '邮箱格式不正确',
         'msg_code_sent': '验证码已发送至 {email}，请查收',
@@ -32,6 +33,11 @@ TRANSLATIONS = {
         'msg_code_resent': '验证码已重新发送',
         'msg_forgot_sent': '如该邮箱已注册，验证码已发送',
         'msg_reset_ok': '密码重置成功！请使用新密码登录',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': '现金',
+        'payWechat': '微信',
+        'payAlipay': '支付宝',
+        'goods': '采购',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -57,6 +63,7 @@ TRANSLATIONS = {
         'err_incomplete': '請填寫完整資訊',
         'err_missing_fields': '缺少必填欄位: {fields}',
         'err_session_expired': '登錄已過期，請重新登錄',
+        'err_session_kicked': '您的帳號在其他裝置登入，當前工作階段已退出',
         'err_too_many_attempts': '嘗試次數過多，請等待 {mins} 分 {secs} 秒後再試',
         'err_email_invalid': '郵箱格式不正確',
         'msg_code_sent': '驗證碼已發送至 {email}，請查收',
@@ -64,6 +71,11 @@ TRANSLATIONS = {
         'msg_code_resent': '驗證碼已重新發送',
         'msg_forgot_sent': '如該郵箱已註冊，驗證碼已發送',
         'msg_reset_ok': '密碼重設成功！請使用新密碼登入',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': '現金',
+        'payWechat': '微信',
+        'payAlipay': '支付寶',
+        'goods': '採購',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -89,6 +101,7 @@ TRANSLATIONS = {
         'err_incomplete': 'Please fill in all fields',
         'err_missing_fields': 'Missing required fields: {fields}',
         'err_session_expired': 'Session expired, please login again',
+        'err_session_kicked': 'Signed in elsewhere. This session was ended.',
         'err_too_many_attempts': 'Too many attempts, please wait {mins}m {secs}s',
         'err_email_invalid': 'Invalid email format',
         'msg_code_sent': 'Verification code sent to {email}, please check',
@@ -96,6 +109,11 @@ TRANSLATIONS = {
         'msg_code_resent': 'Verification code resent',
         'msg_forgot_sent': 'If registered, a verification code has been sent',
         'msg_reset_ok': 'Password reset! Please login with your new password',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': 'Cash',
+        'payWechat': 'WeChat',
+        'payAlipay': 'Alipay',
+        'goods': 'Procurement',
     }
 }
 

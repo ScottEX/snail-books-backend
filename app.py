@@ -2,6 +2,7 @@
 """🍜 蓝姐 · 记账系统"""
 
 import sqlite3, os, secrets, functools, re, json, time
+from io import BytesIO
 from datetime import datetime, date
 from contextlib import contextmanager
 try:
@@ -43,6 +44,7 @@ EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname
 # User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
 BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
+COVER_DIR = os.path.join(BG_DIR, 'covers')
 
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
@@ -234,6 +236,32 @@ def send_reset_email(to_email, code, lang='zh-CN'):
     t = templates.get(lang, templates['zh-CN'])
     return _send_email(to_email, t['subject'], t['body'], code)
 
+def send_email_change_code(to_email, code, lang='zh-CN'):
+    templates = {
+        'zh-CN': {
+            'subject': f'【柳味探秘】邮箱更换验证码：{code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">柳味探秘科技</h2>
+        <p>您正在更换账户的绑定邮箱，验证码如下：</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。</p>
+        <p style="color:#9C9A95;font-size:12px">如非本人操作，请忽略此邮件。</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p></div>'''
+        },
+        'en': {
+            'subject': f'[LiuWei TanMi] Email Change Code: {code}',
+            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
+        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
+        <p>You are changing your account's email address. Your verification code is:</p>
+        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
+        <p style="color:#9C9A95;font-size:13px">This code expires in 10 minutes.</p>
+        <p style="color:#9C9A95;font-size:12px">If this wasn't you, please ignore this email.</p>
+        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p></div>'''
+        },
+    }
+    t = templates.get(lang, templates['zh-CN'])
+    return _send_email(to_email, t['subject'], t['body'], code)
+
 def generate_code():
     return ''.join(random.choices(string.digits, k=6))
 
@@ -361,29 +389,68 @@ DEFAULT_PRODUCTS = [
 def login_required(f):
     @functools.wraps(f)
     def wrap(*a, **kw):
+        # Track which session_id was used (for last_seen_at updates)
+        validated_session_id = None
+        kicked = False
+        expired = False
         if 'user_id' not in session:
             # Check Bearer token as fallback
             auth = request.headers.get('Authorization','')
             if auth.startswith('Bearer '):
                 token = auth[7:]
                 with get_db() as db:
-                    row = db.execute('SELECT user_id FROM user_tokens WHERE token=?', (token,)).fetchone()
+                    row = db.execute('SELECT user_id, session_id FROM user_tokens WHERE token=?', (token,)).fetchone()
                 if row:
                     uid = row['user_id']
                     # Verify user still exists (may have been deleted)
                     with get_db() as db:
                         exists = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
                     if exists:
+                        # Check session validity (only if token has session_id — new format)
+                        token_sid = row['session_id']
+                        if token_sid:
+                            with get_db() as db:
+                                srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (token_sid,)).fetchone()
+                            if srow and srow['revoked_at']:
+                                kicked = True
+                            elif srow and _session_expired(srow['expires_at']):
+                                expired = True
+                            elif srow:
+                                validated_session_id = token_sid
                         session['user_id'] = uid
+                        if token_sid:
+                            session['session_id'] = token_sid
                     else:
                         # User deleted — clean orphan token
                         with get_db() as db:
                             db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
                             db.commit()
-            if 'user_id' not in session:
-                if request.path.startswith('/api/'):
-                    return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
-                return redirect('/login')
+        else:
+            # Cookie path: also validate session_id if present
+            cookie_sid = session.get('session_id')
+            if cookie_sid:
+                with get_db() as db:
+                    srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (cookie_sid,)).fetchone()
+                if srow and srow['revoked_at']:
+                    kicked = True
+                elif srow and _session_expired(srow['expires_at']):
+                    expired = True
+                elif srow:
+                    validated_session_id = cookie_sid
+        if 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
+            return redirect('/login')
+        if kicked:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_kicked', g.lang) or 'Account logged in elsewhere','code':'session_kicked'}), 401
+            return redirect('/login')
+        if expired:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
+            return redirect('/login')
         g.user_id = session['user_id']
         g.username = session.get('username', '')
         # Verify user still exists (may have been deleted from DB)
@@ -392,10 +459,42 @@ def login_required(f):
         if not exists:
             session.clear()
             if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_expired', g.lang)}), 401
+                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
             return redirect('/login')
+        # SSO enforcement: if user has current_session_id set, only that session is valid.
+        # This catches LEGACY sessions (no session_id in cookie) which the per-row check above skips.
+        with get_db() as db:
+            cur = db.execute('SELECT current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if cur and cur['current_session_id']:
+            request_sid = session.get('session_id')
+            if request_sid != cur['current_session_id']:
+                kicked = True
+        # Update last_seen_at (best-effort, no failure path)
+        if validated_session_id:
+            try:
+                with get_db() as db:
+                    db.execute("UPDATE user_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?", (validated_session_id,))
+                    db.commit()
+            except:
+                pass
         return f(*a, **kw)
     return wrap
+
+
+def _session_expired(expires_at_str):
+    """Check if an expires_at string (YYYY-MM-DD HH:MM:SS) is in the past (UTC)."""
+    if not expires_at_str:
+        return True
+    try:
+        # SQLite stores TIMESTAMP as 'YYYY-MM-DD HH:MM:SS'
+        expires = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+        return datetime.utcnow() > expires
+    except (ValueError, TypeError):
+        try:
+            expires = datetime.fromisoformat(expires_at_str)
+            return datetime.utcnow() > expires
+        except:
+            return True
 
 @contextmanager
 def get_db():
@@ -416,19 +515,36 @@ def init_db():
                 username TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
                 email TEXT,
+                signature TEXT DEFAULT '',
                 verification_code TEXT,
                 code_expires TIMESTAMP,
                 is_verified INTEGER DEFAULT 0,
                 reset_code TEXT,
                 reset_expires TIMESTAMP,
+                enforce_single_session INTEGER DEFAULT 1,
+                session_timeout_hours INTEGER DEFAULT 1,
+                current_session_id TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 token TEXT NOT NULL UNIQUE,
+                session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL UNIQUE,
+                device_info TEXT DEFAULT '',
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
+                ON user_sessions(user_id, revoked_at);
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -478,8 +594,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_number INTEGER NOT NULL DEFAULT 0,
                 date TEXT NOT NULL,
-                payment_method TEXT NOT NULL DEFAULT '微信',
-                category TEXT DEFAULT '采购',
+                payment_method TEXT NOT NULL DEFAULT 'payWechat',
+                category TEXT DEFAULT 'goods',
                 total REAL NOT NULL DEFAULT 0,
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
@@ -632,6 +748,50 @@ def init_db():
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
+        except:
+            pass
+        # Migration (2026.6.5): SSO / session timeout auth preferences
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN enforce_single_session INTEGER DEFAULT 1")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN session_timeout_hours INTEGER DEFAULT 1")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN current_session_id TEXT DEFAULT NULL")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE user_tokens ADD COLUMN session_id TEXT")
+        except:
+            pass
+        # Migration (2026.6.4): link transactions to procurement_batches for cascade delete/edit
+        try:
+            db.execute("ALTER TABLE transactions ADD COLUMN procurement_batch_id INTEGER")
+        except:
+            pass
+        # Backfill: link existing transactions to their procurement batches by date+amount
+        # Only fill for expense/category=采购 with no link yet
+        try:
+            db.execute("""
+                UPDATE transactions
+                SET procurement_batch_id = (
+                    SELECT pb.id FROM procurement_batches pb
+                    WHERE pb.date = transactions.date
+                      AND pb.total = transactions.amount
+                      AND pb.payment_method = transactions.account
+                    ORDER BY pb.id DESC LIMIT 1
+                )
+                WHERE transactions.type = 'expense'
+                  AND transactions.category IN ('采购', 'goods')  -- legacy '采购' (pre-migration) + new 'goods'
+                  AND transactions.procurement_batch_id IS NULL
+            """)
+        except:
+            pass
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -732,17 +892,37 @@ def login_page():
         if user and check_password_hash(user['password'], password):
             if not user['is_verified']:
                 return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
+            # Read per-user auth prefs (2026.6.5)
+            enforce_sso = int(user['enforce_single_session']) if user['enforce_single_session'] is not None else 1
+            timeout_hours = int(user['session_timeout_hours']) if user['session_timeout_hours'] else 1
+            if timeout_hours < 1:
+                timeout_hours = 1
             session.permanent = True
-            if remember:
-                app.permanent_session_lifetime = timedelta(days=30)
-            else:
-                app.permanent_session_lifetime = timedelta(hours=24)
+            # Note: app.permanent_session_lifetime is a process-global setting.
+            # For per-user timeout, the authoritative check is user_sessions.expires_at
+            # (see login_required). Cookie max age is just a hint to the browser.
+            app.permanent_session_lifetime = timedelta(hours=max(timeout_hours, 24))
+            # Generate new session id first (used by both SSO and non-SSO paths)
+            new_session_id = secrets.token_hex(16)
+            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
+            device_info = (request.user_agent.string or '')[:200]
+            # SSO enforcement: revoke all other active sessions for this user
+            if enforce_sso:
+                db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL", (user['id'],))
+                # Best-effort: clean up invalidated tokens (they'd fail validation anyway)
+                db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))", (user['id'], user['id']))
+                # Mark this user as having SSO active, pointing at the new session
+                # (legacy sessions without session_id in cookie will be kicked on next request)
+                db.execute('UPDATE users SET current_session_id=? WHERE id=?', (new_session_id, user['id']))
+            db.execute('INSERT INTO user_sessions (user_id, session_id, device_info, expires_at) VALUES (?,?,?,?)',
+                       (user['id'], new_session_id, device_info, expires_at))
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['session_id'] = new_session_id
             # 清理 90 天前的旧 token
             db.execute("DELETE FROM user_tokens WHERE created_at < datetime('now', '-90 days')")
             token = secrets.token_hex(32)
-            db.execute('INSERT INTO user_tokens (user_id, token) VALUES (?,?)', (user['id'], token))
+            db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user['id'], token, new_session_id))
             db.commit()
             return jsonify({'status':'ok','token':token,'username':user['username'],'user_id':user['id']})
     record_failed_attempt(ip)
@@ -887,6 +1067,23 @@ def reset_password():
 @app.route('/logout', methods=['POST'])
 @login_required
 def logout():
+    # Clean up the user_sessions row for this session (best-effort)
+    sid = session.get('session_id')
+    if sid:
+        try:
+            with get_db() as db:
+                db.execute('DELETE FROM user_sessions WHERE session_id=?', (sid,))
+                db.commit()
+        except:
+            pass
+    # Also invalidate any Bearer tokens tied to this session
+    if sid:
+        try:
+            with get_db() as db:
+                db.execute('DELETE FROM user_tokens WHERE session_id=?', (sid,))
+                db.commit()
+        except:
+            pass
     session.clear()
     return jsonify({'status':'ok'})
 
@@ -917,7 +1114,7 @@ def api_transactions():
     # GET with pagination & filtering
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
-    tx_type = request.args.get('type')           # 'income' or 'expense'
+    tx_type = request.args.get('type')           # 业务上固定为 'expense'，字段保留为 schema 扩展性
     date_from = request.args.get('date_from')    # 'YYYY-MM-DD'
     date_to = request.args.get('date_to')
     category = request.args.get('category')      # comma-separated: '日常,房租'
@@ -944,6 +1141,7 @@ def api_transactions():
 
     with get_db() as db:
         count = db.execute(f'SELECT COUNT(*) FROM transactions WHERE {where_sql}', params).fetchone()[0]
+        total_all = db.execute("SELECT COUNT(*) FROM transactions WHERE type='expense'").fetchone()[0]
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
@@ -953,6 +1151,7 @@ def api_transactions():
     return jsonify({
         'transactions': [dict(r) for r in rows],
         'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+        'total_all': total_all,
     })
 
 @app.route('/api/transactions/<int:id>', methods=['DELETE'])
@@ -1100,6 +1299,19 @@ def api_background():
                 db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'background_opacity', ?)",
                            (g.user_id, str(data['opacity'])))
                 db.commit()
+        return jsonify({'status': 'ok'})
+
+    if request.method == 'DELETE':
+        # Reset to default — delete the user's custom background file.
+        # The frontend then reverts to /img/bg.jpg and dispatches a
+        # 'bg-changed' event so HomeScreen refreshes immediately.
+        # Without this branch the function fell through and returned
+        # None, which Flask turned into a 500. Frontend caught the
+        # 500 silently (catch (err) { /* ignore */ }) so the user saw
+        # the "恢复默认" button as a no-op.
+        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            os.remove(save_path)
         return jsonify({'status': 'ok'})
 
 @app.route('/api/settings/lang', methods=['GET'])
@@ -1305,7 +1517,7 @@ def api_procurement_batches():
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
                 'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category','采购'), round(total, 2),
+                (batch_no, data['date'], data['payment_method'], data.get('category','goods'), round(total, 2),
                  images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
@@ -1315,9 +1527,9 @@ def api_procurement_batches():
                     (batch_id, pid, name, spec, up, qty, round(sub, 2))
                 )
             # Sync an expense transaction (with thumb_images so history list can show thumbnail)
-            db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json)
+            cur = db.execute(
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category','goods'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json, batch_id)
             )
             db.commit()
         return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -1340,10 +1552,89 @@ def api_procurement_batches():
             batches.append(b)
     return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
 
-@app.route('/api/procurement-batches/<int:id>', methods=['GET'])
+@app.route('/api/procurement-batches/<int:id>', methods=['GET','PUT','DELETE'])
 @login_required
 def api_procurement_batch_detail(id):
-    """单次进货详情"""
+    """单次进货详情 + 编辑 + 删除"""
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        if not row:
+            return jsonify({'status':'error','message':'Not found'}), 404
+
+        if request.method == 'DELETE':
+            # Cascade delete: items + linked transaction
+            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
+            # Remove the linked expense transaction (any with this procurement_batch_id, plus fallback for orphan history)
+            batch = dict(row)
+            db.execute(
+                # category matches both legacy '采购' (pre-migration) and new 'goods' (post-migration)
+                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category IN ('采购', 'goods') AND date=? AND amount=? AND account=?)",
+                (id, batch['date'], batch['total'], batch['payment_method'])
+            )
+            db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
+            db.commit()
+            return jsonify({'status':'ok'})
+
+        if request.method == 'PUT':
+            data = request.get_json()
+            items = data.get('items', [])
+            if not items or not isinstance(items, list):
+                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            # Recompute total from current products
+            total = 0.0
+            item_rows = []
+            for item in items:
+                pid = item.get('product_id')
+                qty = item.get('quantity', 0)
+                if not pid or qty <= 0:
+                    continue
+                product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
+                if not product:
+                    continue
+                unit_price = product['price']
+                subtotal = unit_price * qty
+                total += subtotal
+                item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
+            if total == 0:
+                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
+            images_json = json.dumps(data.get('images', []))
+            thumbs_json = json.dumps(data.get('thumb_images', []))
+            # Replace items (delete + re-insert)
+            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
+            for name, spec, up, qty, sub, pid in item_rows:
+                db.execute(
+                    'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
+                    (id, pid, name, spec, up, qty, round(sub, 2))
+                )
+            # Update batch header (batch_number immutable)
+            db.execute(
+                "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
+                (data['date'], data['payment_method'], data.get('category','goods'),
+                 round(total, 2), images_json, thumbs_json, data.get('note',''), id)
+            )
+            # Sync linked transaction
+            db.execute(
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
+                (round(total, 2), data.get('category','goods'), data['payment_method'],
+                 data.get('note',''), data['date'], images_json, thumbs_json, id)
+            )
+            db.commit()
+            return jsonify({'status':'ok', 'batch_id': id, 'total': round(total, 2)})
+
+        # GET: detail
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    return jsonify(b)
+
+# ── 进货单 PDF ──
+@app.route('/api/procurement-batches/<int:id>/pdf', methods=['GET'])
+@login_required
+def api_procurement_batch_pdf(id):
+    """生成进货单 PDF"""
+    import weasyprint
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
         if not row:
@@ -1352,7 +1643,245 @@ def api_procurement_batch_detail(id):
         b['images'] = json.loads(b['images']) if b['images'] else []
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
         b['items'] = [dict(it) for it in items]
-    return jsonify(b)
+
+    # 商品行 HTML
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += (
+            f"<tr><td>{it['product_name']}</td>"
+            f"<td>{spec}</td>"
+            f"<td>¥{it['unit_price']:,.2f}</td>"
+            f"<td>{it['quantity']}</td>"
+            f"<td>¥{it['subtotal']:,.2f}</td></tr>"
+        )
+
+    # 凭证图片 HTML
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                # WeasyPrint supports file:// or direct path
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = (
+                '<div class="images-section">'
+                '<div class="img-label">📎 采购凭证</div>'
+                f'<div class="images-grid">{imgs}</div>'
+                '</div>'
+            )
+
+    # 日期格式化: 2026-06-04 → 2026年6月4日
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+
+    # 读取模板
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+
+    # 填充数据
+    now = datetime.now()
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}",
+        date=date_str,
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
+        items_html=items_html,
+        total=b['total'],
+        note=b.get('note', '') or '无',
+        images_html=images_html,
+        operator=g.username,
+        gen_date=now.strftime('%Y年%m月%d日'),
+    )
+
+    # 生成 PDF
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+
+    # 返回文件下载
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+# ── 分享链接 ──
+import hmac, base64, hashlib
+
+def _make_share_token(batch_id, expires_ts):
+    payload = f"{batch_id}:{expires_ts}"
+    sig = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    raw = f"{payload}:{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip('=')
+
+def _verify_share_token(token):
+    try:
+        # Add padding back
+        raw = base64.urlsafe_b64decode(token + '=' * (4 - len(token) % 4)).decode()
+        parts = raw.split(':')
+        if len(parts) != 3:
+            return None
+        batch_id, expires_ts, sig = parts
+        expected = hmac.new(app.secret_key.encode(), f"{batch_id}:{expires_ts}".encode(), hashlib.sha256).hexdigest()[:16]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(expires_ts) < time.time():
+            return None
+        return int(batch_id)
+    except:
+        return None
+
+@app.route('/api/procurement-batches/<int:id>/share-link', methods=['GET'])
+@login_required
+def api_share_link(id):
+    """生成 24 小时有效的分享链接"""
+    expires = int(time.time()) + 86400  # 24 hours
+    token = _make_share_token(id, expires)
+    return jsonify({'url': f'/api/share/{token}'})
+
+@app.route('/api/share/<token>', methods=['GET'])
+def api_share_pdf(token):
+    """通过 token 访问 PDF（无需登录）"""
+    batch_id = _verify_share_token(token)
+    if not batch_id:
+        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
+    # 直接复用 PDF 生成逻辑（内联版本，无需 login_required）
+    import weasyprint
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+        if not row:
+            return jsonify({'status':'error','message':'Not found'}), 404
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    # 商品行
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
+    # 凭证图片
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+    # 日期
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+    # 渲染
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang), category=_t(b.get('category', 'goods'), g.lang),
+        items_html=items_html, total=b['total'],
+        note=b.get('note', '') or '无', images_html=images_html,
+        operator='—', gen_date='—')
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
+def _render_procurement_png(batch_id):
+    """Render page 1 of a procurement PDF to a PNG blob.
+    Used by /api/share/<token>/first-page.png for the
+    "保存图片" share action. Returns (png_bytes, batch_number) or (None, None) on error."""
+    import weasyprint  # local import: app.py defers weasyprint so its
+                        # 30s import cost doesn't sit on the cold-start path
+    try:
+        import pymupdf
+    except ImportError:
+        return None, None
+    # Reuse the same PDF bytes /api/share/<token> produces so the
+    # PNG and the iframe view are guaranteed to be from the same
+    # template render (no risk of drift if procurement_order.html
+    # changes between requests).
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+        if not row:
+            return None, None
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
+        items_html=items_html, total=b['total'],
+        note=b.get('note', '') or '无', images_html=images_html,
+        operator='—', gen_date='—')
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    # 2x scale — retina-grade for the share-image save flow.
+    # Lower scale = blurry on phones; higher = bigger file for no
+    # visible gain on the typical 3-5" image preview.
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))
+    png_bytes = pix.tobytes("png")
+    doc.close()
+    return png_bytes, b['batch_number']
+
+@app.route('/api/share/<token>/first-page.png', methods=['GET'])
+def api_share_png(token):
+    """Render page 1 of a procurement PDF to PNG (no login required).
+    Powered by the same HMAC token as /api/share/<token>, expires 24h.
+    Used by the preview page's "保存图片" share action."""
+    batch_id = _verify_share_token(token)
+    if not batch_id:
+        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
+    png_bytes, batch_number = _render_procurement_png(batch_id)
+    if not png_bytes:
+        return jsonify({'status':'error','message':'渲染失败'}), 500
+    filename = f"procurement_{batch_number:04d}.png"
+    response = make_response(png_bytes)
+    response.headers['Content-Type'] = 'image/png'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    # 24h cache aligned with the token lifetime
+    response.headers['Cache-Control'] = 'private, max-age=86400'
+    return response
 
 @app.route('/api/stats')
 @login_required
@@ -1440,6 +1969,105 @@ def api_users():
         rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/users/me')
+@login_required
+def api_users_me():
+    with get_db() as db:
+        user = db.execute('SELECT id, username, email, signature, created_at, enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'User not found'}), 404
+    d = dict(user)
+    # Normalize defaults for legacy users with NULL
+    if d.get('enforce_single_session') is None:
+        d['enforce_single_session'] = 1
+    if d.get('session_timeout_hours') is None:
+        d['session_timeout_hours'] = 1
+    return jsonify(d)
+
+
+# ── Auth preferences (single-device login + session timeout) ──
+@app.route('/api/users/me/auth-prefs', methods=['GET', 'PATCH'])
+@login_required
+def api_users_me_auth_prefs():
+    if request.method == 'GET':
+        with get_db() as db:
+            row = db.execute('SELECT enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'User not found'}), 404
+        d = dict(row)
+        if d.get('enforce_single_session') is None:
+            d['enforce_single_session'] = 1
+        if d.get('session_timeout_hours') is None:
+            d['session_timeout_hours'] = 1
+        return jsonify(d)
+    # PATCH
+    data = request.get_json() or {}
+    enforce_sso = data.get('enforce_single_session')
+    timeout_hours = data.get('session_timeout_hours')
+    if enforce_sso is not None and enforce_sso not in (0, 1):
+        return jsonify({'status': 'error', 'message': 'enforce_single_session must be 0 or 1'}), 400
+    if timeout_hours is not None:
+        try:
+            timeout_hours = int(timeout_hours)
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be an integer'}), 400
+        if timeout_hours not in (1, 2, 6, 24):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
+    with get_db() as db:
+        if enforce_sso is not None:
+            if int(enforce_sso) == 1:
+                # Robustly resolve the current session_id from EITHER the
+                # Flask session cookie (web path) or the Bearer token (iOS path).
+                # Without this fallback, iOS turns SSO on with current_session_id=NULL,
+                # which short-circuits the SSO global check
+                # (`if cur['current_session_id']:`) and lets other devices
+                # stay logged in even with SSO on.
+                cur_sid = session.get('session_id')
+                if cur_sid is None:
+                    auth = request.headers.get('Authorization', '')
+                    if auth.startswith('Bearer '):
+                        tk = auth[7:]
+                        row = db.execute('SELECT session_id FROM user_tokens WHERE token=?', (tk,)).fetchone()
+                        if row and row['session_id']:
+                            cur_sid = row['session_id']
+                # Revoke all OTHER sessions and delete their tokens so they
+                # can no longer authenticate. The current session is preserved.
+                if cur_sid:
+                    db.execute('UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
+                               (g.user_id, cur_sid))
+                    db.execute('DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id != ?)',
+                               (g.user_id, cur_sid))
+                # Lock SSO to current session (NULL if legacy — login_required
+                # will kick legacy sessions on next request).
+                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=? WHERE id=?',
+                           (1, cur_sid, g.user_id))
+            else:
+                # Turning SSO off: clear the marker so all sessions pass the check
+                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=NULL WHERE id=?',
+                           (0, g.user_id))
+        if timeout_hours is not None:
+            db.execute('UPDATE users SET session_timeout_hours=? WHERE id=?', (int(timeout_hours), g.user_id))
+        db.commit()
+        row = db.execute('SELECT enforce_single_session, session_timeout_hours, current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
+    d = dict(row)
+    if d.get('enforce_single_session') is None:
+        d['enforce_single_session'] = 1
+    if d.get('session_timeout_hours') is None:
+        d['session_timeout_hours'] = 1
+    return jsonify({'status': 'ok', **d})
+
+@app.route('/api/users/signature', methods=['POST'])
+@login_required
+def api_update_signature():
+    data = request.get_json() or {}
+    signature = (data.get('signature', '') or '').strip()
+    if len(signature) > 200:
+        return jsonify({'status': 'error', 'message': '签名不能超过200字'}), 400
+    with get_db() as db:
+        db.execute('UPDATE users SET signature=? WHERE id=?', (signature, g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'signature': signature})
+
 @app.route('/api/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def api_delete_user(uid):
@@ -1496,6 +2124,103 @@ def api_upload_avatar():
             os.remove(old)
     f.save(os.path.join(AVATAR_DIR, f'{g.user_id}.{ext}'))
     return jsonify({'status': 'ok', 'url': f'/user-images/avatars/{g.user_id}.{ext}?t={int(time.time())}'})
+
+# ── Profile Cover ──
+@app.route('/api/profile/cover', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def api_profile_cover():
+    if request.method == 'GET':
+        url = None
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
+        return jsonify({'url': url})
+
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return jsonify({'status': 'error', 'message': '未选择文件'}), 400
+        f = request.files['file']
+        if f.filename == '':
+            return jsonify({'status': 'error', 'message': '文件名为空'}), 400
+        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+        if ext not in ALLOWED_BG_EXT:
+            return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
+        f.seek(0, 2)
+        size = f.tell()
+        f.seek(0)
+        if size > MAX_BG_SIZE:
+            return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
+        os.makedirs(COVER_DIR, exist_ok=True)
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        f.save(save_path)
+        url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(time.time())}'
+        return jsonify({'status': 'ok', 'url': url})
+
+    if request.method == 'DELETE':
+        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        return jsonify({'status': 'ok'})
+
+# ── Profile: Change Password ──
+@app.route('/api/profile/password', methods=['POST'])
+@login_required
+def api_change_password():
+    data = request.get_json()
+    old_pw = data.get('old_password', '') if data else ''
+    new_pw = data.get('new_password', '') if data else ''
+    if not old_pw or not new_pw:
+        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+    ok, err = validate_password(new_pw, g.lang)
+    if not ok:
+        return jsonify({'status': 'error', 'message': err}), 400
+    with get_db() as db:
+        user = db.execute('SELECT password FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not user or not check_password_hash(user['password'], old_pw):
+            return jsonify({'status': 'error', 'message': '当前密码错误'}), 400
+        db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'message': '密码修改成功'})
+
+# ── Profile: Change Email (two-step verification) ──
+@app.route('/api/profile/email/send-code', methods=['POST'])
+@login_required
+def api_profile_email_send_code():
+    data = request.get_json()
+    new_email = data.get('email', '').strip() if data else ''
+    if not new_email:
+        return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
+    if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
+        return jsonify({'status': 'error', 'message': '邮箱格式不正确'}), 400
+    with get_db() as db:
+        existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
+        if existing:
+            return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
+        code = generate_code()
+        db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
+                   (code, datetime.now() + timedelta(minutes=10), g.user_id))
+        db.commit()
+    send_email_change_code(new_email, code, g.lang)
+    return jsonify({'status': 'ok', 'message': '验证码已发送'})
+
+@app.route('/api/profile/email/verify', methods=['POST'])
+@login_required
+def api_profile_email_verify():
+    data = request.get_json()
+    new_email = data.get('email', '').strip() if data else ''
+    code = data.get('code', '').strip() if data else ''
+    if not new_email or not code:
+        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+    with get_db() as db:
+        user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not user or user['verification_code'] != code:
+            return jsonify({'status': 'error', 'message': '验证码错误'}), 400
+        if user['code_expires'] and datetime.now() > datetime.fromisoformat(user['code_expires']):
+            return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
+        db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
+                   (new_email, g.user_id))
+        db.commit()
+    return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
 
 # ── Reconciliations ──
 @app.route('/api/migrate-recon', methods=['POST'])
@@ -1672,6 +2397,7 @@ def api_get_reconciliations():
         if page > 0:
             # New pagination mode
             count = db.execute(f'SELECT COUNT(*) FROM reconciliations {where}', params).fetchone()[0]
+            total_all = db.execute('SELECT COUNT(*) FROM reconciliations').fetchone()[0]
             pages = max(1, (count + per_page - 1) // per_page)
             offset = (page - 1) * per_page
             rows = db.execute(
@@ -1681,6 +2407,7 @@ def api_get_reconciliations():
             return jsonify({
                 'records': [dict(r) for r in rows],
                 'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
+                'total_all': total_all,
             })
         else:
             # Old mode: limit-based (0=all)
@@ -1810,6 +2537,7 @@ def api_get_daily_revenue():
                    LEFT JOIN users u ON dr.user_id = u.id
                    {where}'''
         count = db.execute(f'SELECT COUNT(*) FROM daily_revenue dr {where}', params).fetchone()[0]
+        total_all = db.execute('SELECT COUNT(*) FROM daily_revenue').fetchone()[0]
         total_pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
@@ -1822,6 +2550,7 @@ def api_get_daily_revenue():
             'pages': total_pages,
             'page': page,
             'per_page': per_page,
+            'total_all': total_all,
         })
 
 @app.route('/api/daily-revenue/last-7', methods=['GET'])
