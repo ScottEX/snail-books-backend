@@ -58,6 +58,14 @@ TRANSLATIONS = {
         'meituanWaimai': '美团外卖',
         'shangouWaimai': '闪购外卖',
         'meituanTuan': '美团团购',
+        # ── Reserved for future backend procurement batch PDF / email rendering ──
+        # The 2 procurement-batches-related labels (procNowBatch for the
+        # "{n}th batch" title and procBatchLabel for the "Batch" column
+        # header) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'procNowBatch': '第{n}次进货',
+        'procBatchLabel': '采购批次',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -116,6 +124,14 @@ TRANSLATIONS = {
         'meituanWaimai': '美團外賣',
         'shangouWaimai': '閃購外賣',
         'meituanTuan': '美團團購',
+        # ── Reserved for future backend procurement batch PDF / email rendering ──
+        # The 2 procurement-batches-related labels (procNowBatch for the
+        # "{n}th batch" title and procBatchLabel for the "Batch" column
+        # header) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'procNowBatch': '第{n}次進貨',
+        'procBatchLabel': '採購批次',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -174,6 +190,14 @@ TRANSLATIONS = {
         'meituanWaimai': 'Meituan Waimai',
         'shangouWaimai': 'Flash Waimai',
         'meituanTuan': 'Meituan Tuan',
+        # ── Reserved for future backend procurement batch PDF / email rendering ──
+        # The 2 procurement-batches-related labels (procNowBatch for the
+        # "{n}th batch" title and procBatchLabel for the "Batch" column
+        # header) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'procNowBatch': 'Batch #{n}',
+        'procBatchLabel': 'Batch',
     }
 }
 

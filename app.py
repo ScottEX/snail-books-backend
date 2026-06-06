@@ -1115,7 +1115,9 @@ def api_transactions():
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'SELECT * FROM transactions WHERE {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            f'SELECT t.*, pb.batch_number AS proc_batch_number FROM transactions t '
+            f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
+            f'WHERE {where_sql} ORDER BY t.created_at DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
     return jsonify({
