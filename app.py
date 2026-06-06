@@ -1799,6 +1799,84 @@ def api_share_pdf(token):
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
     return response
 
+def _render_procurement_png(batch_id):
+    """Render page 1 of a procurement PDF to a PNG blob.
+    Used by /api/share/<token>/first-page.png for the
+    "保存图片" share action. Returns (png_bytes, batch_number) or (None, None) on error."""
+    try:
+        import pymupdf
+    except ImportError:
+        return None, None
+    # Reuse the same PDF bytes /api/share/<token> produces so the
+    # PNG and the iframe view are guaranteed to be from the same
+    # template render (no risk of drift if procurement_order.html
+    # changes between requests).
+    with get_db() as db:
+        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+        if not row:
+            return None, None
+        b = dict(row)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
+        b['items'] = [dict(it) for it in items]
+    items_html = ''
+    for it in b['items']:
+        spec = it.get('spec', '') or ''
+        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
+    images_html = ''
+    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    if b['images']:
+        imgs = ''
+        for img in b['images']:
+            img_path = os.path.join(img_dir, img)
+            if os.path.isfile(img_path):
+                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+        if imgs:
+            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+    try:
+        d = datetime.strptime(b['date'], '%Y-%m-%d')
+        date_str = f"{d.year}年{d.month}月{d.day}日"
+    except:
+        date_str = b.get('date', '')
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    html = html.format(
+        batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
+        payment_method=b.get('payment_method', '微信'), category=b.get('category', '采购'),
+        items_html=items_html, total=b['total'],
+        note=b.get('note', '') or '无', images_html=images_html,
+        operator='—', gen_date='—')
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    # 2x scale — retina-grade for the share-image save flow.
+    # Lower scale = blurry on phones; higher = bigger file for no
+    # visible gain on the typical 3-5" image preview.
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))
+    png_bytes = pix.tobytes("png")
+    doc.close()
+    return png_bytes, b['batch_number']
+
+@app.route('/api/share/<token>/first-page.png', methods=['GET'])
+def api_share_png(token):
+    """Render page 1 of a procurement PDF to PNG (no login required).
+    Powered by the same HMAC token as /api/share/<token>, expires 24h.
+    Used by the preview page's "保存图片" share action."""
+    batch_id = _verify_share_token(token)
+    if not batch_id:
+        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
+    png_bytes, batch_number = _render_procurement_png(batch_id)
+    if not png_bytes:
+        return jsonify({'status':'error','message':'渲染失败'}), 500
+    filename = f"procurement_{batch_number:04d}.png"
+    response = make_response(png_bytes)
+    response.headers['Content-Type'] = 'image/png'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    # 24h cache aligned with the token lifetime
+    response.headers['Cache-Control'] = 'private, max-age=86400'
+    return response
+
 @app.route('/api/stats')
 @login_required
 def api_stats():
