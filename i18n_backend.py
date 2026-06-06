@@ -38,6 +38,16 @@ TRANSLATIONS = {
         'payWechat': '微信',
         'payAlipay': '支付宝',
         'goods': '采购',
+        # ── Reserved for future backend reconciliation PDF / email rendering ──
+        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
+        # / tuan / jd) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'dineIn': '堂食',
+        'meituan': '美团',
+        'flashSale': '闪购',
+        'tuan': '团购',
+        'jd': '京东',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -76,6 +86,16 @@ TRANSLATIONS = {
         'payWechat': '微信',
         'payAlipay': '支付寶',
         'goods': '採購',
+        # ── Reserved for future backend reconciliation PDF / email rendering ──
+        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
+        # / tuan / jd) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'dineIn': '堂食',
+        'meituan': '美團',
+        'flashSale': '閃購',
+        'tuan': '團購',
+        'jd': '京東',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -114,6 +134,16 @@ TRANSLATIONS = {
         'payWechat': 'WeChat',
         'payAlipay': 'Alipay',
         'goods': 'Procurement',
+        # ── Reserved for future backend reconciliation PDF / email rendering ──
+        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
+        # / tuan / jd) currently have 0 _t() callsites. They are added
+        # preemptively to prevent raw keys leaking in future PDF / email /
+        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
+        'dineIn': 'Dine-in',
+        'meituan': 'Meituan',
+        'flashSale': 'Flash Sale',
+        'tuan': 'Group Buy',
+        'jd': 'JD.com',
     }
 }
 
