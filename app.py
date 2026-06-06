@@ -1110,7 +1110,7 @@ def api_transactions():
     where_sql = ' AND '.join(where) if where else '1=1'
 
     with get_db() as db:
-        count = db.execute(f'SELECT COUNT(*) FROM transactions WHERE {where_sql}', params).fetchone()[0]
+        count = db.execute(f'SELECT COUNT(*) FROM transactions t WHERE {where_sql}', params).fetchone()[0]
         total_all = db.execute("SELECT COUNT(*) FROM transactions WHERE type='expense'").fetchone()[0]
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
