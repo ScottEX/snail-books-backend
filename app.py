@@ -2,7 +2,6 @@
 """🍜 蓝姐 · 记账系统"""
 
 import sqlite3, os, secrets, functools, re, json, time
-from urllib.parse import quote
 from io import BytesIO
 from datetime import datetime, date
 from contextlib import contextmanager
@@ -1705,19 +1704,10 @@ def api_procurement_batch_pdf(id):
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
 
     # 返回文件下载
-    # Filename: 第N次进货.pdf (e.g. 第1次进货.pdf, 第15次进货.pdf).
-    # Content-Disposition uses RFC 5987 filename* (UTF-8 encoded) so
-    # all modern browsers (Chrome / Firefox / Safari / Edge) display
-    # the Chinese filename correctly. We also include an ASCII fallback
-    # filename for ancient clients that don't understand filename*.
-    filename = f"第{b['batch_number']}次进货.pdf"
-    encoded_filename = quote(filename)
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = (
-        f'attachment; filename="procurement_{b["batch_number"]}.pdf"; '
-        f"filename*=UTF-8''{encoded_filename}"
-    )
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 # ── 分享链接 ──
@@ -1803,14 +1793,10 @@ def api_share_pdf(token):
         note=b.get('note', '') or '无', images_html=images_html,
         operator='—', gen_date='—')
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-    filename = f"第{b['batch_number']}次进货.pdf"
-    encoded_filename = quote(filename)
+    filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = (
-        f'inline; filename="procurement_{b["batch_number"]}.pdf"; '
-        f"filename*=UTF-8''{encoded_filename}"
-    )
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
     return response
 
 @app.route('/api/stats')
