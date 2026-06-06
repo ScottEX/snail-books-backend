@@ -1667,6 +1667,9 @@ def api_procurement_batch_pdf(id):
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html,
         total=b['total'],
         images_html=images_html,
@@ -1769,6 +1772,9 @@ def api_share_pdf(token):
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html,
         total=b['total'],
         images_html=images_html,
@@ -1835,6 +1841,9 @@ def _render_procurement_png(batch_id):
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html,
         total=b['total'],
         images_html=images_html,
