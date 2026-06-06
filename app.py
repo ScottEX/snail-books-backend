@@ -621,7 +621,7 @@ def init_db():
                 month INTEGER NOT NULL,
                 meituan_cashier REAL DEFAULT 0,
                 meituan_waimai REAL DEFAULT 0,
-                eleme_waimai REAL DEFAULT 0,
+                shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
                 UNIQUE(year, month)
             );
@@ -631,7 +631,7 @@ def init_db():
                 entry_date TEXT NOT NULL,
                 meituan_cashier REAL DEFAULT 0,
                 meituan_waimai REAL DEFAULT 0,
-                eleme_waimai REAL DEFAULT 0,
+                shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -2424,21 +2424,21 @@ def api_add_platform_fee_entry():
     entry_date = data.get('entry_date')
     mc = data.get('meituan_cashier', 0)
     mw = data.get('meituan_waimai', 0)
-    ew = data.get('eleme_waimai', 0)
+    ew = data.get('shangou_waimai', 0)
     mt = data.get('meituan_tuan', 0)
     with get_db() as db:
         # Upsert monthly row
-        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
+        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
                       VALUES (?,?,?,?,?,?)
                       ON CONFLICT(year, month) DO UPDATE SET
                       meituan_cashier=meituan_cashier+excluded.meituan_cashier,
                       meituan_waimai=meituan_waimai+excluded.meituan_waimai,
-                      eleme_waimai=eleme_waimai+excluded.eleme_waimai,
+                      shangou_waimai=shangou_waimai+excluded.shangou_waimai,
                       meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
                    (year, month, mc, mw, ew, mt))
         fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
         # Record the daily entry
-        db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, eleme_waimai, meituan_tuan)
+        db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
                       VALUES (?,?,?,?,?,?)''',
                    (fee_id, entry_date, mc, mw, ew, mt))
         updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
@@ -2449,10 +2449,10 @@ def api_add_platform_fee_entry():
 def api_update_platform_fee(id):
     data = request.get_json()
     with get_db() as db:
-        db.execute('''UPDATE platform_fees SET meituan_cashier=?, meituan_waimai=?, eleme_waimai=?, meituan_tuan=?
+        db.execute('''UPDATE platform_fees SET meituan_cashier=?, meituan_waimai=?, shangou_waimai=?, meituan_tuan=?
                       WHERE id=?''',
                    (data.get('meituan_cashier', 0), data.get('meituan_waimai', 0),
-                    data.get('eleme_waimai', 0), data.get('meituan_tuan', 0), id))
+                    data.get('shangou_waimai', 0), data.get('meituan_tuan', 0), id))
         return jsonify({'status': 'ok'})
 
 # ====== Daily Revenue (每日营收) ======
@@ -2581,7 +2581,7 @@ def api_business_summary():
         # Platform fees total (all months)
         pf = db.execute(
             'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
-            ' COALESCE(SUM(eleme_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf'
+            ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf'
             ' FROM platform_fees'
         ).fetchone()
         platform_fees_total = pf['total_pf']

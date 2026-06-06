@@ -48,6 +48,16 @@ TRANSLATIONS = {
         'flashSale': '闪购',
         'tuan': '团购',
         'jd': '京东',
+        # ── Reserved for future backend platform fee PDF / email rendering ──
+        # The 4 `platform_fees` / `platform_fee_entries` channels
+        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
+        # currently have 0 _t() callsites. They are added preemptively to
+        # prevent raw keys leaking in future PDF / email / SMS outputs.
+        # DO NOT REMOVE. (added 2026-06-06)
+        'meituanCashier': '美团收银',
+        'meituanWaimai': '美团外卖',
+        'shangouWaimai': '闪购外卖',
+        'meituanTuan': '美团团购',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -96,6 +106,16 @@ TRANSLATIONS = {
         'flashSale': '閃購',
         'tuan': '團購',
         'jd': '京東',
+        # ── Reserved for future backend platform fee PDF / email rendering ──
+        # The 4 `platform_fees` / `platform_fee_entries` channels
+        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
+        # currently have 0 _t() callsites. They are added preemptively to
+        # prevent raw keys leaking in future PDF / email / SMS outputs.
+        # DO NOT REMOVE. (added 2026-06-06)
+        'meituanCashier': '美團收銀',
+        'meituanWaimai': '美團外賣',
+        'shangouWaimai': '閃購外賣',
+        'meituanTuan': '美團團購',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -144,6 +164,16 @@ TRANSLATIONS = {
         'flashSale': 'Flash Sale',
         'tuan': 'Group Buy',
         'jd': 'JD.com',
+        # ── Reserved for future backend platform fee PDF / email rendering ──
+        # The 4 `platform_fees` / `platform_fee_entries` channels
+        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
+        # currently have 0 _t() callsites. They are added preemptively to
+        # prevent raw keys leaking in future PDF / email / SMS outputs.
+        # DO NOT REMOVE. (added 2026-06-06)
+        'meituanCashier': 'Meituan POS',
+        'meituanWaimai': 'Meituan Waimai',
+        'shangouWaimai': 'Flash Waimai',
+        'meituanTuan': 'Meituan Tuan',
     }
 }
 
