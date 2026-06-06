@@ -1674,6 +1674,7 @@ def api_procurement_batch_pdf(id):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
+        batch_label_text=f"第{b['batch_number']}次进货",
         operator=g.username,
         gen_date=now.strftime('%Y年%m月%d日'),
     )
@@ -1781,6 +1782,7 @@ def api_share_pdf(token):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
+        batch_label_text=f"第{b['batch_number']}次进货",
         operator='—',
         gen_date='—',
     )
@@ -1850,6 +1852,7 @@ def _render_procurement_png(batch_id):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
+        batch_label_text=f"第{b['batch_number']}次进货",
         operator='—',
         gen_date='—',
     )
