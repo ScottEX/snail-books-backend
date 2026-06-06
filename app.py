@@ -23,20 +23,6 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'snail-books-lanxu-2026-secr
 # Session timeout: 24 hours
 app.permanent_session_lifetime = timedelta(hours=24)
 
-# ── CORS (for iOS App cross-origin requests) ──
-@ app.after_request
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,X-Lang,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-    return response
-
-@ app.before_request
-def handle_options():
-    if request.method == 'OPTIONS':
-        return make_response('', 200)
-
 FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
 IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
@@ -79,13 +65,6 @@ def serve_user_image(subpath):
     resp = make_response(send_file(file_path, mimetype=mime or 'image/jpeg'))
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
-
-
-@ app.before_request
-def detect_lang():
-    g.lang = get_lang(request)
-
-
 # ── SPA static file serving ──
 import mimetypes
 
