@@ -1725,6 +1725,8 @@ def api_share_link(id):
 @app.route('/api/share/<token>', methods=['GET'])
 def api_share_pdf(token):
     """通过 token 访问 PDF（无需登录）"""
+    # 不走 login_required → g.lang 未初始化。PDF 全文简中（按用户要求），所以强制设为 'zh-CN'
+    g.lang = 'zh-CN'
     batch_id = _verify_share_token(token)
     if not batch_id:
         return jsonify({'status':'error','message':'链接已过期或无效'}), 410
