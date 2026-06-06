@@ -1658,18 +1658,19 @@ def api_procurement_batch_pdf(id):
     with open(template_path, 'r', encoding='utf-8') as f:
         html = f.read()
 
+    # 可选备注：仅当填了才渲染"可选备注：xxx"行（PDF 只简中）
+    _note_raw = (b.get('note') or '').strip()
+    note_html = f'<div class="note">可选备注：{_note_raw}</div>' if _note_raw else ''
+
     # 填充数据
     now = datetime.now()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
-        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
-        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
-        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html,
         total=b['total'],
-        note=b.get('note', '') or '无',
         images_html=images_html,
+        note_html=note_html,
         operator=g.username,
         gen_date=now.strftime('%Y年%m月%d日'),
     )
@@ -1817,14 +1818,21 @@ def _render_procurement_png(batch_id):
     template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
     with open(template_path, 'r', encoding='utf-8') as f:
         html = f.read()
+
+    # 可选备注：仅当填了才渲染"可选备注：xxx"行（PDF 只简中）
+    _note_raw = (b.get('note') or '').strip()
+    note_html = f'<div class="note">可选备注：{_note_raw}</div>' if _note_raw else ''
+
     html = html.format(
-        batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
-        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
-        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
-        category=_t(b.get('category', 'goods'), g.lang),
-        items_html=items_html, total=b['total'],
-        note=b.get('note', '') or '无', images_html=images_html,
-        operator='—', gen_date='—')
+        batch_number=f"2026-{b['batch_number']:04d}",
+        date=date_str,
+        items_html=items_html,
+        total=b['total'],
+        images_html=images_html,
+        note_html=note_html,
+        operator='—',
+        gen_date='—',
+    )
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     page = doc[0]
