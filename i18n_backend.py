@@ -33,6 +33,11 @@ TRANSLATIONS = {
         'msg_code_resent': '验证码已重新发送',
         'msg_forgot_sent': '如该邮箱已注册，验证码已发送',
         'msg_reset_ok': '密码重置成功！请使用新密码登录',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': '现金',
+        'payWechat': '微信',
+        'payAlipay': '支付宝',
+        'goods': '采购',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -66,6 +71,11 @@ TRANSLATIONS = {
         'msg_code_resent': '驗證碼已重新發送',
         'msg_forgot_sent': '如該郵箱已註冊，驗證碼已發送',
         'msg_reset_ok': '密碼重設成功！請使用新密碼登入',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': '現金',
+        'payWechat': '微信',
+        'payAlipay': '支付寶',
+        'goods': '採購',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -99,6 +109,11 @@ TRANSLATIONS = {
         'msg_code_resent': 'Verification code resent',
         'msg_forgot_sent': 'If registered, a verification code has been sent',
         'msg_reset_ok': 'Password reset! Please login with your new password',
+        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'payCash': 'Cash',
+        'payWechat': 'WeChat',
+        'payAlipay': 'Alipay',
+        'goods': 'Procurement',
     }
 }
 

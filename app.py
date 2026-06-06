@@ -594,8 +594,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_number INTEGER NOT NULL DEFAULT 0,
                 date TEXT NOT NULL,
-                payment_method TEXT NOT NULL DEFAULT '微信',
-                category TEXT DEFAULT '采购',
+                payment_method TEXT NOT NULL DEFAULT 'payWechat',
+                category TEXT DEFAULT 'goods',
                 total REAL NOT NULL DEFAULT 0,
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
@@ -787,7 +787,7 @@ def init_db():
                     ORDER BY pb.id DESC LIMIT 1
                 )
                 WHERE transactions.type = 'expense'
-                  AND transactions.category = '采购'
+                  AND transactions.category IN ('采购', 'goods')  -- legacy '采购' (pre-migration) + new 'goods'
                   AND transactions.procurement_batch_id IS NULL
             """)
         except:
@@ -1517,7 +1517,7 @@ def api_procurement_batches():
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
                 'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category','采购'), round(total, 2),
+                (batch_no, data['date'], data['payment_method'], data.get('category','goods'), round(total, 2),
                  images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
@@ -1529,7 +1529,7 @@ def api_procurement_batches():
             # Sync an expense transaction (with thumb_images so history list can show thumbnail)
             cur = db.execute(
                 "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category','采购'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json, batch_id)
+                (round(total, 2), data.get('category','goods'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json, batch_id)
             )
             db.commit()
         return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -1567,7 +1567,8 @@ def api_procurement_batch_detail(id):
             # Remove the linked expense transaction (any with this procurement_batch_id, plus fallback for orphan history)
             batch = dict(row)
             db.execute(
-                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category='采购' AND date=? AND amount=? AND account=?)",
+                # category matches both legacy '采购' (pre-migration) and new 'goods' (post-migration)
+                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category IN ('采购', 'goods') AND date=? AND amount=? AND account=?)",
                 (id, batch['date'], batch['total'], batch['payment_method'])
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
@@ -1608,13 +1609,13 @@ def api_procurement_batch_detail(id):
             # Update batch header (batch_number immutable)
             db.execute(
                 "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
-                (data['date'], data['payment_method'], data.get('category','采购'),
+                (data['date'], data['payment_method'], data.get('category','goods'),
                  round(total, 2), images_json, thumbs_json, data.get('note',''), id)
             )
             # Sync linked transaction
             db.execute(
                 "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
-                (round(total, 2), data.get('category','采购'), data['payment_method'],
+                (round(total, 2), data.get('category','goods'), data['payment_method'],
                  data.get('note',''), data['date'], images_json, thumbs_json, id)
             )
             db.commit()
@@ -1690,8 +1691,9 @@ def api_procurement_batch_pdf(id):
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
-        payment_method=b.get('payment_method', '微信'),
-        category=b.get('category', '采购'),
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html,
         total=b['total'],
         note=b.get('note', '') or '无',
@@ -1788,7 +1790,7 @@ def api_share_pdf(token):
         html = f.read()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
-        payment_method=b.get('payment_method', '微信'), category=b.get('category', '采购'),
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang), category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html, total=b['total'],
         note=b.get('note', '') or '无', images_html=images_html,
         operator='—', gen_date='—')
@@ -1845,7 +1847,9 @@ def _render_procurement_png(batch_id):
         html = f.read()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}", date=date_str,
-        payment_method=b.get('payment_method', '微信'), category=b.get('category', '采购'),
+        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
+        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
+        category=_t(b.get('category', 'goods'), g.lang),
         items_html=items_html, total=b['total'],
         note=b.get('note', '') or '无', images_html=images_html,
         operator='—', gen_date='—')
