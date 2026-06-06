@@ -64,7 +64,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/templates/procurement_order.html"
+          source: "backend/app.py,backend/i18n_backend.py"
           target: "/opt/snail-books-backend-staging/"
           strip_components: 1
 
@@ -125,7 +125,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/templates/procurement_order.html"
+          source: "backend/app.py,backend/i18n_backend.py"
           target: "/opt/snail-books-backend/"
           strip_components: 1
 
