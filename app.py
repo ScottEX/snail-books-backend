@@ -1503,9 +1503,9 @@ def api_procurement_batches():
             images_json = json.dumps(data.get('images', []))
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
-                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 (batch_no, data['date'], data['payment_method'], data.get('category','goods'), round(total, 2),
-                 images_json, thumbs_json, data.get('note', ''))
+                 images_json, thumbs_json, data.get('note', ''), g.user_id)
             )
             batch_id = cur.lastrowid
             for name, spec, up, qty, sub, pid in item_rows:
