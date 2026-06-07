@@ -284,6 +284,7 @@ def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
 
 
 def _get_cached_pdf(batch_id):
+    _cleanup_orphaned_cache()
     cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
     if os.path.isfile(cache_path):
         with open(cache_path, 'rb') as f:
@@ -302,6 +303,40 @@ def _delete_cached_pdf(batch_id):
     cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
     if os.path.isfile(cache_path):
         os.remove(cache_path)
+
+
+_LAST_ORPHAN_CLEANUP = 0
+_ORPHAN_CLEANUP_INTERVAL = 3600  # 1 hour between cleanup scans
+
+
+def _cleanup_orphaned_cache():
+    """Remove cached PDFs whose batch no longer exists in DB. Runs at most once per hour."""
+    global _LAST_ORPHAN_CLEANUP
+    now = time.time()
+    if now - _LAST_ORPHAN_CLEANUP < _ORPHAN_CLEANUP_INTERVAL:
+        return
+    _LAST_ORPHAN_CLEANUP = now
+    if not os.path.isdir(PDF_CACHE_DIR):
+        return
+    try:
+        with get_db() as db:
+            existing = set(r[0] for r in db.execute('SELECT id FROM procurement_batches').fetchall())
+        removed = 0
+        for fname in os.listdir(PDF_CACHE_DIR):
+            if not fname.startswith('batch_') or not fname.endswith('.pdf'):
+                continue
+            try:
+                fid = int(fname[len('batch_'):-len('.pdf')])
+            except ValueError:
+                continue
+            if fid not in existing:
+                os.remove(os.path.join(PDF_CACHE_DIR, fname))
+                removed += 1
+        if removed:
+            import logging
+            logging.getLogger('procurement.pdf').info(f'Orphan cache cleanup: removed {removed} stale PDF(s)')
+    except Exception:
+        pass  # Never let cleanup break the request
 
 
 @procurement_bp.route('/procurement-batches/<int:id>/pdf' , methods=['GET'])
