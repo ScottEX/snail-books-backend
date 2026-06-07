@@ -86,7 +86,7 @@ def api_add_cart():
         return jsonify({'status': 'ok'})
 
 
-@procurement_bp.route('/api/procurement-cart/<int:product_id>', methods=['DELETE'])
+@procurement_bp.route('/procurement-cart/<int:product_id>', methods=['DELETE'])
 @login_required
 def api_remove_cart_item(product_id):
     with get_db() as db:
@@ -177,7 +177,7 @@ def api_procurement_batches():
     return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
 
 
-@procurement_bp.route('/api/procurement-batches/<int:id>', methods=['GET', 'PUT', 'DELETE'])
+@procurement_bp.route('/procurement-batches/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def api_procurement_batch_detail(id):
     """Single procurement batch: detail, edit, delete."""
@@ -260,7 +260,7 @@ def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
         return future.result(timeout=timeout)
 
 
-@procurement_bp.route('/api/procurement-batches/<int:id>/pdf', methods=['GET'])
+@procurement_bp.route('/procurement-batches/<int:id>/pdf', methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
     """Generate procurement batch PDF."""
@@ -383,7 +383,7 @@ def _verify_share_token(token):
         return None
 
 
-@procurement_bp.route('/api/procurement-batches/<int:id>/share-link', methods=['GET'])
+@procurement_bp.route('/procurement-batches/<int:id>/share-link', methods=['GET'])
 @login_required
 def api_share_link(id):
     """Generate 24-hour share link."""
