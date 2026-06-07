@@ -258,10 +258,26 @@ PDF_TIMEOUT = 30
 
 def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
     """Generate PDF from HTML string with timeout protection."""
-    import weasyprint
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(lambda: weasyprint.HTML(string=html).write_pdf())
-        return future.result(timeout=timeout)
+    import weasyprint, logging
+    log = logging.getLogger('procurement.pdf')
+    start = time.time()
+    def _render():
+        return weasyprint.HTML(string=html).write_pdf()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_render)
+            pdf_bytes = future.result(timeout=timeout)
+        elapsed = time.time() - start
+        log.info(f'PDF rendered in {elapsed:.1f}s ({len(pdf_bytes)} bytes)')
+        return pdf_bytes
+    except concurrent.futures.TimeoutError:
+        elapsed = time.time() - start
+        log.error(f'PDF render timed out after {elapsed:.1f}s (> {timeout}s limit)')
+        raise
+    except Exception as e:
+        elapsed = time.time() - start
+        log.exception(f'PDF render failed after {elapsed:.1f}s: {e}')
+        raise RuntimeError(f'PDF render failed: {e}') from e
 
 
 @procurement_bp.route('/procurement-batches/<int:id>/pdf', methods=['GET'])
@@ -355,6 +371,8 @@ def api_procurement_batch_pdf(id):
         pdf_bytes = _write_pdf_with_timeout(html)
     except concurrent.futures.TimeoutError:
         return jsonify({'status': 'error', 'message': 'PDF生成超时，请稍后重试'}), 504
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
@@ -480,6 +498,8 @@ def api_share_pdf(token):
         pdf_bytes = _write_pdf_with_timeout(html)
     except concurrent.futures.TimeoutError:
         return jsonify({'status': 'error', 'message': 'PDF生成超时，请稍后重试'}), 504
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
@@ -565,7 +585,7 @@ def _render_procurement_png(batch_id):
 
     try:
         pdf_bytes = _write_pdf_with_timeout(html)
-    except concurrent.futures.TimeoutError:
+    except (concurrent.futures.TimeoutError, RuntimeError):
         return None, None
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     page = doc[0]

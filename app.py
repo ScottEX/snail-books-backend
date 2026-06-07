@@ -513,6 +513,23 @@ app.register_blueprint(settings_bp, url_prefix='/api')
 app.register_blueprint(tx_bp, url_prefix='/api')
 
 
+# ── Global error handlers — return JSON for API routes ──
+@app.errorhandler(500)
+def handle_500(e):
+    import logging
+    log = logging.getLogger('app')
+    log.exception('Unhandled 500: %s', e)
+    return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    # Only return JSON for /api/* routes; let the SPA handle frontend routing
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    return e.get_response()
+
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=8600, debug=False)
