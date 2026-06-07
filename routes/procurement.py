@@ -245,6 +245,10 @@ def api_procurement_batch_detail(id):
         b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
         b['items'] = [dict(it) for it in items]
+        # Include operator username
+        if b.get('user_id'):
+            user_row = db.execute('SELECT username FROM users WHERE id=?', (b['user_id'],)).fetchone()
+            b['operator'] = user_row['username'] if user_row else ''
     return jsonify(b)
 
 
