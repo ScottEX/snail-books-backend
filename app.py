@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """🍜 蓝姐 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re, json, time
+import sqlite3, os, secrets, functools, re, json, time, mimetypes
 from datetime import datetime, date
 from contextlib import contextmanager
 from datetime import datetime, timedelta
