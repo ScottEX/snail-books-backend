@@ -262,6 +262,69 @@ def chart():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  Chart — monthly aggregated (income from daily_revenue, expense from transactions)
+# ═══════════════════════════════════════════════════════════════════════
+
+@settings_bp.route('/chart/monthly')
+@login_required
+def chart_monthly():
+    with get_db() as db:
+        # Monthly income from daily_revenue (revenue + jd_revenue)
+        income_rows = db.execute("""
+            SELECT strftime('%Y-%m', date) as month,
+                   COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) as income
+            FROM daily_revenue
+            WHERE date >= date('now', '-12 months')
+            GROUP BY month ORDER BY month
+        """).fetchall()
+
+        # Monthly expense from transactions
+        expense_rows = db.execute("""
+            SELECT strftime('%Y-%m', created_at) as month,
+                   COALESCE(SUM(amount), 0) as expense
+            FROM transactions
+            WHERE type='expense' AND created_at >= date('now', '-12 months')
+            GROUP BY month ORDER BY month
+        """).fetchall()
+
+        # Current month expense category breakdown
+        month_str = date.today().strftime('%Y-%m')
+        cat_rows = db.execute("""
+            SELECT category, COALESCE(SUM(amount), 0) as total
+            FROM transactions
+            WHERE type='expense' AND strftime('%Y-%m', created_at)=?
+            GROUP BY category ORDER BY total DESC
+        """, (month_str,)).fetchall()
+
+    # Build 12-month label list (oldest first)
+    today = date.today()
+    months = []
+    y, m = today.year, today.month
+    for i in range(11, -1, -1):
+        mm = m - i
+        yy = y
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        months.append(f'{yy}-{mm:02d}')
+
+    income_dict = {r['month']: round(r['income'], 2) for r in income_rows}
+    expense_dict = {r['month']: round(r['expense'], 2) for r in expense_rows}
+
+    income_list = [income_dict.get(m, 0) for m in months]
+    expense_list = [expense_dict.get(m, 0) for m in months]
+    profit_list = [round(income_list[i] - expense_list[i], 2) for i in range(len(months))]
+
+    return jsonify({
+        'months': months,
+        'income': income_list,
+        'expense': expense_list,
+        'profit': profit_list,
+        'categories': {r['category']: round(r['total'], 2) for r in cat_rows},
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  OTA — public (no auth required)
 # ═══════════════════════════════════════════════════════════════════════
 
