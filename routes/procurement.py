@@ -195,6 +195,7 @@ def api_procurement_batch_detail(id):
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
+            _delete_cached_pdf(id)
             return jsonify({'status': 'ok'})
 
         if request.method == 'PUT':

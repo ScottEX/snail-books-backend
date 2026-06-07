@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""🍜 蓝姐 · 记账系统
+"""🍜 蓝姐 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re, json, time
+import sqlite3, os, secrets, functools, re, json, time, mimetypes
 from datetime import datetime, date
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -19,7 +19,7 @@ from i18n_backend import get_lang
 app = Flask(__name__)
 _secret = os.environ.get('FLASK_SECRET_KEY')
 if not _secret:
-    raise RuntimeError("FLASK_SECRET_KEY environment variable is required — generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
+    raise RuntimeError("FLASK_SECRET_KEY environment variable is required -- generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
 app.secret_key = _secret
 app.permanent_session_lifetime = timedelta(hours=24)
 
@@ -102,13 +102,13 @@ def serve_spa_root(path):
     return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
 
 
-# Email config — Resend HTTP API
+# Email config -- Resend HTTP API
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
-DEV_MODE = not RESEND_API_KEY  # 无 key → dev 模式：验证码返给前端
+DEV_MODE = not RESEND_API_KEY  # 无 key → dev 模式:验证码返给前端
 
 def _send_email(to_email, subject, body, code):
-    """发信：无 key 时 dev mode，否则走 Resend HTTP API"""
+    """发信:无 key 时 dev mode,否则走 Resend HTTP API"""
     if not RESEND_API_KEY:
         print(f"[EMAIL] Dev mode: code={code} for {to_email} ({subject})")
         return True
@@ -135,25 +135,25 @@ def _send_email(to_email, subject, body, code):
 def send_verification_email(to_email, code, lang='zh-CN'):
     templates = {
         'zh-CN': {
-            'subject': f'【柳味探秘】您的账户注册验证码：{code}',
+            'subject': f'【柳味探秘】您的账户注册验证码:{code}',
             'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
         <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在注册柳味探秘科技账户，以下是您的电子邮箱验证码：</p>
+        <p>您好!您正在注册柳味探秘科技账户,以下是您的电子邮箱验证码:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在注册页面输入此验证码以完成身份验证。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，可能是其他用户不小心输入了您的邮箱，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟.请在注册页面输入此验证码以完成身份验证.</p>
+        <p style="color:#9C9A95;font-size:12px">提示:如果这不是您本人的操作,可能是其他用户不小心输入了您的邮箱,您可以安全地忽略此邮件,您的账户不会受到任何影响.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
     </div>'''
         },
         'zh-TW': {
-            'subject': f'【柳味探秘】您的帳戶註冊驗證碼：{code}',
+            'subject': f'【柳味探秘】您的帳戶註冊驗證碼:{code}',
             'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
         <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在註冊柳味探秘科技帳戶，以下是您的電子郵箱驗證碼：</p>
+        <p>您好!您正在註冊柳味探秘科技帳戶,以下是您的電子郵箱驗證碼:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在註冊頁面輸入此驗證碼以完成身份驗證。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，可能是其他用戶不小心輸入了您的郵箱，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
+        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘.請在註冊頁面輸入此驗證碼以完成身份驗證.</p>
+        <p style="color:#9C9A95;font-size:12px">提示:如果這不是您本人的操作,可能是其他用戶不小心輸入了您的郵箱,您可以安全地忽略此郵件,您的帳戶不會受到任何影響.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
     </div>'''
@@ -165,7 +165,7 @@ def send_verification_email(to_email, code, lang='zh-CN'):
         <p>Hello! You are registering a LiuWei TanMi account. Here is your email verification code:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
         <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the registration page to complete verification.</p>
-        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, someone may have accidentally entered your email. You can safely ignore this message — your account will not be affected.</p>
+        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, someone may have accidentally entered your email. You can safely ignore this message -- your account will not be affected.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
     </div>'''
@@ -177,25 +177,25 @@ def send_verification_email(to_email, code, lang='zh-CN'):
 def send_reset_email(to_email, code, lang='zh-CN'):
     templates = {
         'zh-CN': {
-            'subject': f'【柳味探秘】密码重置验证码：{code}',
+            'subject': f'【柳味探秘】密码重置验证码:{code}',
             'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
         <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在为柳味探秘科技账户重置密码，以下是您的验证码：</p>
+        <p>您好!您正在为柳味探秘科技账户重置密码,以下是您的验证码:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在重置密码页面输入此验证码以完成操作。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
+        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟.请在重置密码页面输入此验证码以完成操作.</p>
+        <p style="color:#9C9A95;font-size:12px">提示:如果这不是您本人的操作,您可以安全地忽略此邮件,您的账户不会受到任何影响.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
     </div>'''
         },
         'zh-TW': {
-            'subject': f'【柳味探秘】密碼重置驗證碼：{code}',
+            'subject': f'【柳味探秘】密碼重置驗證碼:{code}',
             'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
         <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在為柳味探秘科技帳戶重置密碼，以下是您的驗證碼：</p>
+        <p>您好!您正在為柳味探秘科技帳戶重置密碼,以下是您的驗證碼:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在重置密碼頁面輸入此驗證碼以完成操作。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
+        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘.請在重置密碼頁面輸入此驗證碼以完成操作.</p>
+        <p style="color:#9C9A95;font-size:12px">提示:如果這不是您本人的操作,您可以安全地忽略此郵件,您的帳戶不會受到任何影響.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
     </div>'''
@@ -207,7 +207,7 @@ def send_reset_email(to_email, code, lang='zh-CN'):
         <p>Hello! You are resetting your LiuWei TanMi account password. Here is your verification code:</p>
         <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
         <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the password reset page to complete the process.</p>
-        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, you can safely ignore this message — your account will not be affected.</p>
+        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, you can safely ignore this message -- your account will not be affected.</p>
         <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
         <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
     </div>'''
@@ -220,7 +220,7 @@ def generate_code():
     return ''.join(random.choices(string.digits, k=6))
 
 def validate_password(password, lang='zh-CN'):
-    """返回 (bool, str)。密码强度：最少8位，必须含字母、数字和特殊字符"""
+    """返回 (bool, str).密码强度:最少8位,必须含字母,数字和特殊字符"""
     if len(password) < 8:
         return False, _t('err_pw_too_short', lang)
     if not re.search(r'[A-Za-z]', password):
@@ -232,7 +232,7 @@ def validate_password(password, lang='zh-CN'):
     return True, ''
 
 def validate_username(username):
-    """返回 (bool, str)。用户名：2-32位，字母数字下划线中文"""
+    """返回 (bool, str).用户名:2-32位,字母数字下划线中文"""
     if len(username) < 2 or len(username) > 32:
         return False
     if not re.match(r'^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$', username):
@@ -267,11 +267,11 @@ DEFAULT_PRODUCTS = [
     ('大号猪脚B14','84个/件','',490,'蓝姐'),
     ('大号猪脚B13','78个/件','',490,'蓝姐'),
     ('大号卤鸭脚','300个/件','',510,'蓝姐'),
-    ('炸虎皮鸡爪（大号）','30个/包','',78,'蓝姐'),
-    ('锅烧（一级超薄精品）','20斤/件','',370,'蓝姐'),
-    ('爆丫丫（卤鸡蛋）','30个/包','',29,'蓝姐'),
-    ('爆丫丫（卤鹌鹑蛋）','1.5kg/包','',25.5,'蓝姐'),
-    ('爆丫丫（流心蛋）','180个/件','',405,'蓝姐'),
+    ('炸虎皮鸡爪(大号)','30个/包','',78,'蓝姐'),
+    ('锅烧(一级超薄精品)','20斤/件','',370,'蓝姐'),
+    ('爆丫丫(卤鸡蛋)','30个/包','',29,'蓝姐'),
+    ('爆丫丫(卤鹌鹑蛋)','1.5kg/包','',25.5,'蓝姐'),
+    ('爆丫丫(流心蛋)','180个/件','',405,'蓝姐'),
     ('金稻香米粉','25kg/件','',150,'蓝姐'),
     ('华A干米粉','25kg/件','',146,'蓝姐'),
     ('柳纯米粉','25kg/件','',151,'蓝姐'),
@@ -279,7 +279,7 @@ DEFAULT_PRODUCTS = [
     ('三合一调料包','10包/件','',345,'蓝姐'),
     ('卤香红油','4桶/件','',530,'蓝姐'),
     ('卤七寸','10条/包','',200,'蓝姐'),
-    ('卤味肥肠（特级净油）','30条/包','',159,'蓝姐'),
+    ('卤味肥肠(特级净油)','30条/包','',159,'蓝姐'),
     ('卤味鸭胗','30个/包','',84,'蓝姐'),
     ('卤牛肚','1kg/包','',109,'蓝姐'),
     ('牛杂串','100串/包','',82,'蓝姐'),
@@ -297,9 +297,9 @@ DEFAULT_PRODUCTS = [
     ('广味腊肠','10斤/箱','',116,'蓝姐'),
     ('天然之宝螺肉','9kg/件','',86,'蓝姐'),
     ('木耳丝','10kg/件','',244,'蓝姐'),
-    ('黄金卷（腐竹）','24盒/件','',137,'蓝姐'),
-    ('豆皮（清蔓雨）','18斤/箱','',136,'蓝姐'),
-    ('精品腐竹（红箱）','18斤/箱','',185,'蓝姐'),
+    ('黄金卷(腐竹)','24盒/件','',137,'蓝姐'),
+    ('豆皮(清蔓雨)','18斤/箱','',136,'蓝姐'),
+    ('精品腐竹(红箱)','18斤/箱','',185,'蓝姐'),
     ('油炸腐竹','10斤/件','',125,'蓝姐'),
     ('炸花生','30斤/件','',255,'蓝姐'),
     ('老卤王','10包/件','',180,'蓝姐'),
@@ -307,40 +307,40 @@ DEFAULT_PRODUCTS = [
     ('原味地道肠','20包/件','',300,'蓝姐'),
     ('奥尔良琵琶鸡腿','20斤/件','',206,'蓝姐'),
     ('黄花菜','20斤/箱','',585,'蓝姐'),
-    ('优奶仕（豆花粉）','20包/件','',750,'蓝姐'),
+    ('优奶仕(豆花粉)','20包/件','',750,'蓝姐'),
     ('黄片糖','20斤/件','',83,'蓝姐'),
-    ('螺味全辣椒油（微辣）','30包/件','',450,'蓝姐'),
-    ('螺味全辣椒油（中辣）','30包/件','',450,'蓝姐'),
-    ('螺味全辣椒油（特辣）','30包/件','',510,'蓝姐'),
+    ('螺味全辣椒油(微辣)','30包/件','',450,'蓝姐'),
+    ('螺味全辣椒油(中辣)','30包/件','',450,'蓝姐'),
+    ('螺味全辣椒油(特辣)','30包/件','',510,'蓝姐'),
     ('香辛料调味油','5升/桶','',130,'蓝姐'),
     # ── 粉仔 (2) ──
     ('米粉','60斤/包','',170,'粉仔'),
     ('豆皮','18斤/箱','',135,'粉仔'),
     # ── 鲜禾 (4) ──
-    ('米粉（绿水人家）','60斤/包','',172,'鲜禾'),
-    ('豆皮（王中王）','18斤/箱','',138,'鲜禾'),
+    ('米粉(绿水人家)','60斤/包','',172,'鲜禾'),
+    ('豆皮(王中王)','18斤/箱','',138,'鲜禾'),
     ('白背木耳丝','20斤/件','',265,'鲜禾'),
-    ('八度笋-原味','10斤×5包','',150,'鲜禾'),
+    ('八度笋-原味','10斤x5包','',150,'鲜禾'),
     # ── 蒙方 (20) ──
-    ('融水片红豆角','10斤×5包','',130,'蒙方'),
+    ('融水片红豆角','10斤x5包','',130,'蒙方'),
     ('原味酸笋','50斤/件','',112,'蒙方'),
     ('融水红油豆角','50斤/件','',135,'蒙方'),
     ('原味酸豆角','50斤/件','',115,'蒙方'),
     ('融水米粉','48斤/件','',124,'蒙方'),
-    ('增香红油（微辣）','4桶/件','',345,'蒙方'),
-    ('增香红油（中辣）','4桶/件','',370,'蒙方'),
-    ('增香红油（特辣）','4桶/件','',365,'蒙方'),
-    ('增香红油（魔鬼辣）','4桶/件','',400,'蒙方'),
+    ('增香红油(微辣)','4桶/件','',345,'蒙方'),
+    ('增香红油(中辣)','4桶/件','',370,'蒙方'),
+    ('增香红油(特辣)','4桶/件','',365,'蒙方'),
+    ('增香红油(魔鬼辣)','4桶/件','',400,'蒙方'),
     ('卤鸡脚','200个/件','',400,'蒙方'),
     ('魔鬼辣椒粉末','10斤/件','',145,'蒙方'),
     ('特红粉末','10斤/件','',90,'蒙方'),
-    ('黄金卷（腐竹）','32盒/件','',185,'蒙方'),
-    ('木耳丝（特级）','30斤/件','',335,'蒙方'),
-    ('木耳丝（A级）','30斤/件','',300,'蒙方'),
-    ('木耳丝（B级）','30斤/件','',280,'蒙方'),
-    ('豆皮（正山）','20斤/件','',142,'蒙方'),
-    ('豆皮（薄款）','20斤/件','',137,'蒙方'),
-    ('豆皮（王中王）','20斤/件','',135,'蒙方'),
+    ('黄金卷(腐竹)','32盒/件','',185,'蒙方'),
+    ('木耳丝(特级)','30斤/件','',335,'蒙方'),
+    ('木耳丝(A级)','30斤/件','',300,'蒙方'),
+    ('木耳丝(B级)','30斤/件','',280,'蒙方'),
+    ('豆皮(正山)','20斤/件','',142,'蒙方'),
+    ('豆皮(薄款)','20斤/件','',137,'蒙方'),
+    ('豆皮(王中王)','20斤/件','',135,'蒙方'),
     ('干石螺肉','5斤/件','',225,'蒙方'),
     # ── 桂螺帮 (1) ──
     ('桂螺帮螺蛳粉1.2-1.4','60斤/件','',160,'桂螺帮'),
@@ -364,7 +364,7 @@ def login_required(f):
                     if exists:
                         session['user_id'] = uid
                     else:
-                        # User deleted — clean orphan token
+                        # User deleted -- clean orphan token
                         with get_db() as db:
                             db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
                             db.commit()
@@ -637,7 +637,7 @@ app.register_blueprint(settings_bp, url_prefix='/api')
 app.register_blueprint(tx_bp, url_prefix='/api')
 
 
-# ── Global error handlers — return JSON for API routes ──
+# ── Global error handlers -- return JSON for API routes ──
 @app.errorhandler(500)
 def handle_500(e):
     import logging
@@ -739,18 +739,18 @@ def register():
         return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
     # 用户名格式校验
     if not validate_username(username):
-        return jsonify({'status':'error','message':_t('err_username_invalid', g.lang) or '用户名仅支持字母、数字、下划线和中文，2-32位'}), 400
+        return jsonify({'status':'error','message':_t('err_username_invalid', g.lang) or '用户名仅支持字母,数字,下划线和中文,2-32位'}), 400
     # 密码强度校验
     ok, msg = validate_password(password, g.lang)
     if not ok:
         return jsonify({'status':'error','message':msg}), 400
     with get_db() as db:
-        # 检查重复：已验证用户 → 拒绝；未验证用户 → 覆盖重注册
+        # 检查重复:已验证用户 → 拒绝;未验证用户 → 覆盖重注册
         exists = db.execute('SELECT id, is_verified FROM users WHERE username=? OR email=?',(username, email)).fetchone()
         if exists:
             if exists['is_verified']:
                 return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
-            # 未验证：删除旧记录（可能是验证码填错后重注册）
+            # 未验证:删除旧记录(可能是验证码填错后重注册)
             db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
         code = generate_code()
         expires = datetime.utcnow() + timedelta(minutes=10)
@@ -812,7 +812,7 @@ def forgot_password():
         return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
     if not validate_email(email):
         return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
-    # 限流：IP 15分钟3次（独立计数器，不与登录共享）
+    # 限流:IP 15分钟3次(独立计数器,不与登录共享)
     ip = request.remote_addr or 'unknown'
     allowed, wait = check_forgot_limit(ip)
     if not allowed:
@@ -822,7 +822,7 @@ def forgot_password():
     with get_db() as db:
         user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
         if not user:
-            # 邮箱未注册 → 记录失败 + 统一返回（防探测）
+            # 邮箱未注册 → 记录失败 + 统一返回(防探测)
             record_forgot_attempt(ip)
             return jsonify({'status':'ok','message':_t('msg_forgot_sent', g.lang),'email':email})
         code = generate_code()
@@ -869,11 +869,11 @@ def logout():
 
 @app.route('/logout', methods=['GET'])
 def logout_get():
-    """GET /logout — reject with 405 to prevent CSRF and SPA catch-all hijack."""
+    """GET /logout -- reject with 405 to prevent CSRF and SPA catch-all hijack."""
     return jsonify({'status':'error','message':'Use POST /logout'}), 405
 
 # Page routes are now served by the SPA fallback (serve_spa_static / serve_spa_root).
-# API routes follow below — all unchanged.
+# API routes follow below -- all unchanged.
 
 @app.route('/api/transactions', methods=['GET','POST'])
 @login_required
@@ -946,7 +946,7 @@ def api_delete_transaction(id):
 @login_required
 def api_upload_expense_images():
     """Upload receipt images. Returns { images: [...], thumb_images: [...], has_thumbs: bool }.
-    thumb_images[i] is the 128×128 thumbnail URL (or images[i] fallback if Pillow unavailable).
+    thumb_images[i] is the 128 by 128 thumbnail URL (or images[i] fallback if Pillow unavailable).
     """
     if 'files' not in request.files:
         return jsonify({'status': 'error', 'message': 'No files'}), 400
@@ -968,7 +968,7 @@ def api_upload_expense_images():
         save_path = os.path.join(user_dir, safe_name)
         f.save(save_path)
         urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-        # Generate 128×128 thumbnail for list rendering (faster load, less bandwidth)
+        # Generate 128 by 128 thumbnail for list rendering (faster load, less bandwidth)
         # Graceful degradation: if Pillow fails, fall back to original image URL
         if HAS_PIL:
             try:
@@ -1246,7 +1246,7 @@ def api_clear_cart():
         db.commit()
         return jsonify({'status': 'ok'})
 
-# ── 进货批次 API（2026.5.30）──
+# ── 进货批次 API(2026.5.30)──
 @app.route('/api/procurement-batches', methods=['GET','POST'])
 @login_required
 def api_procurement_batches():
@@ -1298,7 +1298,7 @@ def api_procurement_batches():
             )
             db.commit()
         return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
-    # GET: 进货记录列表（分页）
+    # GET: 进货记录列表(分页)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     with get_db() as db:
