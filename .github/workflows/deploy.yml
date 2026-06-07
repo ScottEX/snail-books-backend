@@ -18,6 +18,7 @@ jobs:
         run: |
           python -m py_compile app.py
           python -m py_compile i18n_backend.py
+          for f in shared/*.py routes/*.py; do python -m py_compile "$f"; done
           echo "✅ 语法检查通过"
 
   deploy-staging:

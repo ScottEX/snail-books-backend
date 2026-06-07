@@ -1,59 +1,56 @@
 #!/usr/bin/env python3
-"""🍜 蓝姐 · 记账系统"""
+"""🍜 蓝姐 · 记账系统
 
 import sqlite3, os, secrets, functools, re, json, time
 from datetime import datetime, date
 from contextlib import contextmanager
+from datetime import datetime, timedelta
+
 try:
     from PIL import Image as _PILImage  # type: ignore[import-not-found,import]
     HAS_PIL = True
 except ImportError:
     _PILImage = None  # type: ignore
     HAS_PIL = False
-from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
-from werkzeug.security import generate_password_hash, check_password_hash
-import requests, random, string
-from datetime import datetime, timedelta
-from i18n_backend import get_lang, t as _t
+
+from flask import Flask, request, jsonify, session, g, make_response, send_file
+from i18n_backend import get_lang
 
 app = Flask(__name__)
-# Persistent secret key (survives restarts)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'snail-books-lanxu-2026-secret-key-v1')
-# Session timeout: 24 hours
+_secret = os.environ.get('FLASK_SECRET_KEY')
+if not _secret:
+    raise RuntimeError("FLASK_SECRET_KEY environment variable is required — generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
+app.secret_key = _secret
 app.permanent_session_lifetime = timedelta(hours=24)
 
-# ── CORS (for iOS App cross-origin requests) ──
-@ app.after_request
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,X-Lang,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-    return response
-
-@ app.before_request
-def handle_options():
-    if request.method == 'OPTIONS':
-        return make_response('', 200)
-
 FRONTEND_VERSION = '1'
-FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
-IMG_DIR = os.path.join(FRONTEND_DIR, 'img')
-EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
-# User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
-BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
+FRONTEND_DIR = os.environ.get(
+    'FRONTEND_DIR',
+    os.path.join(os.path.dirname(__file__), 'static', 'web-build', 'dist'),
+)
+EXPENSE_IMG_DIR = os.environ.get(
+    'EXPENSE_IMG_DIR',
+    os.path.join(os.path.dirname(__file__), 'expense-imgs'),
+)
+BG_DIR = os.environ.get(
+    'BG_DIR',
+    os.path.join(os.path.dirname(__file__), 'user-images'),
+)
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 
-# ── Expense image serving (with permanent cache) ──
-# Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
+# ── Global i18n: every request initializes g.lang from the X-Lang header ──
+@app.before_request
+def _set_request_lang():
+    g.lang = get_lang(request)
+
+
+# ═══════════════════════════════════════════════════════════
+#  Static file serving (registered before Blueprints so API
+#  routes take priority via Flask's registration order)
+# ═══════════════════════════════════════════════════════════
 
 @app.route('/expense-imgs/<path:subpath>')
 def serve_expense_image(subpath):
-    """Serve expense receipt images with permanent cache headers.
-    subpath format: <user_id>/<filename>
-    Receipt images are immutable once uploaded — they never change.
-    """
-    # Path traversal guard: extract user_id/filename from subpath
     parts = subpath.split('/', 1)
     if len(parts) != 2:
         return jsonify({'status': 'error', 'message': 'Not found'}), 404
@@ -67,7 +64,7 @@ def serve_expense_image(subpath):
     resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     return resp
 
-# -- User-uploaded background serving --
+
 @app.route('/user-images/<path:subpath>')
 def serve_user_image(subpath):
     file_path = os.path.normpath(os.path.join(BG_DIR, subpath))
@@ -79,45 +76,30 @@ def serve_user_image(subpath):
     return resp
 
 
-@ app.before_request
-def detect_lang():
-    g.lang = get_lang(request)
-
-
-# ── SPA static file serving ──
-import mimetypes
-
 @app.route('/<path:path>')
 def serve_spa_static(path):
-    """Serve static files from the Expo web build dist/ directory."""
-    # Let API routes take priority (they're registered first, so this only
-    # fires for paths that don't match any API route)
     if path.startswith('api/'):
-        return jsonify({'status':'error','message':'Not found'}), 404
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
     file_path = os.path.join(FRONTEND_DIR, path)
     if os.path.isfile(file_path):
         mime, _ = mimetypes.guess_type(file_path)
-        # Static assets with content-hash → cache forever
         no_cache = mime and mime.startswith('text/html')
-        max_age = 0 if no_cache else 31536000
         resp = make_response(send_file(file_path, mimetype=mime or 'application/octet-stream'))
         if not no_cache:
             resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         return resp
-    # SPA fallback: serve index.html
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status':'error','message':'Frontend not built'}), 503
+    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
 
 
 @app.route('/', defaults={'path': ''})
 def serve_spa_root(path):
-    """Serve SPA entry point for root and login routes."""
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status':'error','message':'Frontend not built'}), 503
+    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
 
 
 # Email config — Resend HTTP API
@@ -259,15 +241,21 @@ def validate_username(username):
 
 DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
 
-INCOME_CATS = ['🍜 堂食', '🛵 美团外卖', '🛵 饿了吗外卖', '🎫 美团团购', '📦 京东', '🔧 其他收入']
-EXPENSE_CATS = [
-    '📦 原材料进货', '🏠 房租', '⚡ 水电煤气', '👨‍🍳 人工工资',
-    '🔧 设备/工具', '🏗️ 装修', '📋 培训/证件', '🧹 卫生/清洁',
-    '🧻 餐具/纸巾', '📦 包装/打包', '📢 广告/推广', '💊 杂项/烟酒', '📝 其他'
-]
-ACCOUNTS = ['💚 微信收款', '💙 支付宝收款', '💵 现金', '🏦 银行卡']
 
-# 实际合伙人数据
+@contextmanager
+def get_db():
+    db = sqlite3.connect(DB)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    try:
+        yield db
+    finally:
+        db.commit()
+        db.close()
+
+
+# ── Seed data ──
+
 PARTNER_DATA = [
     ('张安武', 0.34, 54455.08, '完结', '董事长 | 初始¥44,200(2024-04-01) + 追加¥10,255.08(2025-01-21)'),
     ('蓝柳富', 0.33, 52853.46, '完结', '打杂 | 初始¥42,900(2024-04-01) + 追加¥9,953.46(2025-01-21)'),
@@ -436,6 +424,7 @@ def init_db():
                 category TEXT NOT NULL,
                 account TEXT NOT NULL,
                 note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS dividends (
@@ -443,15 +432,14 @@ def init_db():
                 partner TEXT NOT NULL,
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
-                date TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
                 share REAL NOT NULL,
                 investment REAL NOT NULL DEFAULT 0,
-                status TEXT DEFAULT '进行中',
+                status TEXT DEFAULT '',
                 note TEXT DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS products (
@@ -460,20 +448,19 @@ def init_db():
                 spec TEXT DEFAULT '',
                 unit TEXT DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
-                supplier TEXT DEFAULT '',
-                note TEXT DEFAULT ''
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_id INTEGER REFERENCES products(id),
-                product_name TEXT NOT NULL,
-                quantity REAL NOT NULL DEFAULT 1,
-                unit_price REAL NOT NULL,
-                total REAL NOT NULL,
-                note TEXT DEFAULT '',
+                product_id INTEGER,
+                product_name TEXT,
+                quantity REAL,
+                unit TEXT DEFAULT '',
+                unit_price REAL,
+                total REAL,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            -- 进货批次表（2026.5.30）
             CREATE TABLE IF NOT EXISTS procurement_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_number INTEGER NOT NULL DEFAULT 0,
@@ -484,32 +471,31 @@ def init_db():
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
+                payment_method TEXT DEFAULT '',
+                supplier TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                batch_number INTEGER NOT NULL DEFAULT 1 CHECK(batch_number > 0),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            -- 进货明细表（2026.5.30）
             CREATE TABLE IF NOT EXISTS procurement_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_id INTEGER REFERENCES procurement_batches(id),
-                product_id INTEGER REFERENCES products(id),
-                product_name TEXT NOT NULL,
+                product_id INTEGER,
+                product_name TEXT,
                 spec TEXT DEFAULT '',
-                unit_price REAL NOT NULL,
-                quantity INTEGER NOT NULL DEFAULT 1,
-                subtotal REAL NOT NULL,
+                unit TEXT DEFAULT '',
+                quantity REAL,
+                unit_price REAL,
+                total REAL,
+                supplier TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_proc_batch_date ON procurement_batches(date);
-            CREATE INDEX IF NOT EXISTS idx_proc_items_batch ON procurement_items(batch_id);
             CREATE TABLE IF NOT EXISTS procurement_cart (
                 product_id INTEGER PRIMARY KEY,
                 product_name TEXT NOT NULL DEFAULT '',
                 quantity INTEGER NOT NULL DEFAULT 1,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at);
-            CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions(type);
-            CREATE INDEX IF NOT EXISTS idx_div_date ON dividends(created_at);
-            CREATE INDEX IF NOT EXISTS idx_proc_date ON procurements(created_at);
             CREATE TABLE IF NOT EXISTS reconciliations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -524,19 +510,18 @@ def init_db():
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                bill_date TEXT,
-                reconciled_by TEXT
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
             CREATE TABLE IF NOT EXISTS platform_fees (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 year INTEGER NOT NULL,
                 month INTEGER NOT NULL,
                 meituan_cashier REAL DEFAULT 0,
                 meituan_waimai REAL DEFAULT 0,
-                eleme_waimai REAL DEFAULT 0,
+                shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now', 'localtime')),
+                updated_at TEXT DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(year, month)
             );
             CREATE TABLE IF NOT EXISTS platform_fee_entries (
@@ -545,9 +530,9 @@ def init_db():
                 entry_date TEXT NOT NULL,
                 meituan_cashier REAL DEFAULT 0,
                 meituan_waimai REAL DEFAULT 0,
-                eleme_waimai REAL DEFAULT 0,
+                shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (datetime('now', 'localtime'))
             );
             CREATE TABLE IF NOT EXISTS user_settings (
                 user_id INTEGER NOT NULL,
@@ -575,106 +560,98 @@ def init_db():
         ]:
             try:
                 db.execute(f'ALTER TABLE users ADD COLUMN {col} {col_type}')
-            except:
-                pass
-        # Migration: archived column on daily_revenue
+            except sqlite3.OperationalError:
+                pass  # column already exists
         try:
             db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
-        except:
-            pass
-        # 邮箱大小写迁移：将所有存量 email 转为小写
+        except sqlite3.OperationalError:
+            pass  # column already exists
         db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
-        # Seed partners
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
             for p in PARTNER_DATA:
                 db.execute('INSERT INTO partners (name,share,investment,status,note) VALUES (?,?,?,?,?)', p)
-        # Seed products
         count = db.execute('SELECT COUNT(*) FROM products').fetchone()[0]
         if count == 0:
             for p in DEFAULT_PRODUCTS:
                 db.execute('INSERT INTO products (name,spec,unit,price,supplier) VALUES (?,?,?,?,?)',
-                          (p[0],p[1],p[2],p[3],p[4]))
+                           (p[0],p[1],p[2],p[3],p[4]))
         db.commit()
-        # Migration: add bill_date column (ignore if exists)
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN reconciled_by TEXT')
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT ''")
-        except:
-            pass
-        # Migration (2026.5.30): add supplier column to products
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE products ADD COLUMN supplier TEXT DEFAULT ''")
-        except:
-            pass
-        # Migration (2026.5.30): add date column to transactions
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN date TEXT DEFAULT ''")
-        except:
-            pass
-        # Migration (2026.6.1): add thumb_images to transactions and procurement_batches
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN thumb_images TEXT DEFAULT '[]'")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE procurement_batches ADD COLUMN thumb_images TEXT DEFAULT '[]'")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
 
 init_db()
-# Auto-verify existing users (backward compat)
-with get_db() as db:
-    db.execute("UPDATE users SET is_verified=1 WHERE is_verified IS NULL OR is_verified=0")
-    db.commit()
-
-# ── Validation helper ──
-def validate_required(data, *fields):
-    """Return list of missing field names; empty if all present."""
-    return [f for f in fields if data.get(f) is None]
-
-# ====== Auth ======
-
-# ── Email validation ──
-EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-
-def validate_email(email):
-    return bool(EMAIL_RE.match(email))
-
-# ── Rate limiting (in-memory, resets on process restart) ──
-_login_attempts = {}  # { ip: [attempt_timestamps...] }
-_RATE_LIMIT_MAX = 5
-_RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
-
-# Forgot-password has its own independent limiter (lower threshold)
-_forgot_attempts = {}
-_FORGOT_MAX = 3  # stricter: 3 attempts per 15 min
-_FORGOT_WINDOW = 900
 
 
-def _check_rate_limit(ip, store, max_attempts, window):
-    """Generic rate limit check. Returns (allowed, wait_seconds)."""
-    now = time.time()
-    attempts = store.get(ip, [])
-    # Prune expired attempts
-    attempts = [t for t in attempts if now - t < window]
-    store[ip] = attempts
-    if len(attempts) >= max_attempts:
-        wait = int(window - (now - attempts[0]))
-        return False, wait
-    return True, 0
+# ═══════════════════════════════════════════════════════════
+#  Blueprint registration
+# ═══════════════════════════════════════════════════════════
 
+from routes.auth import auth_bp
+from routes.data import data_bp
+from routes.partners import bp as partners_bp
+from routes.procurement import procurement_bp
+from routes.profile import profile_bp
+from routes.settings import settings_bp
+from routes.transactions import tx_bp
+
+# Auth routes are root-level (no /api prefix)
+app.register_blueprint(auth_bp)
+
+# All other routes live under /api
+app.register_blueprint(data_bp, url_prefix='/api')
+app.register_blueprint(partners_bp, url_prefix='/api')
+app.register_blueprint(procurement_bp, url_prefix='/api')
+app.register_blueprint(profile_bp, url_prefix='/api')
+app.register_blueprint(settings_bp, url_prefix='/api')
+app.register_blueprint(tx_bp, url_prefix='/api')
+
+
+# ── Global error handlers — return JSON for API routes ──
+@app.errorhandler(500)
+def handle_500(e):
+    import logging
+    log = logging.getLogger('app')
+    log.exception('Unhandled 500: %s', e)
+    return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    # Only return JSON for /api/* routes; let the SPA handle frontend routing
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    return e.get_response()
 
 def _record_attempt(ip, store, window):
     """Record an attempt in the given store."""
@@ -1970,4 +1947,13 @@ def api_delete_daily_revenue(id):
         return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8600, debug=True)
+    init_db()
+    app.run(host='0.0.0.0', port=8600, debug=False)
+# 
+# 
+# 
+# 
+# fix: double /api prefix on procurement routes
+# deploy: viewport fix
+# deploy: position fix
+# deploy: View fix
