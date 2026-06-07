@@ -358,7 +358,7 @@ def api_procurement_batch_pdf(id):
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
     return response
 
 
