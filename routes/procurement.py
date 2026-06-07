@@ -237,6 +237,7 @@ def api_procurement_batch_detail(id):
                  data.get('note', ''), data['date'], images_json, thumbs_json, id)
             )
             db.commit()
+            _delete_cached_pdf(id)
             return jsonify({'status': 'ok', 'batch_id': id, 'total': round(total, 2)})
 
         # GET: detail
@@ -254,6 +255,7 @@ def api_procurement_batch_detail(id):
 
 # ── PDF generation (with 30s timeout) ──
 PDF_TIMEOUT = 30
+PDF_CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'pdf_cache')
 
 
 def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
@@ -280,10 +282,41 @@ def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
         raise RuntimeError(f'PDF render failed: {e}') from e
 
 
-@procurement_bp.route('/procurement-batches/<int:id>/pdf', methods=['GET'])
+def _get_cached_pdf(batch_id):
+    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    if os.path.isfile(cache_path):
+        with open(cache_path, 'rb') as f:
+            return f.read()
+    return None
+
+
+def _save_cached_pdf(batch_id, pdf_bytes):
+    os.makedirs(PDF_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    with open(cache_path, 'wb') as f:
+        f.write(pdf_bytes)
+
+
+def _delete_cached_pdf(batch_id):
+    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    if os.path.isfile(cache_path):
+        os.remove(cache_path)
+
+
+@procurement_bp.route('/procurement-batches/<int:id>/pdf' , methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
-    """Generate procurement batch PDF."""
+    cached = _get_cached_pdf(id)
+    if cached:
+        with get_db() as db:
+            row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
+            bn = row['batch_number'] if row else id
+        filename = f"procurement_{bn:04d}.pdf"
+        resp = make_response(cached)
+        resp.headers['Content-Type'] = 'application/pdf'
+        resp.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+        return resp
+
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
         if not row:
@@ -375,6 +408,7 @@ def api_procurement_batch_pdf(id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
+    _save_cached_pdf(id, pdf_bytes)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -417,10 +451,19 @@ def api_share_link(id):
 
 @procurement_bp.route('/share/<token>', methods=['GET'])
 def api_share_pdf(token):
-    """Access PDF via token (public, no login required)."""
     batch_id = _verify_share_token(token)
     if not batch_id:
         return jsonify({'status': 'error', 'message': '链接已过期或无效'}), 410
+    cached = _get_cached_pdf(batch_id)
+    if cached:
+        with get_db() as db:
+            row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+            bn = row['batch_number'] if row else batch_id
+        filename = f"procurement_{bn:04d}.pdf"
+        resp = make_response(cached)
+        resp.headers['Content-Type'] = 'application/pdf'
+        resp.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+        return resp
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
         if not row:
@@ -501,6 +544,7 @@ def api_share_pdf(token):
     except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
     filename = f"procurement_{b['batch_number']:04d}.pdf"
+    _save_cached_pdf(batch_id, pdf_bytes)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -509,11 +553,24 @@ def api_share_pdf(token):
 
 # ── PNG rendering from PDF ──
 def _render_procurement_png(batch_id):
-    """Render page 1 of a procurement PDF to a PNG blob."""
     try:
         import pymupdf
     except ImportError:
         return None, None
+    cached_pdf = _get_cached_pdf(batch_id)
+    if cached_pdf:
+        try:
+            doc = pymupdf.open(stream=cached_pdf, filetype="pdf")
+            page = doc[0]
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))
+            png_bytes = pix.tobytes("png")
+            doc.close()
+            with get_db() as db:
+                row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
+                bn = row['batch_number'] if row else batch_id
+            return png_bytes, bn
+        except Exception:
+            pass
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
         if not row:

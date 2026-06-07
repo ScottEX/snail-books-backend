@@ -11,7 +11,7 @@ COPY shared/ /app/shared/
 COPY routes/ /app/routes/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
-RUN mkdir -p /app/expense-imgs /app/user-images/avatars /app/user-images/covers
+RUN mkdir -p /app/expense-imgs /app/user-images/avatars /app/user-images/covers /app/pdf_cache
 ENV EXPENSE_IMG_DIR=/app/expense-imgs
 ENV BG_DIR=/app/user-images
 # Single worker — SQLite + multiple writers = SQLITE_BUSY under concurrency.
