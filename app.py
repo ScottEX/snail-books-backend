@@ -518,4 +518,5 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=False)
 # 
 # 
-# deploy: viewer-only bg
+# 
+# deploy: fetch PDF before iframe
