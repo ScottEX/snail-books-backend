@@ -576,7 +576,10 @@ def init_db():
             -- 进货批次表（2026.5.30）
             CREATE TABLE IF NOT EXISTS procurement_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                batch_number INTEGER NOT NULL DEFAULT 0,
+                -- CHECK constraint: batch_number must be > 0 (P0 audit 2026-06-07 fix)
+                -- Prevents '第0次进货' UI bug. The default 0 is a defensive fallback;
+                -- the API always overwrites with MAX(batch_number)+1.
+                batch_number INTEGER NOT NULL DEFAULT 1 CHECK(batch_number > 0),
                 date TEXT NOT NULL,
                 payment_method TEXT NOT NULL DEFAULT 'payWechat',
                 category TEXT DEFAULT 'goods',
