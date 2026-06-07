@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """🍜 蓝姐 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re, json, time
+import sqlite3, os, secrets, functools, re, json, time, logging
 from io import BytesIO
 from datetime import datetime, date
 from contextlib import contextmanager
@@ -74,7 +74,7 @@ def serve_user_image(subpath):
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
 # ── SPA static file serving ──
-import mimetypes
+import os, mimetypes, logging
 
 @app.route('/<path:path>')
 def serve_spa_static(path):
@@ -454,8 +454,8 @@ def login_required(f):
                 with get_db() as db:
                     db.execute("UPDATE user_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?", (validated_session_id,))
                     db.commit()
-            except:
-                pass
+            except sqlite3.OperationalError:
+                pass  # column already exists
         return f(*a, **kw)
     return wrap
 
@@ -472,8 +472,8 @@ def _session_expired(expires_at_str):
         try:
             expires = datetime.fromisoformat(expires_at_str)
             return datetime.utcnow() > expires
-        except:
-            return True
+        except (Exception,):
+            return True  # best-effort: assume expired if parse fails
 
 @contextmanager
 def get_db():
@@ -680,13 +680,13 @@ def init_db():
         ]:
             try:
                 db.execute(f'ALTER TABLE users ADD COLUMN {col} {col_type}')
-            except:
-                pass
+            except sqlite3.OperationalError:
+                pass  # column already exists
         # Migration: archived column on daily_revenue
         try:
             db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # 邮箱大小写迁移：将所有存量 email 转为小写
         db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
         # Seed partners
@@ -704,65 +704,65 @@ def init_db():
         # Migration: add bill_date column (ignore if exists)
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN reconciled_by TEXT')
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT ''")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Migration (2026.5.30): add supplier column to products
         try:
             db.execute("ALTER TABLE products ADD COLUMN supplier TEXT DEFAULT ''")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Migration (2026.5.30): add date column to transactions
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN date TEXT DEFAULT ''")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Migration (2026.6.1): add thumb_images to transactions and procurement_batches
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN thumb_images TEXT DEFAULT '[]'")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE procurement_batches ADD COLUMN thumb_images TEXT DEFAULT '[]'")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Migration (2026.6.5): SSO / session timeout auth preferences
         try:
             db.execute("ALTER TABLE users ADD COLUMN enforce_single_session INTEGER DEFAULT 1")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN session_timeout_hours INTEGER DEFAULT 1")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN current_session_id TEXT DEFAULT NULL")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE user_tokens ADD COLUMN session_id TEXT")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Migration (2026.6.4): link transactions to procurement_batches for cascade delete/edit
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN procurement_batch_id INTEGER")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
         # Backfill: link existing transactions to their procurement batches by date+amount
         # Only fill for expense/category=采购 with no link yet
         try:
@@ -779,8 +779,8 @@ def init_db():
                   AND transactions.category IN ('采购', 'goods')  -- legacy '采购' (pre-migration) + new 'goods'
                   AND transactions.procurement_batch_id IS NULL
             """)
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 init_db()
 # Auto-verify existing users (backward compat)
@@ -1070,16 +1070,16 @@ def logout():
             with get_db() as db:
                 db.execute('DELETE FROM user_sessions WHERE session_id=?', (sid,))
                 db.commit()
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
     # Also invalidate any Bearer tokens tied to this session
     if sid:
         try:
             with get_db() as db:
                 db.execute('DELETE FROM user_tokens WHERE session_id=?', (sid,))
                 db.commit()
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # column already exists
     session.clear()
     return jsonify({'status':'ok'})
 
@@ -1173,6 +1173,12 @@ def api_upload_expense_images():
     files = request.files.getlist('files')
     if not files:
         return jsonify({'status': 'error', 'message': 'No files'}), 400
+    # Gate: max 10 files, max 10MB each
+    if len(files) > 10:
+        return jsonify({'status': 'error', 'message': 'Max 10 files per upload'}), 400
+    for f in files:
+        if f.content_length and f.content_length > 10 * 1024 * 1024:
+            return jsonify({'status': 'error', 'message': f'File too large: {f.filename}'}), 400
     user_id = str(g.user_id)
     user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
     os.makedirs(user_dir, exist_ok=True)
@@ -2304,7 +2310,11 @@ def api_profile_email_verify():
 @app.route('/api/migrate-recon', methods=['POST'])
 @login_required
 def api_migrate_recon():
-    """One-time migration: remove UNIQUE(date) constraint."""
+    """One-time migration: remove UNIQUE(date) constraint. Requires confirm='MIGRATE'."""
+    data = request.get_json(silent=True) or {}
+    if data.get('confirm') != 'MIGRATE':
+        return jsonify({'error': 'Requires confirm="MIGRATE" - this is a destructive migration'}), 400
+    logging.warning("migrate-recon triggered by user_id=%s", g.user_id)
     with get_db() as db:
         try:
             db.execute('PRAGMA foreign_keys = OFF')
