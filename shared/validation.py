@@ -1,0 +1,38 @@
+"""Input validation utilities shared across routes."""
+
+import re
+from .i18n import t
+
+EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+
+
+def validate_password(password, lang='zh-CN'):
+    """Returns (bool, str). Password: >=8 chars, must contain letter, digit, special char."""
+    if len(password) < 8:
+        return False, t('err_pw_too_short', lang)
+    if not re.search(r'[A-Za-z]', password):
+        return False, t('err_pw_no_letter', lang)
+    if not re.search(r'[0-9]', password):
+        return False, t('err_pw_no_digit', lang)
+    if not re.search(r'[!@#$%^&*(),.?\":{}|<>]', password):
+        return False, t('err_pw_no_special', lang)
+    return True, ''
+
+
+def validate_username(username):
+    """Returns bool. Username: 2-32 chars, letters/digits/underscores/Chinese."""
+    if len(username) < 2 or len(username) > 32:
+        return False
+    if not re.match(r'^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$', username):
+        return False
+    return True
+
+
+def validate_required(data, *fields):
+    """Return list of missing field names; empty if all present."""
+    return [f for f in fields if data.get(f) is None]
+
+
+def validate_email(email):
+    """Returns bool. Basic email format check."""
+    return bool(EMAIL_RE.match(email))

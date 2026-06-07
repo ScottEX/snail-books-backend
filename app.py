@@ -1,55 +1,58 @@
 #!/usr/bin/env python3
-"""🍜 蓝姐 · 记账系统"""
+"""🍜 蓝姐 · 记账系统
 
-import sqlite3, os, secrets, functools, re, json, time, logging
-from io import BytesIO
-from datetime import datetime, date
+Thin entry point — creates the Flask app, serves static files,
+initializes the database, and registers Blueprints from routes/.
+All route logic lives in routes/*.py; shared utilities in shared/*.py.
+"""
+
+import sqlite3, os, mimetypes, logging
 from contextlib import contextmanager
+from datetime import datetime, timedelta
+
 try:
     from PIL import Image as _PILImage  # type: ignore[import-not-found,import]
     HAS_PIL = True
 except ImportError:
     _PILImage = None  # type: ignore
     HAS_PIL = False
-from flask import Flask, request, jsonify, session, redirect, g, make_response, send_file
-from werkzeug.security import generate_password_hash, check_password_hash
-import requests, random, string
-from datetime import datetime, timedelta
-from i18n_backend import t as _t, get_lang
+
+from flask import Flask, request, jsonify, session, g, make_response, send_file
+from i18n_backend import get_lang
 
 app = Flask(__name__)
-# Persistent secret key (survives restarts)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'snail-books-lanxu-2026-secret-key-v1')
-# Session timeout: 24 hours
 app.permanent_session_lifetime = timedelta(hours=24)
 
 FRONTEND_VERSION = '1'
-FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'))
-EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname(__file__), 'expense-imgs'))
-# User-uploaded backgrounds - stored outside dist/ so CI deploys don't wipe them
-BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
+FRONTEND_DIR = os.environ.get(
+    'FRONTEND_DIR',
+    os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'),
+)
+EXPENSE_IMG_DIR = os.environ.get(
+    'EXPENSE_IMG_DIR',
+    os.path.join(os.path.dirname(__file__), 'expense-imgs'),
+)
+BG_DIR = os.environ.get(
+    'BG_DIR',
+    os.path.join(os.path.dirname(__file__), 'user-images'),
+)
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 COVER_DIR = os.path.join(BG_DIR, 'covers')
 
-# ── Global i18n: every request initializes g.lang from the X-Lang header
-# (with Accept-Language fallback) so public auth routes (login / register /
-# verify / forgot / reset / resend) — which don't go through login_required —
-# can call _t('err_xxx', g.lang) without 500'ing on an uninitialized g.lang.
-# (added 2026-06-07: fix login error always showed English)
+# ── Global i18n: every request initializes g.lang from the X-Lang header ──
 @app.before_request
 def _set_request_lang():
     g.lang = get_lang(request)
 
-# ── Expense image serving (with permanent cache) ──
-# Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
+
+# ═══════════════════════════════════════════════════════════
+#  Static file serving (registered before Blueprints so API
+#  routes take priority via Flask's registration order)
+# ═══════════════════════════════════════════════════════════
 
 @app.route('/expense-imgs/<path:subpath>')
 def serve_expense_image(subpath):
-    """Serve expense receipt images with permanent cache headers.
-    subpath format: <user_id>/<filename>
-    Receipt images are immutable once uploaded — they never change.
-    """
-    # Path traversal guard: extract user_id/filename from subpath
     parts = subpath.split('/', 1)
     if len(parts) != 2:
         return jsonify({'status': 'error', 'message': 'Not found'}), 404
@@ -63,7 +66,7 @@ def serve_expense_image(subpath):
     resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     return resp
 
-# -- User-uploaded background serving --
+
 @app.route('/user-images/<path:subpath>')
 def serve_user_image(subpath):
     file_path = os.path.normpath(os.path.join(BG_DIR, subpath))
@@ -73,208 +76,55 @@ def serve_user_image(subpath):
     resp = make_response(send_file(file_path, mimetype=mime or 'image/jpeg'))
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
-# ── SPA static file serving ──
-import os, mimetypes, logging
+
 
 @app.route('/<path:path>')
 def serve_spa_static(path):
-    """Serve static files from the Expo web build dist/ directory."""
-    # Let API routes take priority (they're registered first, so this only
-    # fires for paths that don't match any API route)
     if path.startswith('api/'):
-        return jsonify({'status':'error','message':'Not found'}), 404
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
     file_path = os.path.join(FRONTEND_DIR, path)
     if os.path.isfile(file_path):
         mime, _ = mimetypes.guess_type(file_path)
-        # Static assets with content-hash → cache forever
         no_cache = mime and mime.startswith('text/html')
-        max_age = 0 if no_cache else 31536000
         resp = make_response(send_file(file_path, mimetype=mime or 'application/octet-stream'))
         if not no_cache:
             resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         return resp
-    # SPA fallback: serve index.html
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status':'error','message':'Frontend not built'}), 503
+    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
 
 
 @app.route('/', defaults={'path': ''})
 def serve_spa_root(path):
-    """Serve SPA entry point for root and login routes."""
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status':'error','message':'Frontend not built'}), 503
+    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
 
 
-# Email config — Resend HTTP API
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
-DEV_MODE = not RESEND_API_KEY  # 无 key → dev 模式：验证码返给前端
-
-def _send_email(to_email, subject, body, code):
-    """发信：无 key 时 dev mode，否则走 Resend HTTP API"""
-    if not RESEND_API_KEY:
-        print(f"[EMAIL] Dev mode: code={code} for {to_email} ({subject})")
-        return True
-    try:
-        r = requests.post(
-            'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
-            json={'from': RESEND_FROM, 'to': [to_email], 'subject': subject, 'html': body},
-            timeout=15
-        )
-        if r.status_code == 200:
-            resp_data = r.json()
-            if resp_data.get('id'):
-                print(f"[EMAIL] Sent to {to_email}: {subject}")
-                return True
-            print(f"[EMAIL] Resend API error: {r.text}")
-            return False
-        print(f"[EMAIL] Resend error {r.status_code}: {r.text}")
-        return False
-    except Exception as e:
-        print(f"[EMAIL] Error: {e}")
-        return False
-
-def send_verification_email(to_email, code, lang='zh-CN'):
-    templates = {
-        'zh-CN': {
-            'subject': f'【柳味探秘】您的账户注册验证码：{code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在注册柳味探秘科技账户，以下是您的电子邮箱验证码：</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在注册页面输入此验证码以完成身份验证。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，可能是其他用户不小心输入了您的邮箱，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
-    </div>'''
-        },
-        'zh-TW': {
-            'subject': f'【柳味探秘】您的帳戶註冊驗證碼：{code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在註冊柳味探秘科技帳戶，以下是您的電子郵箱驗證碼：</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在註冊頁面輸入此驗證碼以完成身份驗證。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，可能是其他用戶不小心輸入了您的郵箱，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
-    </div>'''
-        },
-        'en': {
-            'subject': f'[LiuWei TanMi] Your Account Registration Code: {code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
-        <p>Hello! You are registering a LiuWei TanMi account. Here is your email verification code:</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the registration page to complete verification.</p>
-        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, someone may have accidentally entered your email. You can safely ignore this message — your account will not be affected.</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
-    </div>'''
-        },
-    }
-    t = templates.get(lang, templates['zh-CN'])
-    return _send_email(to_email, t['subject'], t['body'], code)
-
-def send_reset_email(to_email, code, lang='zh-CN'):
-    templates = {
-        'zh-CN': {
-            'subject': f'【柳味探秘】密码重置验证码：{code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在为柳味探秘科技账户重置密码，以下是您的验证码：</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。请在重置密码页面输入此验证码以完成操作。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果这不是您本人的操作，您可以安全地忽略此邮件，您的账户不会受到任何影响。</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p>
-    </div>'''
-        },
-        'zh-TW': {
-            'subject': f'【柳味探秘】密碼重置驗證碼：{code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您好！您正在為柳味探秘科技帳戶重置密碼，以下是您的驗證碼：</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">驗證碼有效期為 10 分鐘。請在重置密碼頁面輸入此驗證碼以完成操作。</p>
-        <p style="color:#9C9A95;font-size:12px">提示：如果這不是您本人的操作，您可以安全地忽略此郵件，您的帳戶不會受到任何影響。</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">柳味探秘科技團隊</p>
-    </div>'''
-        },
-        'en': {
-            'subject': f'[LiuWei TanMi] Password Reset Code: {code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
-        <p>Hello! You are resetting your LiuWei TanMi account password. Here is your verification code:</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">This code is valid for 10 minutes. Please enter it on the password reset page to complete the process.</p>
-        <p style="color:#9C9A95;font-size:12px">Note: If this wasn't you, you can safely ignore this message — your account will not be affected.</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0">
-        <p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p>
-    </div>'''
-        },
-    }
-    t = templates.get(lang, templates['zh-CN'])
-    return _send_email(to_email, t['subject'], t['body'], code)
-
-def send_email_change_code(to_email, code, lang='zh-CN'):
-    templates = {
-        'zh-CN': {
-            'subject': f'【柳味探秘】邮箱更换验证码：{code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">柳味探秘科技</h2>
-        <p>您正在更换账户的绑定邮箱，验证码如下：</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">验证码有效期为 10 分钟。</p>
-        <p style="color:#9C9A95;font-size:12px">如非本人操作，请忽略此邮件。</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">柳味探秘科技团队</p></div>'''
-        },
-        'en': {
-            'subject': f'[LiuWei TanMi] Email Change Code: {code}',
-            'body': f'''<div style="max-width:400px;margin:0 auto;font-family:sans-serif">
-        <h2 style="color:#8B1E22">LiuWei TanMi</h2>
-        <p>You are changing your account's email address. Your verification code is:</p>
-        <h1 style="font-size:36px;letter-spacing:8px;color:#1C1C1C;background:#F7F5F2;padding:16px;border-radius:12px;text-align:center">{code}</h1>
-        <p style="color:#9C9A95;font-size:13px">This code expires in 10 minutes.</p>
-        <p style="color:#9C9A95;font-size:12px">If this wasn't you, please ignore this email.</p>
-        <hr style="border:0;border-top:1px solid #EBEBEB;margin:20px 0"><p style="color:#B0B0B0;font-size:11px">LiuWei TanMi Team</p></div>'''
-        },
-    }
-    t = templates.get(lang, templates['zh-CN'])
-    return _send_email(to_email, t['subject'], t['body'], code)
-
-def generate_code():
-    return ''.join(random.choices(string.digits, k=6))
-
-def validate_password(password, lang='zh-CN'):
-    """返回 (bool, str)。密码强度：最少8位，必须含字母、数字和特殊字符"""
-    if len(password) < 8:
-        return False, _t('err_pw_too_short', lang)
-    if not re.search(r'[A-Za-z]', password):
-        return False, _t('err_pw_no_letter', lang)
-    if not re.search(r'[0-9]', password):
-        return False, _t('err_pw_no_digit', lang)
-    if not re.search(r'[!@#$%^&*(),.?\":{}|<>]', password):
-        return False, _t('err_pw_no_special', lang)
-    return True, ''
-
-def validate_username(username):
-    """返回 (bool, str)。用户名：2-32位，字母数字下划线中文"""
-    if len(username) < 2 or len(username) > 32:
-        return False
-    if not re.match(r'^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$', username):
-        return False
-    return True
+# ═══════════════════════════════════════════════════════════
+#  Database
+# ═══════════════════════════════════════════════════════════
 
 DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
 
-# 实际合伙人数据
+
+@contextmanager
+def get_db():
+    db = sqlite3.connect(DB)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    try:
+        yield db
+    finally:
+        db.commit()
+        db.close()
+
+
+# ── Seed data ──
+
 PARTNER_DATA = [
     ('张安武', 0.34, 54455.08, '完结', '董事长 | 初始¥44,200(2024-04-01) + 追加¥10,255.08(2025-01-21)'),
     ('蓝柳富', 0.33, 52853.46, '完结', '打杂 | 初始¥42,900(2024-04-01) + 追加¥9,953.46(2025-01-21)'),
@@ -365,125 +215,6 @@ DEFAULT_PRODUCTS = [
     ('桂螺帮螺蛳粉1.2-1.4','60斤/件','',160,'桂螺帮'),
 ]
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrap(*a, **kw):
-        # Track which session_id was used (for last_seen_at updates)
-        validated_session_id = None
-        kicked = False
-        expired = False
-        if 'user_id' not in session:
-            # Check Bearer token as fallback
-            auth = request.headers.get('Authorization','')
-            if auth.startswith('Bearer '):
-                token = auth[7:]
-                with get_db() as db:
-                    row = db.execute('SELECT user_id, session_id FROM user_tokens WHERE token=?', (token,)).fetchone()
-                if row:
-                    uid = row['user_id']
-                    # Verify user still exists (may have been deleted)
-                    with get_db() as db:
-                        exists = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
-                    if exists:
-                        # Check session validity (only if token has session_id — new format)
-                        token_sid = row['session_id']
-                        if token_sid:
-                            with get_db() as db:
-                                srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (token_sid,)).fetchone()
-                            if srow and srow['revoked_at']:
-                                kicked = True
-                            elif srow and _session_expired(srow['expires_at']):
-                                expired = True
-                            elif srow:
-                                validated_session_id = token_sid
-                        session['user_id'] = uid
-                        if token_sid:
-                            session['session_id'] = token_sid
-                    else:
-                        # User deleted — clean orphan token
-                        with get_db() as db:
-                            db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
-                            db.commit()
-        else:
-            # Cookie path: also validate session_id if present
-            cookie_sid = session.get('session_id')
-            if cookie_sid:
-                with get_db() as db:
-                    srow = db.execute('SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?', (cookie_sid,)).fetchone()
-                if srow and srow['revoked_at']:
-                    kicked = True
-                elif srow and _session_expired(srow['expires_at']):
-                    expired = True
-                elif srow:
-                    validated_session_id = cookie_sid
-        if 'user_id' not in session:
-            if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
-            return redirect('/login')
-        if kicked:
-            session.clear()
-            if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_kicked', g.lang) or 'Account logged in elsewhere','code':'session_kicked'}), 401
-            return redirect('/login')
-        if expired:
-            session.clear()
-            if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
-            return redirect('/login')
-        g.user_id = session['user_id']
-        g.username = session.get('username', '')
-        # Verify user still exists (may have been deleted from DB)
-        with get_db() as db:
-            exists = db.execute('SELECT id FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if not exists:
-            session.clear()
-            if request.path.startswith('/api/'):
-                return jsonify({'status':'error','message':_t('err_session_expired', g.lang),'code':'session_expired'}), 401
-            return redirect('/login')
-        # SSO enforcement: if user has current_session_id set, only that session is valid.
-        # This catches LEGACY sessions (no session_id in cookie) which the per-row check above skips.
-        with get_db() as db:
-            cur = db.execute('SELECT current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if cur and cur['current_session_id']:
-            request_sid = session.get('session_id')
-            if request_sid != cur['current_session_id']:
-                kicked = True
-        # Update last_seen_at (best-effort, no failure path)
-        if validated_session_id:
-            try:
-                with get_db() as db:
-                    db.execute("UPDATE user_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?", (validated_session_id,))
-                    db.commit()
-            except sqlite3.OperationalError:
-                pass  # column already exists
-        return f(*a, **kw)
-    return wrap
-
-
-def _session_expired(expires_at_str):
-    """Check if an expires_at string (YYYY-MM-DD HH:MM:SS) is in the past (UTC)."""
-    if not expires_at_str:
-        return True
-    try:
-        # SQLite stores TIMESTAMP as 'YYYY-MM-DD HH:MM:SS'
-        expires = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
-        return datetime.utcnow() > expires
-    except (ValueError, TypeError):
-        try:
-            expires = datetime.fromisoformat(expires_at_str)
-            return datetime.utcnow() > expires
-        except (Exception,):
-            return True  # best-effort: assume expired if parse fails
-
-@contextmanager
-def get_db():
-    db = sqlite3.connect(DB)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
-    try: yield db
-    finally:
-        db.commit()
-        db.close()
 
 def init_db():
     os.makedirs(os.path.dirname(DB), exist_ok=True)
@@ -539,18 +270,15 @@ def init_db():
                 partner TEXT NOT NULL,
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
-                date TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
                 share REAL NOT NULL,
                 investment REAL NOT NULL DEFAULT 0,
-                status TEXT DEFAULT '进行中',
-                note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+                status TEXT DEFAULT '',
+                note TEXT DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -558,63 +286,49 @@ def init_db():
                 spec TEXT DEFAULT '',
                 unit TEXT DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
-                supplier TEXT DEFAULT '',
-                note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_id INTEGER REFERENCES products(id),
-                product_name TEXT NOT NULL,
-                quantity REAL NOT NULL DEFAULT 1,
-                unit_price REAL NOT NULL,
-                total REAL NOT NULL,
-                note TEXT DEFAULT '',
+                product_id INTEGER,
+                product_name TEXT,
+                quantity REAL,
+                unit TEXT DEFAULT '',
+                unit_price REAL,
+                total REAL,
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            -- 进货批次表（2026.5.30）
             CREATE TABLE IF NOT EXISTS procurement_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                -- CHECK constraint: batch_number must be > 0 (P0 audit 2026-06-07 fix)
-                -- Prevents '第0次进货' UI bug. The default 0 is a defensive fallback;
-                -- the API always overwrites with MAX(batch_number)+1.
-                batch_number INTEGER NOT NULL DEFAULT 1 CHECK(batch_number > 0),
-                date TEXT NOT NULL,
-                payment_method TEXT NOT NULL DEFAULT 'payWechat',
-                category TEXT DEFAULT 'goods',
-                total REAL NOT NULL DEFAULT 0,
-                images TEXT DEFAULT '[]',
-                thumb_images TEXT DEFAULT '[]',
+                date TEXT,
+                total REAL DEFAULT 0,
                 note TEXT DEFAULT '',
+                payment_method TEXT DEFAULT '',
+                supplier TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                batch_number INTEGER NOT NULL DEFAULT 1 CHECK(batch_number > 0),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            -- 进货明细表（2026.5.30）
             CREATE TABLE IF NOT EXISTS procurement_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_id INTEGER REFERENCES procurement_batches(id),
-                product_id INTEGER REFERENCES products(id),
-                product_name TEXT NOT NULL,
+                product_id INTEGER,
+                product_name TEXT,
                 spec TEXT DEFAULT '',
-                unit_price REAL NOT NULL,
-                quantity INTEGER NOT NULL DEFAULT 1,
-                subtotal REAL NOT NULL,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                unit TEXT DEFAULT '',
+                quantity REAL,
+                unit_price REAL,
+                total REAL,
+                supplier TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_proc_batch_date ON procurement_batches(date);
-            CREATE INDEX IF NOT EXISTS idx_proc_items_batch ON procurement_items(batch_id);
             CREATE TABLE IF NOT EXISTS procurement_cart (
                 product_id INTEGER PRIMARY KEY,
                 product_name TEXT NOT NULL DEFAULT '',
                 quantity INTEGER NOT NULL DEFAULT 1,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(created_at);
-            CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions(type);
-            CREATE INDEX IF NOT EXISTS idx_div_date ON dividends(created_at);
-            CREATE INDEX IF NOT EXISTS idx_proc_date ON procurements(created_at);
             CREATE TABLE IF NOT EXISTS reconciliations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -629,11 +343,8 @@ def init_db():
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                bill_date TEXT,
-                reconciled_by TEXT
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date);
             CREATE TABLE IF NOT EXISTS platform_fees (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 year INTEGER NOT NULL,
@@ -642,6 +353,8 @@ def init_db():
                 meituan_waimai REAL DEFAULT 0,
                 shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now', 'localtime')),
+                updated_at TEXT DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(year, month)
             );
             CREATE TABLE IF NOT EXISTS platform_fee_entries (
@@ -652,7 +365,7 @@ def init_db():
                 meituan_waimai REAL DEFAULT 0,
                 shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (datetime('now', 'localtime'))
             );
             CREATE TABLE IF NOT EXISTS user_settings (
                 user_id INTEGER NOT NULL,
@@ -682,26 +395,21 @@ def init_db():
                 db.execute(f'ALTER TABLE users ADD COLUMN {col} {col_type}')
             except sqlite3.OperationalError:
                 pass  # column already exists
-        # Migration: archived column on daily_revenue
         try:
             db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
         except sqlite3.OperationalError:
             pass  # column already exists
-        # 邮箱大小写迁移：将所有存量 email 转为小写
         db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
-        # Seed partners
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
             for p in PARTNER_DATA:
                 db.execute('INSERT INTO partners (name,share,investment,status,note) VALUES (?,?,?,?,?)', p)
-        # Seed products
         count = db.execute('SELECT COUNT(*) FROM products').fetchone()[0]
         if count == 0:
             for p in DEFAULT_PRODUCTS:
                 db.execute('INSERT INTO products (name,spec,unit,price,supplier) VALUES (?,?,?,?,?)',
-                          (p[0],p[1],p[2],p[3],p[4]))
+                           (p[0],p[1],p[2],p[3],p[4]))
         db.commit()
-        # Migration: add bill_date column (ignore if exists)
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN bill_date TEXT')
         except sqlite3.OperationalError:
@@ -714,17 +422,14 @@ def init_db():
             db.execute("ALTER TABLE transactions ADD COLUMN images TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Migration (2026.5.30): add supplier column to products
         try:
             db.execute("ALTER TABLE products ADD COLUMN supplier TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Migration (2026.5.30): add date column to transactions
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN date TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Migration (2026.6.1): add thumb_images to transactions and procurement_batches
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN thumb_images TEXT DEFAULT '[]'")
         except sqlite3.OperationalError:
@@ -741,7 +446,6 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Migration (2026.6.5): SSO / session timeout auth preferences
         try:
             db.execute("ALTER TABLE users ADD COLUMN enforce_single_session INTEGER DEFAULT 1")
         except sqlite3.OperationalError:
@@ -758,13 +462,11 @@ def init_db():
             db.execute("ALTER TABLE user_tokens ADD COLUMN session_id TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Migration (2026.6.4): link transactions to procurement_batches for cascade delete/edit
         try:
             db.execute("ALTER TABLE transactions ADD COLUMN procurement_batch_id INTEGER")
         except sqlite3.OperationalError:
             pass  # column already exists
-        # Backfill: link existing transactions to their procurement batches by date+amount
-        # Only fill for expense/category=采购 with no link yet
+        # Backfill procurement_batch_id
         try:
             db.execute("""
                 UPDATE transactions
@@ -776,2015 +478,42 @@ def init_db():
                     ORDER BY pb.id DESC LIMIT 1
                 )
                 WHERE transactions.type = 'expense'
-                  AND transactions.category IN ('采购', 'goods')  -- legacy '采购' (pre-migration) + new 'goods'
+                  AND transactions.category IN ('采购', 'goods')
                   AND transactions.procurement_batch_id IS NULL
             """)
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass  # may fail if procurement_batches doesn't exist yet
+
 
 init_db()
-# Auto-verify existing users (backward compat)
 with get_db() as db:
     db.execute("UPDATE users SET is_verified=1 WHERE is_verified IS NULL OR is_verified=0")
     db.commit()
 
-# ── Validation helper ──
-def validate_required(data, *fields):
-    """Return list of missing field names; empty if all present."""
-    return [f for f in fields if data.get(f) is None]
 
-# ====== Auth ======
+# ═══════════════════════════════════════════════════════════
+#  Blueprint registration
+# ═══════════════════════════════════════════════════════════
+
+from routes.auth import auth_bp
+from routes.data import data_bp
+from routes.partners import bp as partners_bp
+from routes.procurement import procurement_bp
+from routes.profile import profile_bp
+from routes.settings import settings_bp
+from routes.transactions import tx_bp
+
+# Auth routes are root-level (no /api prefix)
+app.register_blueprint(auth_bp)
+
+# All other routes live under /api
+app.register_blueprint(data_bp, url_prefix='/api')
+app.register_blueprint(partners_bp, url_prefix='/api')
+app.register_blueprint(procurement_bp, url_prefix='/api')
+app.register_blueprint(profile_bp, url_prefix='/api')
+app.register_blueprint(settings_bp, url_prefix='/api')
+app.register_blueprint(tx_bp, url_prefix='/api')
 
-# ── Email validation ──
-EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-
-def validate_email(email):
-    return bool(EMAIL_RE.match(email))
-
-def _format_pdf_date(d, lang):
-    """PDF date format per language: CN 年月日 / EN YYYY-MM-DD."""
-    if lang in ('zh-CN', 'zh-TW'):
-        return f"{d.year}年{d.month}月{d.day}日"
-    return f"{d.year:04d}-{d.month:02d}-{d.day:02d}"
-
-# ── Rate limiting (in-memory, resets on process restart) ──
-_login_attempts = {}  # { ip: [attempt_timestamps...] }
-_RATE_LIMIT_MAX = 5
-_RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
-
-# Forgot-password has its own independent limiter (lower threshold)
-_forgot_attempts = {}
-_FORGOT_MAX = 3  # stricter: 3 attempts per 15 min
-_FORGOT_WINDOW = 900
-
-
-def _check_rate_limit(ip, store, max_attempts, window):
-    """Generic rate limit check. Returns (allowed, wait_seconds)."""
-    now = time.time()
-    attempts = store.get(ip, [])
-    # Prune expired attempts
-    attempts = [t for t in attempts if now - t < window]
-    store[ip] = attempts
-    if len(attempts) >= max_attempts:
-        wait = int(window - (now - attempts[0]))
-        return False, wait
-    return True, 0
-
-
-def _record_attempt(ip, store, window):
-    """Record an attempt in the given store."""
-    now = time.time()
-    attempts = store.get(ip, [])
-    attempts = [t for t in attempts if now - t < window]
-    attempts.append(now)
-    store[ip] = attempts
-
-
-def check_rate_limit(ip):
-    """Login rate limit (backward compat wrapper)."""
-    return _check_rate_limit(ip, _login_attempts, _RATE_LIMIT_MAX, _RATE_LIMIT_WINDOW)
-
-
-def record_failed_attempt(ip):
-    """Record a failed login attempt."""
-    _record_attempt(ip, _login_attempts, _RATE_LIMIT_WINDOW)
-
-
-def check_forgot_limit(ip):
-    """Forgot-password rate limit (independent counter)."""
-    return _check_rate_limit(ip, _forgot_attempts, _FORGOT_MAX, _FORGOT_WINDOW)
-
-
-def record_forgot_attempt(ip):
-    """Record a forgot-password attempt."""
-    _record_attempt(ip, _forgot_attempts, _FORGOT_WINDOW)
-
-
-@app.route('/login', methods=['GET','POST'])
-def login_page():
-    if request.method == 'GET':
-        # Serve SPA entry point (React handles the login UI)
-        index_path = os.path.join(FRONTEND_DIR, 'index.html')
-        if os.path.isfile(index_path):
-            return send_file(index_path, mimetype='text/html')
-        return jsonify({'status':'error','message':'Frontend not built'}), 503
-    # POST: JSON login API
-    data = request.get_json()
-    username = data.get('username','').strip()
-    password = data.get('password','')
-    remember = data.get('remember', False)
-    if not username or not password:
-        return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
-    # Rate limit check
-    ip = request.remote_addr or 'unknown'
-    allowed, wait = check_rate_limit(ip)
-    if not allowed:
-        mins = wait // 60
-        secs = wait % 60
-        return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
-    with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username.lower())).fetchone()
-        if user and check_password_hash(user['password'], password):
-            if not user['is_verified']:
-                return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
-            # Read per-user auth prefs (2026.6.5)
-            enforce_sso = int(user['enforce_single_session']) if user['enforce_single_session'] is not None else 1
-            timeout_hours = int(user['session_timeout_hours']) if user['session_timeout_hours'] else 1
-            if timeout_hours < 1:
-                timeout_hours = 1
-            session.permanent = True
-            # Cookie lifetime: use the 24h process default (set at module load, line 24).
-            # Per-user timeout is enforced authoritatively in login_required via
-            # user_sessions.expires_at. (P0 audit 2026-06-07: removed the previous
-            # `app.permanent_session_lifetime = ...` mutation that clobbered the
-            # process-global config on every login and broke multi-user isolation.)
-            # Generate new session id first (used by both SSO and non-SSO paths)
-            new_session_id = secrets.token_hex(16)
-            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
-            device_info = (request.user_agent.string or '')[:200]
-            # SSO enforcement: revoke all other active sessions for this user
-            if enforce_sso:
-                db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL", (user['id'],))
-                # Best-effort: clean up invalidated tokens (they'd fail validation anyway)
-                db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))", (user['id'], user['id']))
-                # Mark this user as having SSO active, pointing at the new session
-                # (legacy sessions without session_id in cookie will be kicked on next request)
-                db.execute('UPDATE users SET current_session_id=? WHERE id=?', (new_session_id, user['id']))
-            db.execute('INSERT INTO user_sessions (user_id, session_id, device_info, expires_at) VALUES (?,?,?,?)',
-                       (user['id'], new_session_id, device_info, expires_at))
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['session_id'] = new_session_id
-            # 清理 90 天前的旧 token
-            db.execute("DELETE FROM user_tokens WHERE created_at < datetime('now', '-90 days')")
-            token = secrets.token_hex(32)
-            db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user['id'], token, new_session_id))
-            db.commit()
-            return jsonify({'status':'ok','token':token,'username':user['username'],'user_id':user['id']})
-    record_failed_attempt(ip)
-    return jsonify({'status':'error','message':_t('err_wrong_credentials', g.lang)}), 401
-
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    username = data.get('username','').strip()
-    password = data.get('password','')
-    email = data.get('email','').strip().lower()
-    if not username or not password:
-        return jsonify({'status':'error','message':_t('err_empty_fields', g.lang)}), 400
-    if not email:
-        return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
-    if not validate_email(email):
-        return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
-    # 用户名格式校验
-    if not validate_username(username):
-        return jsonify({'status':'error','message':_t('err_username_invalid', g.lang) or '用户名仅支持字母、数字、下划线和中文，2-32位'}), 400
-    # 密码强度校验
-    ok, msg = validate_password(password, g.lang)
-    if not ok:
-        return jsonify({'status':'error','message':msg}), 400
-    with get_db() as db:
-        # 检查重复：已验证用户 → 拒绝；未验证用户 → 覆盖重注册
-        exists = db.execute('SELECT id, is_verified FROM users WHERE username=? OR email=?',(username, email)).fetchone()
-        if exists:
-            if exists['is_verified']:
-                return jsonify({'status':'error','message':_t('err_username_exists', g.lang)}), 409
-            # 未验证：删除旧记录（可能是验证码填错后重注册）
-            db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
-        code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
-        db.execute('INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)', (username, generate_password_hash(password), email, code, expires))
-        db.commit()
-        if not send_verification_email(email, code, g.lang):
-            return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
-    resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
-    if DEV_MODE:
-        resp['dev_code'] = code
-    return jsonify(resp), 201
-
-@app.route('/verify', methods=['POST'])
-def verify_email():
-    data = request.get_json()
-    email = data.get('email','').strip().lower()
-    code = data.get('code','').strip()
-    if not email or not code:
-        return jsonify({'status':'error','message':_t('err_empty_email_code', g.lang)}), 400
-    with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE email=? AND verification_code=? AND is_verified=0', (email, code)).fetchone()
-        if not user:
-            return jsonify({'status':'error','message':_t('err_wrong_code', g.lang)}), 401
-        if datetime.utcnow() > datetime.fromisoformat(user['code_expires']):
-            return jsonify({'status':'error','message':_t('err_code_expired', g.lang)}), 410
-        db.execute('UPDATE users SET is_verified=1, verification_code=NULL, code_expires=NULL WHERE id=?', (user['id'],))
-        db.commit()
-    return jsonify({'status':'ok','message':_t('msg_verify_ok', g.lang)})
-
-@app.route('/resend-code', methods=['POST'])
-def resend_code_route():
-    data = request.get_json()
-    email = data.get('email','').strip().lower()
-    if not email:
-        return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
-    with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=0',(email,)).fetchone()
-        if not user:
-            return jsonify({'status':'ok','message':_t('msg_code_resent', g.lang)})
-        code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
-        db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',(code, expires, user['id']))
-        db.commit()
-        if not send_verification_email(email, code, g.lang):
-            return jsonify({'status':'error','message':_t('err_resend_failed', g.lang)}), 500
-    resp = {'status':'ok','message':_t('msg_code_resent', g.lang)}
-    if DEV_MODE:
-        resp['dev_code'] = code
-    return jsonify(resp)
-
-# ====== 忘记密码 / 重置密码 ======
-
-@app.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    """发送重置密码验证码到已注册邮箱"""
-    data = request.get_json()
-    email = data.get('email','').strip().lower()
-    if not email:
-        return jsonify({'status':'error','message':_t('err_email_required', g.lang)}), 400
-    if not validate_email(email):
-        return jsonify({'status':'error','message':_t('err_email_invalid', g.lang) or 'Invalid email format'}), 400
-    # 限流：IP 15分钟3次（独立计数器，不与登录共享）
-    ip = request.remote_addr or 'unknown'
-    allowed, wait = check_forgot_limit(ip)
-    if not allowed:
-        mins = wait // 60
-        secs = wait % 60
-        return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
-    with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=1',(email,)).fetchone()
-        if not user:
-            # 邮箱未注册 → 记录失败 + 统一返回（防探测）
-            record_forgot_attempt(ip)
-            return jsonify({'status':'ok','message':_t('msg_forgot_sent', g.lang),'email':email})
-        code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
-        db.execute('UPDATE users SET reset_code=?, reset_expires=? WHERE id=?',(code, expires, user['id']))
-        db.commit()
-        if not send_reset_email(email, code, g.lang):
-            return jsonify({'status':'error','message':_t('err_code_send_failed', g.lang)}), 500
-    resp = {'status':'ok','message':_t('msg_code_sent', g.lang, email=email),'email':email}
-    if DEV_MODE:
-        resp['dev_code'] = code
-    return jsonify(resp)
-
-@app.route('/reset-password', methods=['POST'])
-def reset_password():
-    """用验证码重置密码"""
-    data = request.get_json()
-    email = data.get('email','').strip().lower()
-    code = data.get('code','').strip()
-    new_password = data.get('password','')
-    if not email or not code or not new_password:
-        return jsonify({'status':'error','message':_t('err_incomplete', g.lang)}), 400
-    ok, msg = validate_password(new_password, g.lang)
-    if not ok:
-        return jsonify({'status':'error','message':msg}), 400
-    with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE email=? AND reset_code=? AND is_verified=1',(email, code)).fetchone()
-        if not user:
-            return jsonify({'status':'error','message':_t('err_wrong_code', g.lang)}), 401
-        if datetime.utcnow() > datetime.fromisoformat(user['reset_expires']):
-            return jsonify({'status':'error','message':_t('err_reset_code_expired', g.lang)}), 410
-        db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
-                   (generate_password_hash(new_password), user['id']))
-        db.commit()
-    return jsonify({'status':'ok','message':_t('msg_reset_ok', g.lang)})
-
-# ====== End Auth ======
-
-@app.route('/logout', methods=['POST'])
-@login_required
-def logout():
-    # Clean up the user_sessions row for this session (best-effort)
-    sid = session.get('session_id')
-    if sid:
-        try:
-            with get_db() as db:
-                db.execute('DELETE FROM user_sessions WHERE session_id=?', (sid,))
-                db.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
-    # Also invalidate any Bearer tokens tied to this session
-    if sid:
-        try:
-            with get_db() as db:
-                db.execute('DELETE FROM user_tokens WHERE session_id=?', (sid,))
-                db.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
-    session.clear()
-    return jsonify({'status':'ok'})
-
-@app.route('/logout', methods=['GET'])
-def logout_get():
-    """GET /logout — reject with 405 to prevent CSRF and SPA catch-all hijack."""
-    return jsonify({'status':'error','message':'Use POST /logout'}), 405
-
-# Page routes are now served by the SPA fallback (serve_spa_static / serve_spa_root).
-# API routes follow below — all unchanged.
-
-@app.route('/api/transactions', methods=['GET','POST'])
-@login_required
-def api_transactions():
-    if request.method == 'POST':
-        data = request.get_json()
-        missing = validate_required(data, 'type', 'amount', 'category', 'account')
-        if missing:
-            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        with get_db() as db:
-            db.execute('INSERT INTO transactions (type,amount,category,account,note,images,thumb_images) VALUES (?,?,?,?,?,?,?)',
-                       (data['type'], data['amount'], data['category'], data['account'],
-                        data.get('note',''),
-                        json.dumps(data.get('images', [])),
-                        json.dumps(data.get('thumb_images', []))))
-            db.commit()
-        return jsonify({'status':'ok'})
-    # GET with pagination & filtering
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    tx_type = request.args.get('type')           # 业务上固定为 'expense'，字段保留为 schema 扩展性
-    date_from = request.args.get('date_from')    # 'YYYY-MM-DD'
-    date_to = request.args.get('date_to')
-    category = request.args.get('category')      # comma-separated: '日常,房租'
-
-    where = []
-    params = []
-    if tx_type:
-        where.append('type=?')
-        params.append(tx_type)
-    if date_from:
-        where.append('date(t.created_at) >= ?')
-        params.append(date_from)
-    if date_to:
-        where.append('date(t.created_at) <= ?')
-        params.append(date_to)
-    if category:
-        cats = [c.strip() for c in category.split(',') if c.strip()]
-        if cats:
-            placeholders = ','.join(['?' for _ in cats])
-            where.append(f'category IN ({placeholders})')
-            params.extend(cats)
-
-    where_sql = ' AND '.join(where) if where else '1=1'
-
-    with get_db() as db:
-        count = db.execute(f'SELECT COUNT(*) FROM transactions t WHERE {where_sql}', params).fetchone()[0]
-        total_all = db.execute("SELECT COUNT(*) FROM transactions WHERE type='expense'").fetchone()[0]
-        pages = max(1, (count + per_page - 1) // per_page)
-        offset = (page - 1) * per_page
-        rows = db.execute(
-            f'SELECT t.*, pb.batch_number AS proc_batch_number FROM transactions t '
-            f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
-            f'WHERE {where_sql} ORDER BY t.created_at DESC LIMIT ? OFFSET ?',
-            params + [per_page, offset]
-        ).fetchall()
-    return jsonify({
-        'transactions': [dict(r) for r in rows],
-        'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
-        'total_all': total_all,
-    })
-
-@app.route('/api/transactions/<int:id>', methods=['DELETE'])
-@login_required
-def api_delete_transaction(id):
-    with get_db() as db:
-        db.execute('DELETE FROM transactions WHERE id=?', (id,))
-        db.commit()
-    return jsonify({'status':'ok'})
-
-# ── Expense image upload ──
-
-@app.route('/api/expenses/upload-images', methods=['POST'])
-@login_required
-def api_upload_expense_images():
-    """Upload receipt images. Returns { images: [...], thumb_images: [...], has_thumbs: bool }.
-    thumb_images[i] is the 128×128 thumbnail URL (or images[i] fallback if Pillow unavailable).
-    """
-    if 'files' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No files'}), 400
-    files = request.files.getlist('files')
-    if not files:
-        return jsonify({'status': 'error', 'message': 'No files'}), 400
-    # Gate: max 10 files, max 10MB each
-    if len(files) > 10:
-        return jsonify({'status': 'error', 'message': 'Max 10 files per upload'}), 400
-    for f in files:
-        if f.content_length and f.content_length > 10 * 1024 * 1024:
-            return jsonify({'status': 'error', 'message': f'File too large: {f.filename}'}), 400
-    user_id = str(g.user_id)
-    user_dir = os.path.join(EXPENSE_IMG_DIR, user_id)
-    os.makedirs(user_dir, exist_ok=True)
-    urls = []
-    thumb_urls = []
-    import uuid
-    for f in files:
-        if f.filename == '':
-            continue
-        # Keep original extension, generate unique name
-        ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
-        safe_name = f"{uuid.uuid4().hex}{ext}"
-        save_path = os.path.join(user_dir, safe_name)
-        f.save(save_path)
-        urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-        # Generate 128×128 thumbnail for list rendering (faster load, less bandwidth)
-        # Graceful degradation: if Pillow fails, fall back to original image URL
-        if HAS_PIL:
-            try:
-                thumb_name = f"{os.path.splitext(safe_name)[0]}_thumb.jpg"
-                thumb_path = os.path.join(user_dir, thumb_name)
-                with _PILImage.open(save_path) as img:  # type: ignore[union-attr]
-                    img.thumbnail((128, 128), _PILImage.LANCZOS)  # type: ignore[union-attr]
-                    # Convert to RGB if needed (PNG with alpha, etc.)
-                    if img.mode in ('RGBA', 'P', 'LA'):
-                        bg = _PILImage.new('RGB', img.size, (255, 255, 255))  # type: ignore[union-attr]
-                        if img.mode in ('RGBA', 'LA'):
-                            bg.paste(img, mask=img.split()[-1])
-                        else:
-                            bg.paste(img.convert('RGBA'))
-                        img = bg
-                    img.save(thumb_path, 'JPEG', quality=85, optimize=True)
-                thumb_urls.append(f'/expense-imgs/{user_id}/{thumb_name}')
-            except Exception:
-                # Thumbnail generation failed (corrupt image, unsupported format, etc.)
-                # Fall back to original so frontend still has something to display
-                thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-        else:
-            # Pillow not installed: fall back to original
-            thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-    return jsonify({'status': 'ok', 'images': urls, 'thumb_images': thumb_urls, 'has_thumbs': HAS_PIL})
-
-@app.route('/api/partners')
-@login_required
-def api_partners():
-    with get_db() as db:
-        rows = db.execute("""SELECT p.*, COALESCE(SUM(d.amount),0) as total_dividends FROM partners p LEFT JOIN dividends d ON d.partner = p.name GROUP BY p.id""").fetchall()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/dividends', methods=['GET','POST'])
-@login_required
-def api_dividends():
-    if request.method == 'POST':
-        data = request.get_json()
-        items = data.get('items', [data])  # support single item or array
-        for item in items:
-            missing = validate_required(item, 'partner', 'amount')
-            if missing:
-                return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        with get_db() as db:
-            for item in items:
-                db.execute('INSERT INTO dividends (partner,amount,note,date) VALUES (?,?,?,?)',
-                    (item['partner'], item['amount'], item.get('note',''), item.get('date','')))
-            db.commit()
-        return jsonify({'status':'ok'})
-    with get_db() as db:
-        rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/dividends/<int:id>', methods=['DELETE'])
-@login_required
-def api_delete_dividend(id):
-    with get_db() as db:
-        db.execute('DELETE FROM dividends WHERE id=?', (id,))
-        db.commit()
-    return jsonify({'status':'ok'})
-
-# ========== 设置 - 首页背景图 ==========
-ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
-MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
-
-@app.route('/api/settings/background', methods=['GET', 'POST', 'PUT', 'DELETE'])
-@login_required
-def api_background():
-    if request.method == 'GET':
-        url = None
-        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
-        if os.path.exists(save_path):
-            url = f'/user-images/home-bg-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
-        opacity = 0.55
-        with get_db() as db:
-            row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='background_opacity'", (g.user_id,)).fetchone()
-            if row and row['value'] is not None:
-                try: opacity = float(row['value'])
-                except: pass
-        return jsonify({'url': url, 'opacity': opacity})
-
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return jsonify({'status': 'error', 'message': '未选择文件'}), 400
-        f = request.files['file']
-        if f.filename == '':
-            return jsonify({'status': 'error', 'message': '文件名为空'}), 400
-        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-        if ext not in ALLOWED_BG_EXT:
-            return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
-        f.seek(0, 2)
-        size = f.tell()
-        f.seek(0)
-        if size > MAX_BG_SIZE:
-            return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
-        os.makedirs(BG_DIR, exist_ok=True)
-        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
-        f.save(save_path)
-        url = f'/user-images/home-bg-{g.user_id}.jpg?t={int(time.time())}'
-        return jsonify({'status': 'ok', 'url': url})
-
-    if request.method == 'PUT':
-        data = request.get_json()
-        if data and 'opacity' in data:
-            with get_db() as db:
-                db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'background_opacity', ?)",
-                           (g.user_id, str(data['opacity'])))
-                db.commit()
-        return jsonify({'status': 'ok'})
-
-    if request.method == 'DELETE':
-        # Reset to default — delete the user's custom background file.
-        # The frontend then reverts to /img/bg.jpg and dispatches a
-        # 'bg-changed' event so HomeScreen refreshes immediately.
-        # Without this branch the function fell through and returned
-        # None, which Flask turned into a 500. Frontend caught the
-        # 500 silently (catch (err) { /* ignore */ }) so the user saw
-        # the "恢复默认" button as a no-op.
-        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
-        if os.path.exists(save_path):
-            os.remove(save_path)
-        return jsonify({'status': 'ok'})
-
-@app.route('/api/settings/lang', methods=['GET'])
-@login_required
-def api_get_lang():
-    with get_db() as db:
-        row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='lang'", (g.user_id,)).fetchone()
-    lang = row['value'] if row else 'zh-CN'
-    return jsonify({'lang': lang})
-
-@app.route('/api/settings/lang', methods=['PUT'])
-@login_required
-def api_save_lang():
-    data = request.get_json()
-    if data and 'lang' in data:
-        with get_db() as db:
-            db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'lang', ?)",
-                       (g.user_id, data['lang']))
-            db.commit()
-    return jsonify({'status': 'ok'})
-
-
-@app.route('/api/settings/theme', methods=['GET'])
-@login_required
-def api_get_theme():
-    with get_db() as db:
-        row = db.execute("SELECT value FROM user_settings WHERE user_id=? AND key='theme'", (g.user_id,)).fetchone()
-    theme = row['value'] if row else 'burgundy-warm'
-    return jsonify({'theme': theme})
-
-
-@app.route('/api/settings/theme', methods=['PUT'])
-@login_required
-def api_save_theme():
-    data = request.get_json()
-    if data and 'theme' in data:
-        with get_db() as db:
-            db.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'theme', ?)",
-                       (g.user_id, data['theme']))
-            db.commit()
-    return jsonify({'status': 'ok'})
-
-    if request.method == 'DELETE':
-        save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
-        if os.path.exists(save_path):
-            os.remove(save_path)
-        return jsonify({'status': 'ok'})
-
-@app.route('/api/partners/<int:id>', methods=['DELETE'])
-@login_required
-def api_delete_partner(id):
-    with get_db() as db:
-        db.execute('DELETE FROM partners WHERE id=?', (id,))
-        db.commit()
-    return jsonify({'status':'ok'})
-
-@app.route('/api/partners/<int:id>', methods=['PUT'])
-@login_required
-def api_update_partner(id):
-    data = request.get_json()
-    missing = validate_required(data, 'share', 'investment')
-    if missing:
-        return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-    with get_db() as db:
-        db.execute('UPDATE partners SET share=?, investment=?, status=?, note=? WHERE id=?', (data['share'], data['investment'], data.get('status','进行中'), data.get('note',''), id))
-        db.commit()
-    return jsonify({'status':'ok'})
-
-@app.route('/api/products', methods=['GET','POST','PUT','DELETE'])
-@login_required
-def api_products():
-    if request.method == 'POST':
-        data = request.get_json()
-        missing = validate_required(data, 'name')
-        if missing:
-            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        with get_db() as db:
-            db.execute('INSERT INTO products (name,spec,unit,price,supplier,note) VALUES (?,?,?,?,?,?)',
-                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('supplier',''), data.get('note','')))
-            db.commit()
-        return jsonify({'status':'ok'})
-    if request.method == 'PUT':
-        data = request.get_json()
-        missing = validate_required(data, 'name', 'id')
-        if missing:
-            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        with get_db() as db:
-            db.execute('UPDATE products SET name=?, spec=?, unit=?, price=?, supplier=?, note=? WHERE id=?',
-                      (data['name'], data.get('spec',''), data.get('unit',''), data.get('price',0), data.get('supplier',''), data.get('note',''), data['id']))
-            db.commit()
-        return jsonify({'status':'ok'})
-    if request.method == 'DELETE':
-        pid = request.args.get('id')
-        with get_db() as db:
-            db.execute('DELETE FROM products WHERE id=?', (pid,))
-            db.commit()
-        return jsonify({'status':'ok'})
-    # GET
-    with get_db() as db:
-        rows = db.execute('SELECT * FROM products ORDER BY name').fetchall()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/procurements', methods=['GET','POST'])
-@login_required
-def api_procurements():
-    if request.method == 'POST':
-        data = request.get_json()
-        missing = validate_required(data, 'product_id', 'product_name', 'quantity', 'unit_price', 'total')
-        if missing:
-            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        with get_db() as db:
-            db.execute('INSERT INTO procurements (product_id,product_name,quantity,unit_price,total,note) VALUES (?,?,?,?,?,?)', (data['product_id'], data['product_name'], data['quantity'], data['unit_price'], data['total'], data.get('note','')))
-            db.commit()
-        return jsonify({'status':'ok'})
-    with get_db() as db:
-        rows = db.execute('SELECT * FROM procurements ORDER BY created_at DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/procurements/<int:id>', methods=['DELETE'])
-@login_required
-def api_delete_procurement(id):
-    with get_db() as db:
-        db.execute('DELETE FROM procurements WHERE id=?', (id,))
-        db.commit()
-    return jsonify({'status':'ok'})
-
-# ── 购物车暂存 API ──
-@app.route('/api/procurement-cart', methods=['GET'])
-@login_required
-def api_get_cart():
-    with get_db() as db:
-        rows = db.execute('SELECT * FROM procurement_cart ORDER BY updated_at DESC').fetchall()
-        return jsonify([dict(r) for r in rows])
-
-@app.route('/api/procurement-cart', methods=['POST'])
-@login_required
-def api_add_cart():
-    data = request.get_json() or {}
-    product_id = data.get('product_id')
-    quantity = data.get('quantity', 1)
-    if not product_id or quantity < 1:
-        return jsonify({'status': 'error', 'message': 'product_id and quantity>=1 required'}), 400
-    with get_db() as db:
-        product = db.execute('SELECT name FROM products WHERE id=?', (product_id,)).fetchone()
-        if not product:
-            return jsonify({'status': 'error', 'message': 'product not found'}), 404
-        db.execute(
-            'INSERT OR REPLACE INTO procurement_cart (product_id, product_name, quantity, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',
-            (product_id, product['name'], quantity)
-        )
-        db.commit()
-        return jsonify({'status': 'ok'})
-
-@app.route('/api/procurement-cart/<int:product_id>', methods=['DELETE'])
-@login_required
-def api_remove_cart_item(product_id):
-    with get_db() as db:
-        db.execute('DELETE FROM procurement_cart WHERE product_id=?', (product_id,))
-        db.commit()
-        return jsonify({'status': 'ok'})
-
-@app.route('/api/procurement-cart', methods=['DELETE'])
-@login_required
-def api_clear_cart():
-    with get_db() as db:
-        db.execute('DELETE FROM procurement_cart')
-        db.commit()
-        return jsonify({'status': 'ok'})
-
-# ── 进货批次 API（2026.5.30）──
-@app.route('/api/procurement-batches', methods=['GET','POST'])
-@login_required
-def api_procurement_batches():
-    """POST: 创建进货批次 + 明细"""
-    if request.method == 'POST':
-        data = request.get_json()
-        missing = validate_required(data, 'date', 'payment_method', 'items')
-        if missing:
-            return jsonify({'status':'error','message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
-        items = data.get('items', [])
-        if not items or not isinstance(items, list):
-            return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
-        with get_db() as db:
-            cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
-            batch_no = cur[0] + 1
-            total = 0.0
-            item_rows = []
-            for item in items:
-                pid = item.get('product_id')
-                qty = item.get('quantity', 0)
-                if not pid or qty <= 0:
-                    continue
-                product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
-                if not product:
-                    continue
-                unit_price = product['price']
-                subtotal = unit_price * qty
-                total += subtotal
-                item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
-            if total == 0:
-                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
-            images_json = json.dumps(data.get('images', []))
-            thumbs_json = json.dumps(data.get('thumb_images', []))
-            cur = db.execute(
-                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category','goods'), round(total, 2),
-                 images_json, thumbs_json, data.get('note', ''), g.user_id)
-            )
-            batch_id = cur.lastrowid
-            for name, spec, up, qty, sub, pid in item_rows:
-                db.execute(
-                    'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (batch_id, pid, name, spec, up, qty, round(sub, 2))
-                )
-            # Sync an expense transaction (with thumb_images so history list can show thumbnail)
-            cur = db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category','goods'), data['payment_method'], data.get('note',''), data['date'], images_json, thumbs_json, batch_id)
-            )
-            db.commit()
-        return jsonify({'status':'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
-    # GET: 进货记录列表（分页）
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    with get_db() as db:
-        total = db.execute('SELECT COUNT(*) FROM procurement_batches').fetchone()[0]
-        rows = db.execute(
-            'SELECT * FROM procurement_batches ORDER BY date DESC, id DESC LIMIT ? OFFSET ?',
-            (per_page, (page - 1) * per_page)
-        ).fetchall()
-        batches = []
-        for row in rows:
-            b = dict(row)
-            b['images'] = json.loads(b['images']) if b['images'] else []
-            b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
-            items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (b['id'],)).fetchall()
-            b['items'] = [dict(it) for it in items]
-            batches.append(b)
-    return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
-
-@app.route('/api/procurement-batches/<int:id>', methods=['GET','PUT','DELETE'])
-@login_required
-def api_procurement_batch_detail(id):
-    """单次进货详情 + 编辑 + 删除"""
-    with get_db() as db:
-        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
-        if not row:
-            return jsonify({'status':'error','message':'Not found'}), 404
-
-        if request.method == 'DELETE':
-            # Cascade delete: items + linked transaction
-            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
-            # Remove the linked expense transaction (any with this procurement_batch_id, plus fallback for orphan history)
-            batch = dict(row)
-            db.execute(
-                # category matches both legacy '采购' (pre-migration) and new 'goods' (post-migration)
-                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category IN ('采购', 'goods') AND date=? AND amount=? AND account=?)",
-                (id, batch['date'], batch['total'], batch['payment_method'])
-            )
-            db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
-            db.commit()
-            return jsonify({'status':'ok'})
-
-        if request.method == 'PUT':
-            data = request.get_json()
-            items = data.get('items', [])
-            if not items or not isinstance(items, list):
-                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
-            # Recompute total from current products
-            total = 0.0
-            item_rows = []
-            for item in items:
-                pid = item.get('product_id')
-                qty = item.get('quantity', 0)
-                if not pid or qty <= 0:
-                    continue
-                product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
-                if not product:
-                    continue
-                unit_price = product['price']
-                subtotal = unit_price * qty
-                total += subtotal
-                item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
-            if total == 0:
-                return jsonify({'status':'error','message': _t('err_empty_fields', g.lang)}), 400
-            images_json = json.dumps(data.get('images', []))
-            thumbs_json = json.dumps(data.get('thumb_images', []))
-            # Replace items (delete + re-insert)
-            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
-            for name, spec, up, qty, sub, pid in item_rows:
-                db.execute(
-                    'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (id, pid, name, spec, up, qty, round(sub, 2))
-                )
-            # Update batch header (batch_number immutable)
-            db.execute(
-                "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
-                (data['date'], data['payment_method'], data.get('category','goods'),
-                 round(total, 2), images_json, thumbs_json, data.get('note',''), id)
-            )
-            # Sync linked transaction
-            db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
-                (round(total, 2), data.get('category','goods'), data['payment_method'],
-                 data.get('note',''), data['date'], images_json, thumbs_json, id)
-            )
-            db.commit()
-            return jsonify({'status':'ok', 'batch_id': id, 'total': round(total, 2)})
-
-        # GET: detail
-        b = dict(row)
-        b['images'] = json.loads(b['images']) if b['images'] else []
-        b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
-        b['items'] = [dict(it) for it in items]
-    return jsonify(b)
-
-# ── 进货单 PDF ──
-@app.route('/api/procurement-batches/<int:id>/pdf', methods=['GET'])
-@login_required
-def api_procurement_batch_pdf(id):
-    """生成进货单 PDF"""
-    import weasyprint
-    with get_db() as db:
-        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
-        if not row:
-            return jsonify({'status':'error','message':'Not found'}), 404
-        b = dict(row)
-        b['images'] = json.loads(b['images']) if b['images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
-        b['items'] = [dict(it) for it in items]
-
-    # 商品行 HTML
-    items_html = ''
-    for it in b['items']:
-        spec = it.get('spec', '') or ''
-        items_html += (
-            f"<tr><td>{it['product_name']}</td>"
-            f"<td>{spec}</td>"
-            f"<td>¥{it['unit_price']:,.2f}</td>"
-            f"<td>{it['quantity']}</td>"
-            f"<td>¥{it['subtotal']:,.2f}</td></tr>"
-        )
-
-    # 凭证图片 HTML
-    images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
-    if b['images']:
-        imgs = ''
-        for img in b['images']:
-            img_path = os.path.join(img_dir, img)
-            if os.path.isfile(img_path):
-                # WeasyPrint supports file:// or direct path
-                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
-        if imgs:
-            images_html = (
-                '<div class="images-section">'
-                f'<div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div>'
-                f'<div class="images-grid">{imgs}</div>'
-                '</div>'
-            )
-
-    # 日期格式化: 2026-06-04 → 2026年6月4日（按语言）
-    try:
-        d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = _format_pdf_date(d, g.lang)
-    except:
-        date_str = b.get('date', '')
-
-    # 读取模板
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html = f.read()
-
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行
-    _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
-
-    # 填充数据
-    now = datetime.now()
-    html = html.format(
-        batch_number=f"2026-{b['batch_number']:04d}",
-        date=date_str,
-        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
-        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
-        category=_t(b.get('category', 'goods'), g.lang),
-        items_html=items_html,
-        total=b['total'],
-        images_html=images_html,
-        note_html=note_html,
-        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
-        operator=g.username,
-        gen_date=_format_pdf_date(now, g.lang),
-        # PDF template labels (i18n, 2026-06-07)
-        pdf_title=_t('pdfTitle', g.lang),
-        label_date=_t('pdfLabelDate', g.lang),
-        label_payment=_t('pdfLabelPayment', g.lang),
-        label_category=_t('pdfLabelCategory', g.lang),
-        label_batch=_t('procBatchLabel', g.lang),
-        col_name=_t('pdfColName', g.lang),
-        col_spec=_t('pdfColSpec', g.lang),
-        col_unit_price=_t('pdfColUnitPrice', g.lang),
-        col_qty=_t('pdfColQty', g.lang),
-        col_subtotal=_t('pdfColSubtotal', g.lang),
-        total_cny=_t('pdfTotalCNY', g.lang),
-        operator_label=_t('pdfOperator', g.lang),
-        gen_date_label=_t('pdfGenDate', g.lang),
-    )
-
-    # 生成 PDF
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-
-    # 返回文件下载
-    filename = f"procurement_{b['batch_number']:04d}.pdf"
-    response = make_response(pdf_bytes)
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
-
-# ── 分享链接 ──
-import hmac, base64, hashlib
-
-def _make_share_token(batch_id, expires_ts):
-    payload = f"{batch_id}:{expires_ts}"
-    sig = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
-    raw = f"{payload}:{sig}"
-    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip('=')
-
-def _verify_share_token(token):
-    try:
-        # Add padding back
-        raw = base64.urlsafe_b64decode(token + '=' * (4 - len(token) % 4)).decode()
-        parts = raw.split(':')
-        if len(parts) != 3:
-            return None
-        batch_id, expires_ts, sig = parts
-        expected = hmac.new(app.secret_key.encode(), f"{batch_id}:{expires_ts}".encode(), hashlib.sha256).hexdigest()[:16]
-        if not hmac.compare_digest(sig, expected):
-            return None
-        if int(expires_ts) < time.time():
-            return None
-        return int(batch_id)
-    except:
-        return None
-
-@app.route('/api/procurement-batches/<int:id>/share-link', methods=['GET'])
-@login_required
-def api_share_link(id):
-    """生成 24 小时有效的分享链接"""
-    expires = int(time.time()) + 86400  # 24 hours
-    token = _make_share_token(id, expires)
-    return jsonify({'url': f'/api/share/{token}'})
-
-@app.route('/api/share/<token>', methods=['GET'])
-def api_share_pdf(token):
-    """通过 token 访问 PDF（无需登录）"""
-    # g.lang 由全局 before_request 钩子 _set_request_lang 从 X-Lang / Accept-Language
-    # 初始化（2026-06-07 修）。PDF 跟着访问者浏览器语言走，不再硬编码简中。
-    batch_id = _verify_share_token(token)
-    if not batch_id:
-        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
-    # 直接复用 PDF 生成逻辑（内联版本，无需 login_required）
-    import weasyprint
-    with get_db() as db:
-        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
-        if not row:
-            return jsonify({'status':'error','message':'Not found'}), 404
-        b = dict(row)
-        b['images'] = json.loads(b['images']) if b['images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
-        b['items'] = [dict(it) for it in items]
-        # Look up operator username from the batch's user_id (share path is public,
-        # no g.username — 2026-06-07 fix "经办人：—" bug)
-        user_row = db.execute('SELECT username FROM users WHERE id=?', (b.get('user_id'),)).fetchone()
-        operator = user_row['username'] if user_row else '—'
-    # 商品行
-    items_html = ''
-    for it in b['items']:
-        spec = it.get('spec', '') or ''
-        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
-    # 凭证图片
-    images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
-    if b['images']:
-        imgs = ''
-        for img in b['images']:
-            img_path = os.path.join(img_dir, img)
-            if os.path.isfile(img_path):
-                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
-        if imgs:
-            images_html = f'<div class="images-section"><div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div><div class="images-grid">{imgs}</div></div>'
-    # 日期
-    try:
-        d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = _format_pdf_date(d, g.lang)
-    except:
-        date_str = b.get('date', '')
-    # 渲染
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html = f.read()
-
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行
-    _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
-
-    now = datetime.now()
-    html = html.format(
-        batch_number=f"2026-{b['batch_number']:04d}",
-        date=date_str,
-        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
-        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
-        category=_t(b.get('category', 'goods'), g.lang),
-        items_html=items_html,
-        total=b['total'],
-        images_html=images_html,
-        note_html=note_html,
-        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
-        operator=operator,
-        gen_date=_format_pdf_date(now, g.lang),
-        pdf_title=_t('pdfTitle', g.lang),
-        label_date=_t('pdfLabelDate', g.lang),
-        label_payment=_t('pdfLabelPayment', g.lang),
-        label_category=_t('pdfLabelCategory', g.lang),
-        label_batch=_t('procBatchLabel', g.lang),
-        col_name=_t('pdfColName', g.lang),
-        col_spec=_t('pdfColSpec', g.lang),
-        col_unit_price=_t('pdfColUnitPrice', g.lang),
-        col_qty=_t('pdfColQty', g.lang),
-        col_subtotal=_t('pdfColSubtotal', g.lang),
-        total_cny=_t('pdfTotalCNY', g.lang),
-        operator_label=_t('pdfOperator', g.lang),
-        gen_date_label=_t('pdfGenDate', g.lang),
-    )
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-    filename = f"procurement_{b['batch_number']:04d}.pdf"
-    response = make_response(pdf_bytes)
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
-    return response
-
-def _render_procurement_png(batch_id):
-    """Render page 1 of a procurement PDF to a PNG blob.
-    Used by /api/share/<token>/first-page.png for the
-    "保存图片" share action. Returns (png_bytes, batch_number) or (None, None) on error."""
-    import weasyprint  # local import: app.py defers weasyprint so its
-                        # 30s import cost doesn't sit on the cold-start path
-    try:
-        import pymupdf
-    except ImportError:
-        return None, None
-    # Reuse the same PDF bytes /api/share/<token> produces so the
-    # PNG and the iframe view are guaranteed to be from the same
-    # template render (no risk of drift if procurement_order.html
-    # changes between requests).
-    with get_db() as db:
-        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
-        if not row:
-            return None, None
-        b = dict(row)
-        b['images'] = json.loads(b['images']) if b['images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
-        b['items'] = [dict(it) for it in items]
-        # Look up operator username (2026-06-07 fix "经办人：—" bug)
-        user_row = db.execute('SELECT username FROM users WHERE id=?', (b.get('user_id'),)).fetchone()
-        operator = user_row['username'] if user_row else '—'
-    items_html = ''
-    for it in b['items']:
-        spec = it.get('spec', '') or ''
-        items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
-    images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
-    if b['images']:
-        imgs = ''
-        for img in b['images']:
-            img_path = os.path.join(img_dir, img)
-            if os.path.isfile(img_path):
-                imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
-        if imgs:
-            images_html = f'<div class="images-section"><div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div><div class="images-grid">{imgs}</div></div>'
-    try:
-        d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = _format_pdf_date(d, g.lang)
-    except:
-        date_str = b.get('date', '')
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
-    with open(template_path, 'r', encoding='utf-8') as f:
-        html = f.read()
-
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行
-    _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
-
-    now = datetime.now()
-    html = html.format(
-        batch_number=f"2026-{b['batch_number']:04d}",
-        date=date_str,
-        # Translate internal keys (DB stores 'payWechat' / 'goods' now) to current lang
-        payment_method=_t(b.get('payment_method', 'payWechat'), g.lang),
-        category=_t(b.get('category', 'goods'), g.lang),
-        items_html=items_html,
-        total=b['total'],
-        images_html=images_html,
-        note_html=note_html,
-        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
-        operator=operator,
-        gen_date=_format_pdf_date(now, g.lang),
-        pdf_title=_t('pdfTitle', g.lang),
-        label_date=_t('pdfLabelDate', g.lang),
-        label_payment=_t('pdfLabelPayment', g.lang),
-        label_category=_t('pdfLabelCategory', g.lang),
-        label_batch=_t('procBatchLabel', g.lang),
-        col_name=_t('pdfColName', g.lang),
-        col_spec=_t('pdfColSpec', g.lang),
-        col_unit_price=_t('pdfColUnitPrice', g.lang),
-        col_qty=_t('pdfColQty', g.lang),
-        col_subtotal=_t('pdfColSubtotal', g.lang),
-        total_cny=_t('pdfTotalCNY', g.lang),
-        operator_label=_t('pdfOperator', g.lang),
-        gen_date_label=_t('pdfGenDate', g.lang),
-    )
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-    page = doc[0]
-    # 2x scale — retina-grade for the share-image save flow.
-    # Lower scale = blurry on phones; higher = bigger file for no
-    # visible gain on the typical 3-5" image preview.
-    pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))
-    png_bytes = pix.tobytes("png")
-    doc.close()
-    return png_bytes, b['batch_number']
-
-@app.route('/api/share/<token>/first-page.png', methods=['GET'])
-def api_share_png(token):
-    """Render page 1 of a procurement PDF to PNG (no login required).
-    Powered by the same HMAC token as /api/share/<token>, expires 24h.
-    Used by the preview page's "保存图片" share action."""
-    batch_id = _verify_share_token(token)
-    if not batch_id:
-        return jsonify({'status':'error','message':'链接已过期或无效'}), 410
-    png_bytes, batch_number = _render_procurement_png(batch_id)
-    if not png_bytes:
-        return jsonify({'status':'error','message':'渲染失败'}), 500
-    filename = f"procurement_{batch_number:04d}.png"
-    response = make_response(png_bytes)
-    response.headers['Content-Type'] = 'image/png'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    # 24h cache aligned with the token lifetime
-    response.headers['Cache-Control'] = 'private, max-age=86400'
-    return response
-
-@app.route('/api/stats')
-@login_required
-def api_stats():
-    with get_db() as db:
-        income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income'").fetchone()[0]
-        expense = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense'").fetchone()[0]
-        tx_count = db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
-    return jsonify({'income':income, 'expense':expense, 'count':tx_count})
-
-# ── Summary (today + month) ──
-@app.route('/api/summary')
-@login_required
-def api_summary():
-    today_str = date.today().isoformat()
-    month_str = date.today().strftime('%Y-%m')
-    with get_db() as db:
-        # Today
-        today_income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND date(created_at)=?", (today_str,)).fetchone()[0]
-        today_expense = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND date(created_at)=?", (today_str,)).fetchone()[0]
-        # Month
-        month_income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND strftime('%Y-%m', created_at)=?", (month_str,)).fetchone()[0]
-        month_expense = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND strftime('%Y-%m', created_at)=?", (month_str,)).fetchone()[0]
-        month_procurement = db.execute("SELECT COALESCE(SUM(total),0) FROM procurement_batches WHERE strftime('%Y-%m', date)=?", (month_str,)).fetchone()[0]
-    return jsonify({
-        'today': {'income': today_income, 'expense': today_expense, 'profit': today_income - today_expense},
-        'month': {'income': month_income, 'expense': month_expense, 'profit': month_income - month_expense, 'procurement': month_procurement}
-    })
-
-# ── Procurement Stats ──
-@app.route('/api/procurement-stats')
-@login_required
-def api_procurement_stats():
-    with get_db() as db:
-        total_spent = db.execute("SELECT COALESCE(SUM(total),0) FROM procurement_batches").fetchone()[0]
-        total_income = db.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income'").fetchone()[0]
-        batch_count = db.execute("SELECT COUNT(*) FROM procurement_batches").fetchone()[0]
-        margin_pct = round((total_income - total_spent) / total_spent * 100, 1) if total_spent > 0 else 0
-    return jsonify({
-        'total_spent': round(total_spent, 2),
-        'total_income': round(total_income, 2),
-        'batch_count': batch_count,
-        'margin_pct': margin_pct
-    })
-
-# ── Chart: 12-month trend ──
-@app.route('/api/chart')
-@login_required
-def api_chart():
-    with get_db() as db:
-        rows = db.execute("""
-            SELECT strftime('%Y-%m', created_at) as month,
-                   COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
-                   COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
-            FROM transactions
-            WHERE created_at >= date('now', '-12 months')
-            GROUP BY month ORDER BY month
-        """).fetchall()
-    return jsonify([dict(r) for r in rows])
-
-# ── Summary (today + month) ──
-@app.route('/api/frontend-version')
-def api_frontend_version():
-    return jsonify({'version': FRONTEND_VERSION})
-
-@app.route('/api/frontend.zip')
-def api_frontend_zip():
-    import io, zipfile
-    buf = io.BytesIO()
-    www = os.path.join(os.path.dirname(__file__), '..', 'snail-books-ios', 'www')
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(www):
-            for fn in files:
-                full = os.path.join(root, fn)
-                arcname = os.path.relpath(full, www)
-                zf.write(full, arcname)
-    buf.seek(0)
-    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name='frontend.zip')
-
-# ── Users list (for dropdowns etc.) ──
-@app.route('/api/users')
-@login_required
-def api_users():
-    with get_db() as db:
-        rows = db.execute('SELECT id, username FROM users WHERE is_verified=1 ORDER BY username').fetchall()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/users/me')
-@login_required
-def api_users_me():
-    with get_db() as db:
-        user = db.execute('SELECT id, username, email, signature, created_at, enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
-    if not user:
-        return jsonify({'status': 'error', 'message': 'User not found'}), 404
-    d = dict(user)
-    # Normalize defaults for legacy users with NULL
-    if d.get('enforce_single_session') is None:
-        d['enforce_single_session'] = 1
-    if d.get('session_timeout_hours') is None:
-        d['session_timeout_hours'] = 1
-    return jsonify(d)
-
-
-# ── Auth preferences (single-device login + session timeout) ──
-@app.route('/api/users/me/auth-prefs', methods=['GET', 'PATCH'])
-@login_required
-def api_users_me_auth_prefs():
-    if request.method == 'GET':
-        with get_db() as db:
-            row = db.execute('SELECT enforce_single_session, session_timeout_hours FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if not row:
-            return jsonify({'status': 'error', 'message': 'User not found'}), 404
-        d = dict(row)
-        if d.get('enforce_single_session') is None:
-            d['enforce_single_session'] = 1
-        if d.get('session_timeout_hours') is None:
-            d['session_timeout_hours'] = 1
-        return jsonify(d)
-    # PATCH
-    data = request.get_json() or {}
-    enforce_sso = data.get('enforce_single_session')
-    timeout_hours = data.get('session_timeout_hours')
-    if enforce_sso is not None and enforce_sso not in (0, 1):
-        return jsonify({'status': 'error', 'message': 'enforce_single_session must be 0 or 1'}), 400
-    if timeout_hours is not None:
-        try:
-            timeout_hours = int(timeout_hours)
-        except (TypeError, ValueError):
-            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be an integer'}), 400
-        if timeout_hours not in (1, 2, 6, 24):
-            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
-    with get_db() as db:
-        if enforce_sso is not None:
-            if int(enforce_sso) == 1:
-                # Robustly resolve the current session_id from EITHER the
-                # Flask session cookie (web path) or the Bearer token (iOS path).
-                # Without this fallback, iOS turns SSO on with current_session_id=NULL,
-                # which short-circuits the SSO global check
-                # (`if cur['current_session_id']:`) and lets other devices
-                # stay logged in even with SSO on.
-                cur_sid = session.get('session_id')
-                if cur_sid is None:
-                    auth = request.headers.get('Authorization', '')
-                    if auth.startswith('Bearer '):
-                        tk = auth[7:]
-                        row = db.execute('SELECT session_id FROM user_tokens WHERE token=?', (tk,)).fetchone()
-                        if row and row['session_id']:
-                            cur_sid = row['session_id']
-                # Revoke all OTHER sessions and delete their tokens so they
-                # can no longer authenticate. The current session is preserved.
-                if cur_sid:
-                    db.execute('UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
-                               (g.user_id, cur_sid))
-                    db.execute('DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id != ?)',
-                               (g.user_id, cur_sid))
-                # Lock SSO to current session (NULL if legacy — login_required
-                # will kick legacy sessions on next request).
-                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=? WHERE id=?',
-                           (1, cur_sid, g.user_id))
-            else:
-                # Turning SSO off: clear the marker so all sessions pass the check
-                db.execute('UPDATE users SET enforce_single_session=?, current_session_id=NULL WHERE id=?',
-                           (0, g.user_id))
-        if timeout_hours is not None:
-            db.execute('UPDATE users SET session_timeout_hours=? WHERE id=?', (int(timeout_hours), g.user_id))
-        db.commit()
-        row = db.execute('SELECT enforce_single_session, session_timeout_hours, current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
-    d = dict(row)
-    if d.get('enforce_single_session') is None:
-        d['enforce_single_session'] = 1
-    if d.get('session_timeout_hours') is None:
-        d['session_timeout_hours'] = 1
-    return jsonify({'status': 'ok', **d})
-
-@app.route('/api/users/signature', methods=['POST'])
-@login_required
-def api_update_signature():
-    data = request.get_json() or {}
-    signature = (data.get('signature', '') or '').strip()
-    if len(signature) > 200:
-        return jsonify({'status': 'error', 'message': '签名不能超过200字'}), 400
-    with get_db() as db:
-        db.execute('UPDATE users SET signature=? WHERE id=?', (signature, g.user_id))
-        db.commit()
-    return jsonify({'status': 'ok', 'signature': signature})
-
-@app.route('/api/users/<int:uid>/delete', methods=['POST'])
-@login_required
-def api_delete_user(uid):
-    with get_db() as db:
-        db.execute('PRAGMA foreign_keys = ON')
-        user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
-        if not user:
-            return jsonify({'status':'error','message':'User not found'}), 404
-        db.execute('DELETE FROM users WHERE id=?', (uid,))
-        db.commit()
-    return jsonify({'status':'ok','message':f'User {uid} deleted'})
-
-# ── Avatar ──
-@app.route('/api/users/avatar', methods=['GET'])
-def api_get_avatar():
-    """Public: get avatar by username or user_id. Returns the image or 404."""
-    username = request.args.get('username', '')
-    email = request.args.get('email', '')
-    user_id = request.args.get('user_id', '')
-    if not username and not email and not user_id:
-        return jsonify({'status': 'error', 'message': 'username, email, or user_id required'}), 400
-    with get_db() as db:
-        if user_id:
-            user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
-        elif email:
-            user = db.execute('SELECT id FROM users WHERE email=LOWER(?)', (email,)).fetchone()
-        else:
-            user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
-    if not user:
-        return '', 404
-    for ext in ('jpg', 'jpeg', 'png', 'webp'):
-        path = os.path.join(AVATAR_DIR, f'{user["id"]}.{ext}')
-        if os.path.isfile(path):
-            return send_file(path, mimetype=f'image/{ext if ext != "jpg" else "jpeg"}')
-    return '', 404
-
-@app.route('/api/users/avatar', methods=['POST'])
-@login_required
-def api_upload_avatar():
-    """Upload avatar. Replaces existing."""
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': '未选择文件'}), 400
-    f = request.files['file']
-    if f.filename == '':
-        return jsonify({'status': 'error', 'message': '文件名为空'}), 400
-    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-    if ext not in ('jpg', 'jpeg', 'png', 'webp'):
-        return jsonify({'status': 'error', 'message': '仅支持 jpg/png/webp'}), 400
-    os.makedirs(AVATAR_DIR, exist_ok=True)
-    # Remove old avatar (any extension)
-    for old_ext in ('jpg', 'jpeg', 'png', 'webp'):
-        old = os.path.join(AVATAR_DIR, f'{g.user_id}.{old_ext}')
-        if os.path.isfile(old):
-            os.remove(old)
-    f.save(os.path.join(AVATAR_DIR, f'{g.user_id}.{ext}'))
-    return jsonify({'status': 'ok', 'url': f'/user-images/avatars/{g.user_id}.{ext}?t={int(time.time())}'})
-
-# ── Profile Cover ──
-@app.route('/api/profile/cover', methods=['GET', 'POST', 'DELETE'])
-@login_required
-def api_profile_cover():
-    if request.method == 'GET':
-        url = None
-        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
-        if os.path.exists(save_path):
-            url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
-        return jsonify({'url': url})
-
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return jsonify({'status': 'error', 'message': '未选择文件'}), 400
-        f = request.files['file']
-        if f.filename == '':
-            return jsonify({'status': 'error', 'message': '文件名为空'}), 400
-        ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-        if ext not in ALLOWED_BG_EXT:
-            return jsonify({'status': 'error', 'message': f'仅支持 {", ".join(ALLOWED_BG_EXT)} 格式'}), 400
-        f.seek(0, 2)
-        size = f.tell()
-        f.seek(0)
-        if size > MAX_BG_SIZE:
-            return jsonify({'status': 'error', 'message': '文件最大 5MB'}), 400
-        os.makedirs(COVER_DIR, exist_ok=True)
-        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
-        f.save(save_path)
-        url = f'/user-images/covers/cover-{g.user_id}.jpg?t={int(time.time())}'
-        return jsonify({'status': 'ok', 'url': url})
-
-    if request.method == 'DELETE':
-        save_path = os.path.join(COVER_DIR, f'cover-{g.user_id}.jpg')
-        if os.path.exists(save_path):
-            os.remove(save_path)
-        return jsonify({'status': 'ok'})
-
-# ── Profile: Change Password ──
-@app.route('/api/profile/password', methods=['POST'])
-@login_required
-def api_change_password():
-    data = request.get_json()
-    old_pw = data.get('old_password', '') if data else ''
-    new_pw = data.get('new_password', '') if data else ''
-    if not old_pw or not new_pw:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
-    ok, err = validate_password(new_pw, g.lang)
-    if not ok:
-        return jsonify({'status': 'error', 'message': err}), 400
-    with get_db() as db:
-        user = db.execute('SELECT password FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if not user or not check_password_hash(user['password'], old_pw):
-            return jsonify({'status': 'error', 'message': '当前密码错误'}), 400
-        db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
-        db.commit()
-    return jsonify({'status': 'ok', 'message': '密码修改成功'})
-
-# ── Profile: Change Email (two-step verification) ──
-@app.route('/api/profile/email/send-code', methods=['POST'])
-@login_required
-def api_profile_email_send_code():
-    data = request.get_json()
-    new_email = data.get('email', '').strip() if data else ''
-    if not new_email:
-        return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
-    if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
-        return jsonify({'status': 'error', 'message': '邮箱格式不正确'}), 400
-    with get_db() as db:
-        existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
-        if existing:
-            return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
-        code = generate_code()
-        db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
-                   (code, datetime.now() + timedelta(minutes=10), g.user_id))
-        db.commit()
-    send_email_change_code(new_email, code, g.lang)
-    return jsonify({'status': 'ok', 'message': '验证码已发送'})
-
-@app.route('/api/profile/email/verify', methods=['POST'])
-@login_required
-def api_profile_email_verify():
-    data = request.get_json()
-    new_email = data.get('email', '').strip() if data else ''
-    code = data.get('code', '').strip() if data else ''
-    if not new_email or not code:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
-    with get_db() as db:
-        user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if not user or user['verification_code'] != code:
-            return jsonify({'status': 'error', 'message': '验证码错误'}), 400
-        if user['code_expires'] and datetime.now() > datetime.fromisoformat(user['code_expires']):
-            return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
-        db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
-                   (new_email, g.user_id))
-        db.commit()
-    return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
-
-# ── Reconciliations ──
-@app.route('/api/migrate-recon', methods=['POST'])
-@login_required
-def api_migrate_recon():
-    """One-time migration: remove UNIQUE(date) constraint. Requires confirm='MIGRATE'."""
-    data = request.get_json(silent=True) or {}
-    if data.get('confirm') != 'MIGRATE':
-        return jsonify({'error': 'Requires confirm="MIGRATE" - this is a destructive migration'}), 400
-    logging.warning("migrate-recon triggered by user_id=%s", g.user_id)
-    with get_db() as db:
-        try:
-            db.execute('PRAGMA foreign_keys = OFF')
-            indexes = db.execute("PRAGMA index_list('reconciliations')").fetchall()
-            result = {'indexes': [{'seq': r[0], 'name': r[1], 'unique': r[2]} for r in indexes]}
-            has_unique = any(r[1].startswith('sqlite_autoindex') for r in indexes)
-            if not has_unique:
-                return jsonify({'message': 'Already migrated, no UNIQUE found', 'result': result})
-            db.execute('DROP TABLE IF EXISTS reconciliations_new')
-            db.execute('''CREATE TABLE reconciliations_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                card_balance REAL NOT NULL DEFAULT 0,
-                cash_balance REAL NOT NULL DEFAULT 0,
-                dine_in REAL NOT NULL DEFAULT 0,
-                meituan REAL NOT NULL DEFAULT 0,
-                flash_sale REAL NOT NULL DEFAULT 0,
-                jd REAL NOT NULL DEFAULT 0,
-                tuan REAL NOT NULL DEFAULT 0,
-                channel_total REAL NOT NULL DEFAULT 0,
-                real_total REAL NOT NULL DEFAULT 0,
-                diff REAL NOT NULL DEFAULT 0,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                bill_date TEXT
-            )''')
-            db.execute('INSERT INTO reconciliations_new SELECT id,date,card_balance,cash_balance,dine_in,meituan,flash_sale,jd,tuan,channel_total,real_total,diff,user_id,created_at,bill_date FROM reconciliations')
-            n = db.execute('SELECT COUNT(*) FROM reconciliations_new').fetchone()[0]
-            db.execute('DROP TABLE reconciliations')
-            db.execute('ALTER TABLE reconciliations_new RENAME TO reconciliations')
-            db.execute('CREATE INDEX IF NOT EXISTS idx_recon_date ON reconciliations(date)')
-            db.execute('PRAGMA foreign_keys = ON')
-            db.commit()
-            return jsonify({'message': f'Migrated {n} rows, UNIQUE removed', 'rows': n})
-        except Exception as e:
-            import traceback
-            return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
-
-@app.route('/api/reconciliations/clear', methods=['POST'])
-@login_required
-def api_clear_reconciliations():
-    data = request.get_json(silent=True) or {}
-    if data.get('confirm') != 'YES':
-        return jsonify({'ok': False, 'message': '需要 confirm="YES" 二次确认'}), 400
-    with get_db() as db:
-        db.execute('DELETE FROM reconciliations')
-        db.commit()
-    return jsonify({'ok': True, 'message': 'All reconciliation records cleared'})
-
-@app.route('/api/reconciliations', methods=['POST'])
-@login_required
-def api_create_reconciliation():
-    data = request.get_json() or {}
-    if validate_required(data, 'date'): return jsonify({'error': '缺少日期'}), 400
-    date = data['date']
-    # validate date format
-    try:
-        datetime.strptime(date, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'error': '日期格式必须为 YYYY-MM-DD'}), 400
-    bill_date = data.get('bill_date', date)
-    if bill_date:
-        try:
-            datetime.strptime(bill_date, '%Y-%m-%d')
-        except ValueError:
-            return jsonify({'error': '账单日期格式必须为 YYYY-MM-DD'}), 400
-    reconciled_by = data.get('reconciled_by', g.username)
-    # fetch username from DB if session doesn't have it (Bearer token path)
-    if not reconciled_by and g.user_id:
-        with get_db() as db:
-            user = db.execute('SELECT username FROM users WHERE id=?', (g.user_id,)).fetchone()
-            reconciled_by = user['username'] if user else str(g.user_id)
-    # only validate explicit input (not the auto-filled default)
-    if 'reconciled_by' in data and not re.match(r'^[\w\u4e00-\u9fa5@.\-]{1,32}$', reconciled_by):
-        return jsonify({'error': '录入人格式无效'}), 400
-
-    balances = {}
-    for field in ['card_balance','cash_balance','dine_in','meituan','flash_sale','jd','tuan']:
-        raw = data.get(field)
-        try:
-            v = float(raw) if raw is not None else 0.0
-        except (TypeError, ValueError):
-            return jsonify({'error': f'{field} 必须是有效数字'}), 400
-        if v < 0:
-            return jsonify({'error': f'{field} 不能为负'}), 400
-        if abs(v) > 1e10:
-            return jsonify({'error': f'{field} 数值超出合理范围'}), 400
-        balances[field] = v
-
-    card_balance = balances['card_balance']
-    cash_balance = balances['cash_balance']
-    dine_in = balances['dine_in']
-    meituan = balances['meituan']
-    flash_sale = balances['flash_sale']
-    jd = balances['jd']
-    tuan = balances['tuan']
-    channel_total = round(dine_in + meituan + flash_sale + jd + tuan, 2)
-    real_total = round(card_balance + cash_balance, 2)
-    diff = round(real_total - channel_total, 2)
-
-    with get_db() as db:
-        # Upsert: same bill_date updates existing, otherwise inserts
-        existing = db.execute(
-            'SELECT id FROM reconciliations WHERE bill_date=?',
-            (bill_date,)
-        ).fetchone()
-        if existing:
-            db.execute('''UPDATE reconciliations SET
-                date=?, card_balance=?, cash_balance=?, dine_in=?, meituan=?, flash_sale=?,
-                jd=?, tuan=?, channel_total=?, real_total=?, diff=?, reconciled_by=?
-                WHERE id=?''',
-                (date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by, existing['id']))
-            db.commit()
-            return jsonify({'ok': True, 'action': 'updated', 'id': existing['id']}), 200
-        else:
-            db.execute('''INSERT INTO reconciliations
-                (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by))
-            db.commit()
-            new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
-            return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
-
-@app.route('/api/reconciliations', methods=['GET'])
-@login_required
-def api_get_reconciliations():
-    # New: page-based pagination (returns { records, total, pages, ... })
-    page = request.args.get('page', 0, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    per_page = max(1, min(per_page, 100))
-
-    # Old: limit-based (0=all, returns plain array)
-    limit = request.args.get('limit', page > 0 and 0 or 30, type=int)
-    if page <= 0:
-        if limit < 0:
-            return jsonify({'error': 'limit 不能为负'}), 400
-        elif limit > 200:
-            limit = 200
-
-    bill_date_from = request.args.get('bill_date_from', '')
-    bill_date_to = request.args.get('bill_date_to', '')
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    reconciled_by = request.args.get('reconciled_by', '')
-
-    where = 'WHERE 1=1'
-    params = []
-    if bill_date_from:
-        where += ' AND bill_date >= ?'
-        params.append(bill_date_from)
-    if bill_date_to:
-        where += ' AND bill_date <= ?'
-        params.append(bill_date_to)
-    if date_from:
-        where += ' AND date >= ?'
-        params.append(date_from)
-    if date_to:
-        where += ' AND date <= ?'
-        params.append(date_to)
-    if reconciled_by:
-        where += ' AND reconciled_by = ?'
-        params.append(reconciled_by)
-
-    with get_db() as db:
-        if page > 0:
-            # New pagination mode
-            count = db.execute(f'SELECT COUNT(*) FROM reconciliations {where}', params).fetchone()[0]
-            total_all = db.execute('SELECT COUNT(*) FROM reconciliations').fetchone()[0]
-            pages = max(1, (count + per_page - 1) // per_page)
-            offset = (page - 1) * per_page
-            rows = db.execute(
-                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ? OFFSET ?',
-                params + [per_page, offset]
-            ).fetchall()
-            return jsonify({
-                'records': [dict(r) for r in rows],
-                'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
-                'total_all': total_all,
-            })
-        else:
-            # Old mode: limit-based (0=all)
-            if limit <= 0:
-                rows = db.execute(
-                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC',
-                    params
-                ).fetchall()
-            else:
-                rows = db.execute(
-                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ?',
-                    params + [limit]
-                ).fetchall()
-            return jsonify([dict(r) for r in rows])
-
-# ── Platform Fees ──
-
-@app.route('/api/platform-fees', methods=['GET'])
-@login_required
-def api_get_platform_fees():
-    year = request.args.get('year', type=int)
-    month = request.args.get('month', type=int)
-    with get_db() as db:
-        if year and month:
-            row = db.execute(
-                'SELECT * FROM platform_fees WHERE year=? AND month=?',
-                (year, month)
-            ).fetchone()
-            return jsonify(dict(row) if row else {})
-        rows = db.execute(
-            'SELECT * FROM platform_fees ORDER BY year DESC, month DESC'
-        ).fetchall()
-        return jsonify([dict(r) for r in rows])
-
-@app.route('/api/platform-fees/entry', methods=['POST'])
-@login_required
-def api_add_platform_fee_entry():
-    data = request.get_json()
-    missing = validate_required(data, 'year', 'month', 'entry_date')
-    if missing:
-        return jsonify({'status': 'error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
-    year = data.get('year')
-    month = data.get('month')
-    entry_date = data.get('entry_date')
-    mc = data.get('meituan_cashier', 0)
-    mw = data.get('meituan_waimai', 0)
-    ew = data.get('shangou_waimai', 0)
-    mt = data.get('meituan_tuan', 0)
-    with get_db() as db:
-        # Upsert monthly row
-        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
-                      VALUES (?,?,?,?,?,?)
-                      ON CONFLICT(year, month) DO UPDATE SET
-                      meituan_cashier=meituan_cashier+excluded.meituan_cashier,
-                      meituan_waimai=meituan_waimai+excluded.meituan_waimai,
-                      shangou_waimai=shangou_waimai+excluded.shangou_waimai,
-                      meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
-                   (year, month, mc, mw, ew, mt))
-        fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
-        # Record the daily entry
-        db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
-                      VALUES (?,?,?,?,?,?)''',
-                   (fee_id, entry_date, mc, mw, ew, mt))
-        updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
-        return jsonify({'status': 'ok', 'data': dict(updated)})
-
-@app.route('/api/platform-fees/<int:id>', methods=['PUT'])
-@login_required
-def api_update_platform_fee(id):
-    data = request.get_json()
-    with get_db() as db:
-        db.execute('''UPDATE platform_fees SET meituan_cashier=?, meituan_waimai=?, shangou_waimai=?, meituan_tuan=?
-                      WHERE id=?''',
-                   (data.get('meituan_cashier', 0), data.get('meituan_waimai', 0),
-                    data.get('shangou_waimai', 0), data.get('meituan_tuan', 0), id))
-        return jsonify({'status': 'ok'})
-
-# ====== Daily Revenue (每日营收) ======
-
-@app.route('/api/daily-revenue', methods=['GET'])
-@login_required
-def api_get_daily_revenue():
-    year = request.args.get('year', type=int)
-    month = request.args.get('month', type=int)
-    date = request.args.get('date', type=str)
-    days = request.args.get('days', type=int)
-    date_from = request.args.get('date_from', type=str)
-    date_to = request.args.get('date_to', type=str)
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 30, type=int)
-    with get_db() as db:
-        where_parts = []
-        params = []
-        if days:
-            # Last N days summary
-            rows = db.execute('''
-                SELECT date, revenue, turnover, jd_revenue
-                FROM daily_revenue
-                WHERE date >= date('now', ? ) 
-                ORDER BY date DESC
-            ''', (f'-{days} days',)).fetchall()
-            totals = {'revenue': 0, 'turnover': 0, 'jd_revenue': 0}
-            for r in rows:
-                totals['revenue'] += (r['revenue'] or 0)
-                totals['turnover'] += (r['turnover'] or 0)
-                totals['jd_revenue'] += (r['jd_revenue'] or 0)
-            return jsonify({'records': [], 'total': len(rows), 'pages': 1, 'page': 1, 'per_page': per_page, 'totals': totals})
-        if date:
-            where_parts.append('dr.date=?')
-            params.append(date)
-        else:
-            if year and month:
-                where_parts.append("substr(dr.date,1,7)=?")
-                params.append(f'{year}-{month:02d}')
-            elif year:
-                where_parts.append("substr(dr.date,1,4)=?")
-                params.append(str(year))
-        if date_from:
-            where_parts.append('dr.date >= ?')
-            params.append(date_from)
-        if date_to:
-            where_parts.append('dr.date <= ?')
-            params.append(date_to)
-        where = ('WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
-        base = f'''SELECT dr.*, u.username as recorded_by
-                   FROM daily_revenue dr
-                   LEFT JOIN users u ON dr.user_id = u.id
-                   {where}'''
-        count = db.execute(f'SELECT COUNT(*) FROM daily_revenue dr {where}', params).fetchone()[0]
-        total_all = db.execute('SELECT COUNT(*) FROM daily_revenue').fetchone()[0]
-        total_pages = max(1, (count + per_page - 1) // per_page)
-        offset = (page - 1) * per_page
-        rows = db.execute(
-            base + ' ORDER BY dr.date DESC LIMIT ? OFFSET ?',
-            params + [per_page, offset]
-        ).fetchall()
-        return jsonify({
-            'records': [dict(r) for r in rows],
-            'total': count,
-            'pages': total_pages,
-            'page': page,
-            'per_page': per_page,
-            'total_all': total_all,
-        })
-
-@app.route('/api/daily-revenue/last-7', methods=['GET'])
-@login_required
-def api_last_7_days():
-    """Return last 7 days with gaps filled (even days without data)."""
-    from datetime import datetime, timedelta
-    today = datetime.now().date()
-    dates = [(today - timedelta(days=i)).isoformat() for i in range(7)]
-    with get_db() as db:
-        rows = db.execute('''
-            SELECT dr.*, u.username as recorded_by
-            FROM daily_revenue dr
-            LEFT JOIN users u ON dr.user_id = u.id
-            WHERE dr.date IN ({})
-        '''.format(','.join('?' * len(dates))), dates).fetchall()
-        by_date = {r['date']: dict(r) for r in rows}
-        result = []
-        for d in dates:
-            if d in by_date:
-                result.append(by_date[d])
-            else:
-                result.append({
-                    'date': d,
-                    'revenue': 0, 'turnover': 0, 'jd_revenue': 0, 'note': '',
-                    'recorded_by': None,
-                    'archived': 0,
-                    'status': '未录入',
-                })
-        return jsonify({'records': result})
-
-@app.route('/api/daily-revenue/total', methods=['GET'])
-@login_required
-def api_daily_revenue_total():
-    """Return aggregate totals across all daily revenue records."""
-    with get_db() as db:
-        row = db.execute(
-            'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as total_turnover, COALESCE(SUM(jd_revenue),0) as total_jd'
-            ' FROM daily_revenue'
-        ).fetchone()
-        return jsonify(dict(row))
-
-
-@app.route('/api/business-summary')
-@login_required
-def api_business_summary():
-    """Return aggregated business metrics for the operations dashboard."""
-    with get_db() as db:
-        # Daily revenue aggregates
-        rev = db.execute(
-            'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
-            ' COALESCE(SUM(jd_revenue),0) as total_jd'
-            ' FROM daily_revenue'
-        ).fetchone()
-        actual_received = rev['total_revenue'] + rev['total_jd']
-        receivable = rev['receivable']
-        discount = receivable - actual_received
-        # Platform fees total (all months)
-        pf = db.execute(
-            'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
-            ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf'
-            ' FROM platform_fees'
-        ).fetchone()
-        platform_fees_total = pf['total_pf']
-        cumulative_revenue = actual_received - platform_fees_total
-        # Cumulative expense (all expense transactions)
-        exp = db.execute(
-            'SELECT COALESCE(SUM(amount),0) as total_exp FROM transactions WHERE type = ?', ('expense',)
-        ).fetchone()
-        cumulative_expense = exp['total_exp']
-        # Partner totals
-        pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-        total_investment = pinv['total_inv']
-        pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-        total_dividends = pdiv['total_div']
-        # Cash on hand
-        cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
-        return jsonify({
-            'actual_received': actual_received,
-            'receivable': receivable,
-            'discount': discount,
-            'cumulative_revenue': cumulative_revenue,
-            'cumulative_expense': cumulative_expense,
-            'cash_on_hand': cash_on_hand,
-            'total_investment': total_investment,
-            'total_dividends': total_dividends,
-        })
-
-
-@app.route('/api/daily-revenue', methods=['POST'])
-@login_required
-def api_create_daily_revenue():
-    data = request.get_json()
-    missing = validate_required(data, 'date', 'turnover')
-    if missing:
-        return jsonify({'status': 'error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
-    date = data['date']
-    revenue = float(data.get('revenue', 0))
-    turnover = float(data['turnover'])
-    jd_revenue = float(data.get('jd_revenue', 0))
-    note = data.get('note', '')
-    archived = int(data.get('archived', 0))
-    with get_db() as db:
-        try:
-            db.execute(
-                'INSERT INTO daily_revenue (date, revenue, turnover, jd_revenue, note, user_id, archived) VALUES (?,?,?,?,?,?,?)',
-                (date, revenue, turnover, jd_revenue, note, g.user_id, archived)
-            )
-            row = db.execute('''SELECT dr.*, u.username as recorded_by
-                                FROM daily_revenue dr
-                                LEFT JOIN users u ON dr.user_id = u.id
-                                WHERE dr.date=?''', (date,)).fetchone()
-            return jsonify({'status': 'ok', 'data': dict(row)})
-        except sqlite3.IntegrityError:
-            return jsonify({'status': 'error', 'message': '该日期已有营收记录'}), 409
-
-@app.route('/api/daily-revenue/<int:id>', methods=['PUT'])
-@login_required
-def api_update_daily_revenue(id):
-    data = request.get_json()
-    with get_db() as db:
-        row = db.execute('SELECT * FROM daily_revenue WHERE id=?', (id,)).fetchone()
-        if not row:
-            return jsonify({'status': 'error', 'message': '记录不存在'}), 404
-        fields = []
-        params = []
-        for k in ['revenue', 'turnover', 'jd_revenue', 'note', 'archived']:
-            if k in data:
-                fields.append(f'{k}=?')
-                params.append(float(data[k]) if k != 'note' else data[k])
-        if not fields:
-            return jsonify({'status': 'error', 'message': '无更新字段'}), 400
-        params.append(id)
-        db.execute(f"UPDATE daily_revenue SET {', '.join(fields)} WHERE id=?", params)
-        updated = db.execute('''SELECT dr.*, u.username as recorded_by
-                                FROM daily_revenue dr
-                                LEFT JOIN users u ON dr.user_id = u.id
-                                WHERE dr.id=?''', (id,)).fetchone()
-        return jsonify({'status': 'ok', 'data': dict(updated)})
-
-@app.route('/api/daily-revenue/<int:id>', methods=['DELETE'])
-@login_required
-def api_delete_daily_revenue(id):
-    with get_db() as db:
-        db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
-        return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8600, debug=True)
