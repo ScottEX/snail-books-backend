@@ -11,7 +11,7 @@ DB_PATH = os.environ.get(
 
 @contextmanager
 def get_db():
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
     try:

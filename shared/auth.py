@@ -4,7 +4,7 @@ Works with BOTH cookie sessions (Flask session) AND Bearer tokens (iOS WKWebView
 """
 
 import functools
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import request, session, jsonify, redirect, g
 from .i18n import t
 from .db import get_db
@@ -16,11 +16,11 @@ def _session_expired(expires_at_str):
         return True
     try:
         expires = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
-        return datetime.utcnow() > expires
+        return datetime.now(timezone.utc).replace(tzinfo=None) > expires
     except (ValueError, TypeError):
         try:
             expires = datetime.fromisoformat(expires_at_str)
-            return datetime.utcnow() > expires
+            return datetime.now(timezone.utc).replace(tzinfo=None) > expires
         except:
             return True
 

@@ -1,5 +1,6 @@
 """Procurement routes — products CRUD, cart, procurement batches, PDF + share."""
 
+import concurrent.futures
 import json, os, time, hmac, base64, hashlib
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g, make_response, current_app
@@ -138,9 +139,9 @@ def api_procurement_batches():
             images_json = json.dumps(data.get('images', []))
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
-                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
                 (batch_no, data['date'], data['payment_method'], data.get('category', 'goods'), round(total, 2),
-                 images_json, thumbs_json, data.get('note', ''), g.user_id)
+                 images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
             for name, spec, up, qty, sub, pid in item_rows:
@@ -247,12 +248,22 @@ def api_procurement_batch_detail(id):
     return jsonify(b)
 
 
-# ── PDF generation ──
+# ── PDF generation (with 30s timeout) ──
+PDF_TIMEOUT = 30
+
+
+def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
+    """Generate PDF from HTML string with timeout protection."""
+    import weasyprint
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(lambda: weasyprint.HTML(string=html).write_pdf())
+        return future.result(timeout=timeout)
+
+
 @procurement_bp.route('/api/procurement-batches/<int:id>/pdf', methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
     """Generate procurement batch PDF."""
-    import weasyprint
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
         if not row:
@@ -335,7 +346,10 @@ def api_procurement_batch_pdf(id):
         gen_date_label=_t('pdfGenDate', g.lang),
     )
 
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    try:
+        pdf_bytes = _write_pdf_with_timeout(html)
+    except concurrent.futures.TimeoutError:
+        return jsonify({'status': 'error', 'message': 'PDF生成超时，请稍后重试'}), 504
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
@@ -384,7 +398,6 @@ def api_share_pdf(token):
     batch_id = _verify_share_token(token)
     if not batch_id:
         return jsonify({'status': 'error', 'message': '链接已过期或无效'}), 410
-    import weasyprint
     with get_db() as db:
         row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
         if not row:
@@ -457,7 +470,10 @@ def api_share_pdf(token):
         gen_date_label=_t('pdfGenDate', g.lang),
     )
 
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    try:
+        pdf_bytes = _write_pdf_with_timeout(html)
+    except concurrent.futures.TimeoutError:
+        return jsonify({'status': 'error', 'message': 'PDF生成超时，请稍后重试'}), 504
     filename = f"procurement_{b['batch_number']:04d}.pdf"
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
@@ -468,7 +484,6 @@ def api_share_pdf(token):
 # ── PNG rendering from PDF ──
 def _render_procurement_png(batch_id):
     """Render page 1 of a procurement PDF to a PNG blob."""
-    import weasyprint
     try:
         import pymupdf
     except ImportError:
@@ -541,7 +556,10 @@ def _render_procurement_png(batch_id):
         gen_date_label=_t('pdfGenDate', g.lang),
     )
 
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    try:
+        pdf_bytes = _write_pdf_with_timeout(html)
+    except concurrent.futures.TimeoutError:
+        return None, None
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     page = doc[0]
     pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))

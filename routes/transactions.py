@@ -20,11 +20,12 @@ def transactions():
             return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             db.execute(
-                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images) VALUES (?,?,?,?,?,?,?)',
+                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,user_id) VALUES (?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
                  data.get('note', ''),
                  json.dumps(data.get('images', [])),
-                 json.dumps(data.get('thumb_images', [])))
+                 json.dumps(data.get('thumb_images', [])),
+                 g.user_id)
             )
             db.commit()
         return jsonify({'status': 'ok'})

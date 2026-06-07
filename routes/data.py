@@ -136,11 +136,11 @@ def create_reconciliation():
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 channel_total, real_total, diff, reconciled_by, user_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (dt, bill_date, card_balance, cash_balance, balances['dine_in'], balances['meituan'],
                         balances['flash_sale'], balances['jd'], balances['tuan'],
-                        channel_total, real_total, diff, reconciled_by))
+                        channel_total, real_total, diff, reconciled_by, g.user_id))
             db.commit()
             new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
             return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
@@ -229,7 +229,7 @@ def add_platform_fee_entry():
     data = request.get_json()
     missing = validate_required(data, 'year', 'month', 'entry_date')
     if missing:
-        return jsonify({'status': 'error', 'message': '缺少必填字段: ' + ', '.join(missing)}), 400
+        return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
     year = data.get('year')
     month = data.get('month')
     entry_date = data.get('entry_date')
@@ -388,7 +388,7 @@ def create_daily_revenue():
     data = request.get_json()
     missing = validate_required(data, 'date', 'turnover')
     if missing:
-        return jsonify({'status': 'error', 'message': '缺少必填字段: ' + ', '.join(missing)}), 400
+        return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
     dt = data['date']
     revenue = float(data.get('revenue', 0))
     turnover = float(data['turnover'])

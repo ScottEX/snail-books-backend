@@ -266,7 +266,7 @@ def profile_email_send_code():
     if not new_email:
         return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
     if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
-        return jsonify({'status': 'error', 'message': '邮箱格式不正确'}), 400
+        return jsonify({'status': 'error', 'message': t('err_email_invalid', g.lang)}), 400
     with get_db() as db:
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
@@ -290,7 +290,7 @@ def profile_email_verify():
     with get_db() as db:
         user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user or user['verification_code'] != code:
-            return jsonify({'status': 'error', 'message': '验证码错误'}), 400
+            return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
         if user['code_expires'] and datetime.now() > datetime.fromisoformat(user['code_expires']):
             return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',

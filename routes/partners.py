@@ -137,8 +137,8 @@ def dividends():
                 return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
             for item in items:
-                db.execute('INSERT INTO dividends (partner,amount,note,date) VALUES (?,?,?,?)',
-                           (item['partner'], item['amount'], item.get('note', ''), item.get('date', '')))
+                db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
+                           (item['partner'], item['amount'], item.get('note', ''), item.get('date', ''), g.user_id))
             db.commit()
         return jsonify({'status': 'ok'})
     with get_db() as db:

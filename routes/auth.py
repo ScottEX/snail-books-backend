@@ -1,7 +1,7 @@
 """Auth routes — login, register, verify, forgot, reset, logout."""
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -51,7 +51,7 @@ def login():
             # user_sessions.expires_at. Do NOT mutate app.permanent_session_lifetime
             # here — it's process-global and clobbers multi-user isolation.
             new_session_id = secrets.token_hex(16)
-            expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
+            expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
             device_info = (request.user_agent.string or '')[:200]
 
             if enforce_sso:
@@ -109,7 +109,7 @@ def register():
             db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
 
         code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
+        expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         db.execute(
             'INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)',
             (username, generate_password_hash(password), email, code, expires)
@@ -138,7 +138,7 @@ def verify_email():
         ).fetchone()
         if not user:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 401
-        if datetime.utcnow() > datetime.fromisoformat(user['code_expires']):
+        if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
             return jsonify({'status': 'error', 'message': t('err_code_expired', g.lang)}), 410
         db.execute('UPDATE users SET is_verified=1, verification_code=NULL, code_expires=NULL WHERE id=?', (user['id'],))
         db.commit()
@@ -156,7 +156,7 @@ def resend_code():
         if not user:
             return jsonify({'status': 'ok', 'message': t('msg_code_resent', g.lang)})
         code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
+        expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?', (code, expires, user['id']))
         db.commit()
         if not send_verification_email(email, code, g.lang):
@@ -188,7 +188,7 @@ def forgot_password():
             record_forgot_attempt(ip)
             return jsonify({'status': 'ok', 'message': t('msg_forgot_sent', g.lang), 'email': email})
         code = generate_code()
-        expires = datetime.utcnow() + timedelta(minutes=10)
+        expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         db.execute('UPDATE users SET reset_code=?, reset_expires=? WHERE id=?', (code, expires, user['id']))
         db.commit()
         if not send_reset_email(email, code, g.lang):
@@ -214,7 +214,7 @@ def reset_password():
         user = db.execute('SELECT * FROM users WHERE email=? AND reset_code=? AND is_verified=1', (email, code)).fetchone()
         if not user:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 401
-        if datetime.utcnow() > datetime.fromisoformat(user['reset_expires']):
+        if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['reset_expires']):
             return jsonify({'status': 'error', 'message': t('err_reset_code_expired', g.lang)}), 410
         db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
                    (generate_password_hash(new_password), user['id']))
