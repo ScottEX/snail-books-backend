@@ -531,6 +531,7 @@ def init_db():
                 category TEXT NOT NULL,
                 account TEXT NOT NULL,
                 note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS dividends (
@@ -539,6 +540,7 @@ def init_db():
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
                 date TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
@@ -547,7 +549,8 @@ def init_db():
                 share REAL NOT NULL,
                 investment REAL NOT NULL DEFAULT 0,
                 status TEXT DEFAULT '进行中',
-                note TEXT DEFAULT ''
+                note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -556,7 +559,8 @@ def init_db():
                 unit TEXT DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
                 supplier TEXT DEFAULT '',
-                note TEXT DEFAULT ''
+                note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS procurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -566,6 +570,7 @@ def init_db():
                 unit_price REAL NOT NULL,
                 total REAL NOT NULL,
                 note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             -- 进货批次表（2026.5.30）
@@ -579,6 +584,7 @@ def init_db():
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             -- 进货明细表（2026.5.30）
@@ -591,6 +597,7 @@ def init_db():
                 unit_price REAL NOT NULL,
                 quantity INTEGER NOT NULL DEFAULT 1,
                 subtotal REAL NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_proc_batch_date ON procurement_batches(date);
@@ -873,7 +880,7 @@ def login_page():
         secs = wait % 60
         return jsonify({'status':'error','message':_t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
     with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE username=? OR email=? OR email=?',(username, username, username.lower())).fetchone()
+        user = db.execute('SELECT * FROM users WHERE username=? OR email=?',(username, username.lower())).fetchone()
         if user and check_password_hash(user['password'], password):
             if not user['is_verified']:
                 return jsonify({'status':'error','message':_t('err_need_verify', g.lang),'need_verify':True,'email':user['email']}), 403
@@ -883,10 +890,11 @@ def login_page():
             if timeout_hours < 1:
                 timeout_hours = 1
             session.permanent = True
-            # Note: app.permanent_session_lifetime is a process-global setting.
-            # For per-user timeout, the authoritative check is user_sessions.expires_at
-            # (see login_required). Cookie max age is just a hint to the browser.
-            app.permanent_session_lifetime = timedelta(hours=max(timeout_hours, 24))
+            # Cookie lifetime: use the 24h process default (set at module load, line 24).
+            # Per-user timeout is enforced authoritatively in login_required via
+            # user_sessions.expires_at. (P0 audit 2026-06-07: removed the previous
+            # `app.permanent_session_lifetime = ...` mutation that clobbered the
+            # process-global config on every login and broke multi-user isolation.)
             # Generate new session id first (used by both SSO and non-SSO paths)
             new_session_id = secrets.token_hex(16)
             expires_at = (datetime.utcnow() + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
