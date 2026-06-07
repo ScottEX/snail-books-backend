@@ -66,6 +66,7 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': '第{n}次进货',
         'procBatchLabel': '采购批次',
+        'procNoteOptional': '可选备注',
         # ── PDF template labels (procurement_order.html) ──
         # All three PDF render paths (api_procurement_batch_pdf /
         # api_share_pdf / _render_procurement_png) pass these through
@@ -150,6 +151,7 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': '第{n}次進貨',
         'procBatchLabel': '採購批次',
+        'procNoteOptional': '可選備註',
         'pdfTitle': '進貨單',
         'pdfLabelDate': '日期',
         'pdfLabelPayment': '支付',
@@ -229,6 +231,7 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': 'Batch #{n}',
         'procBatchLabel': 'Batch',
+        'procNoteOptional': 'Note (optional)',
         'pdfTitle': 'Purchase Order',
         'pdfLabelDate': 'Date',
         'pdfLabelPayment': 'Payment',
