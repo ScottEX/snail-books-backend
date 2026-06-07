@@ -73,7 +73,7 @@ TRANSLATIONS = {
         # the template. PDF is now lang-aware following the visitor's
         # X-Lang / Accept-Language header (2026-06-07).
         'pdfTitle': '进货单',
-        'pdfLabelDate': '日期',
+        'pdfLabelDate': '进货日期',
         'pdfLabelPayment': '支付',
         'pdfLabelCategory': '类别',
         'pdfColName': '商品名称',
@@ -153,7 +153,7 @@ TRANSLATIONS = {
         'procBatchLabel': '採購批次',
         'procNoteOptional': '可選備註',
         'pdfTitle': '進貨單',
-        'pdfLabelDate': '日期',
+        'pdfLabelDate': '進貨日期',
         'pdfLabelPayment': '支付',
         'pdfLabelCategory': '類別',
         'pdfColName': '商品名稱',
@@ -233,7 +233,7 @@ TRANSLATIONS = {
         'procBatchLabel': 'Batch',
         'procNoteOptional': 'Note (optional)',
         'pdfTitle': 'Purchase Order',
-        'pdfLabelDate': 'Date',
+        'pdfLabelDate': 'Purchase Date',
         'pdfLabelPayment': 'Payment',
         'pdfLabelCategory': 'Category',
         'pdfColName': 'Product',
