@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify, session, redirect, g, make_response, 
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests, random, string
 from datetime import datetime, timedelta
-from i18n_backend import t as _t
+from i18n_backend import t as _t, get_lang
 
 app = Flask(__name__)
 # Persistent secret key (survives restarts)
@@ -30,6 +30,15 @@ EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(os.path.dirname
 BG_DIR = os.environ.get('BG_DIR', os.path.join(os.path.dirname(__file__), 'user-images'))
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 COVER_DIR = os.path.join(BG_DIR, 'covers')
+
+# ── Global i18n: every request initializes g.lang from the X-Lang header
+# (with Accept-Language fallback) so public auth routes (login / register /
+# verify / forgot / reset / resend) — which don't go through login_required —
+# can call _t('err_xxx', g.lang) without 500'ing on an uninitialized g.lang.
+# (added 2026-06-07: fix login error always showed English)
+@app.before_request
+def _set_request_lang():
+    g.lang = get_lang(request)
 
 # ── Expense image serving (with permanent cache) ──
 # Registered before the catch-all so /expense-imgs/ doesn't hit SPA fallback.
