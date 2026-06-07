@@ -1,252 +1,194 @@
-"""后端 i18n 翻译模块"""
+"""后端 i18n 翻译模块 — 由 scripts/generate_i18n.py 自动生成，勿手动编辑"""
 
 TRANSLATIONS = {
     'zh-CN': {
-        'err_empty_fields': '用户名和密码不能为空',
-        'err_need_verify': '邮箱未验证，请先验证',
-        'err_wrong_credentials': '用户名或密码错误',
-        'err_email_required': '请输入邮箱',
-        'err_pw_too_short': '密码至少 8 位',
-        'err_pw_no_letter': '密码必须包含字母',
-        'err_pw_no_digit': '密码必须包含数字',
-        'err_pw_no_special': '密码必须包含特殊字符（如 !@#$% 等）',
-        'err_username_exists': '用户名已存在',
-        'err_username_invalid': '用户名仅支持字母、数字、下划线和中文，2-32位',
-        'err_email_registered': '该邮箱已被注册',
-        'err_code_send_failed': '验证码发送失败，请稍后再试',
-        'err_empty_email_code': '请输入邮箱和验证码',
-        'err_wrong_code': '验证码错误',
+        'dineIn': '堂食',
         'err_code_expired': '验证码已过期，请重新注册',
-        'err_email_not_found': '未找到该邮箱的注册记录',
-        'err_resend_failed': '验证码发送失败',
+        'err_code_send_failed': '验证码发送失败，请稍后再试',
         'err_email_404': '未找到该邮箱的注册记录',
-        'err_reset_code_wrong': '验证码错误',
-        'err_reset_code_expired': '验证码已过期，请重新获取',
+        'err_email_invalid': '邮箱格式不正确',
+        'err_email_not_found': '未找到该邮箱的注册记录',
+        'err_email_registered': '该邮箱已被注册',
+        'err_email_required': '请输入邮箱',
+        'err_empty_email_code': '请输入邮箱和验证码',
+        'err_empty_fields': '用户名和密码不能为空',
         'err_incomplete': '请填写完整信息',
         'err_missing_fields': '缺少必填字段: {fields}',
+        'err_need_verify': '邮箱未验证，请先验证',
+        'err_pw_no_digit': '密码必须包含数字',
+        'err_pw_no_letter': '密码必须包含字母',
+        'err_pw_no_special': '密码必须包含特殊字符（如 !@#$% 等）',
+        'err_pw_too_short': '密码至少 8 位',
+        'err_resend_failed': '验证码发送失败',
+        'err_reset_code_expired': '验证码已过期，请重新获取',
+        'err_reset_code_wrong': '验证码错误',
         'err_session_expired': '登录已过期，请重新登录',
         'err_session_kicked': '您的账号在其他设备登录，当前会话已退出',
         'err_too_many_attempts': '尝试次数过多，请等待 {mins} 分 {secs} 秒后再试',
-        'err_email_invalid': '邮箱格式不正确',
-        'msg_code_sent': '验证码已发送至 {email}，请查收',
-        'msg_verify_ok': '邮箱验证成功！请登录',
+        'err_username_exists': '用户名已存在',
+        'err_username_invalid': '用户名仅支持字母、数字、下划线和中文，2-32位',
+        'err_wrong_code': '验证码错误',
+        'err_wrong_credentials': '用户名或密码错误',
+        'flashSale': '闪购',
+        'goods': '采购',
+        'jd': '京东',
+        'meituan': '美团',
+        'meituanCashier': '美团收银',
+        'meituanTuan': '美团团购',
+        'meituanWaimai': '美团外卖',
         'msg_code_resent': '验证码已重新发送',
+        'msg_code_sent': '验证码已发送至 {email}，请查收',
         'msg_forgot_sent': '如该邮箱已注册，验证码已发送',
         'msg_reset_ok': '密码重置成功！请使用新密码登录',
-        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'msg_verify_ok': '邮箱验证成功！请登录',
+        'payAlipay': '支付宝',
         'payCash': '现金',
         'payWechat': '微信',
-        'payAlipay': '支付宝',
-        'goods': '采购',
-        # ── Reserved for future backend reconciliation PDF / email rendering ──
-        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
-        # / tuan / jd) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'dineIn': '堂食',
-        'meituan': '美团',
-        'flashSale': '闪购',
-        'tuan': '团购',
-        'jd': '京东',
-        # ── Reserved for future backend platform fee PDF / email rendering ──
-        # The 4 `platform_fees` / `platform_fee_entries` channels
-        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
-        # currently have 0 _t() callsites. They are added preemptively to
-        # prevent raw keys leaking in future PDF / email / SMS outputs.
-        # DO NOT REMOVE. (added 2026-06-06)
-        'meituanCashier': '美团收银',
-        'meituanWaimai': '美团外卖',
-        'shangouWaimai': '闪购外卖',
-        'meituanTuan': '美团团购',
-        # ── Reserved for future backend procurement batch PDF / email rendering ──
-        # The 2 procurement-batches-related labels (procNowBatch for the
-        # "{n}th batch" title and procBatchLabel for the "Batch" column
-        # header) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'procNowBatch': '第{n}次进货',
-        'procBatchLabel': '采购批次',
-        'procNoteOptional': '可选备注',
-        # ── PDF template labels (procurement_order.html) ──
-        # All three PDF render paths (api_procurement_batch_pdf /
-        # api_share_pdf / _render_procurement_png) pass these through
-        # the template. PDF is now lang-aware following the visitor's
-        # X-Lang / Accept-Language header (2026-06-07).
-        'pdfTitle': '进货单',
-        'pdfLabelDate': '进货日期',
-        'pdfLabelPayment': '支付',
-        'pdfLabelCategory': '类别',
         'pdfColName': '商品名称',
-        'pdfColSpec': '规格',
-        'pdfColUnitPrice': '单价',
         'pdfColQty': '数量',
+        'pdfColSpec': '规格',
         'pdfColSubtotal': '小计',
-        'pdfTotalCNY': '合计（人民币）',
-        'pdfOperator': '经办人',
+        'pdfColUnitPrice': '单价',
         'pdfGenDate': '生成日期',
         'pdfImgLabel': '采购凭证',
+        'pdfLabelCategory': '类别',
+        'pdfLabelDate': '进货日期',
+        'pdfLabelPayment': '支付',
+        'pdfOperator': '经办人',
+        'pdfTitle': '进货单',
+        'pdfTotalCNY': '合计（人民币）',
+        'procBatchLabel': '采购批次',
+        'procNoteOptional': '可选备注',
+        'procNowBatch': '第{n}次进货',
+        'shangouWaimai': '闪购外卖',
+        'tuan': '团购',
     },
     'zh-TW': {
-        'err_empty_fields': '使用者名稱和密碼不能為空',
-        'err_need_verify': '郵箱未驗證，請先驗證',
-        'err_wrong_credentials': '使用者名稱或密碼錯誤',
-        'err_email_required': '請輸入郵箱',
-        'err_pw_too_short': '密碼至少 8 位',
-        'err_pw_no_letter': '密碼必須包含字母',
-        'err_pw_no_digit': '密碼必須包含數字',
-        'err_pw_no_special': '密碼必須包含特殊字符（如 !@#$% 等）',
-        'err_username_exists': '使用者名稱已存在',
-        'err_username_invalid': '使用者名稱僅支援字母、數字、底線和中文，2-32位',
-        'err_email_registered': '該郵箱已被註冊',
-        'err_code_send_failed': '驗證碼發送失敗，請稍後再試',
-        'err_empty_email_code': '請輸入郵箱和驗證碼',
-        'err_wrong_code': '驗證碼錯誤',
+        'dineIn': '堂食',
         'err_code_expired': '驗證碼已過期，請重新註冊',
-        'err_email_not_found': '未找到該郵箱的註冊記錄',
-        'err_resend_failed': '驗證碼發送失敗',
+        'err_code_send_failed': '驗證碼發送失敗，請稍後再試',
         'err_email_404': '未找到該郵箱的註冊記錄',
-        'err_reset_code_wrong': '驗證碼錯誤',
-        'err_reset_code_expired': '驗證碼已過期，請重新獲取',
+        'err_email_invalid': '郵箱格式不正確',
+        'err_email_not_found': '未找到該郵箱的註冊記錄',
+        'err_email_registered': '該郵箱已被註冊',
+        'err_email_required': '請輸入郵箱',
+        'err_empty_email_code': '請輸入郵箱和驗證碼',
+        'err_empty_fields': '使用者名稱和密碼不能為空',
         'err_incomplete': '請填寫完整資訊',
         'err_missing_fields': '缺少必填欄位: {fields}',
+        'err_need_verify': '郵箱未驗證，請先驗證',
+        'err_pw_no_digit': '密碼必須包含數字',
+        'err_pw_no_letter': '密碼必須包含字母',
+        'err_pw_no_special': '密碼必須包含特殊字符（如 !@#$% 等）',
+        'err_pw_too_short': '密碼至少 8 位',
+        'err_resend_failed': '驗證碼發送失敗',
+        'err_reset_code_expired': '驗證碼已過期，請重新獲取',
+        'err_reset_code_wrong': '驗證碼錯誤',
         'err_session_expired': '登錄已過期，請重新登錄',
         'err_session_kicked': '您的帳號在其他裝置登入，當前工作階段已退出',
         'err_too_many_attempts': '嘗試次數過多，請等待 {mins} 分 {secs} 秒後再試',
-        'err_email_invalid': '郵箱格式不正確',
-        'msg_code_sent': '驗證碼已發送至 {email}，請查收',
-        'msg_verify_ok': '郵箱驗證成功！請登入',
+        'err_username_exists': '使用者名稱已存在',
+        'err_username_invalid': '使用者名稱僅支援字母、數字、底線和中文，2-32位',
+        'err_wrong_code': '驗證碼錯誤',
+        'err_wrong_credentials': '使用者名稱或密碼錯誤',
+        'flashSale': '閃購',
+        'goods': '採購',
+        'jd': '京東',
+        'meituan': '美團',
+        'meituanCashier': '美團收銀',
+        'meituanTuan': '美團團購',
+        'meituanWaimai': '美團外賣',
         'msg_code_resent': '驗證碼已重新發送',
+        'msg_code_sent': '驗證碼已發送至 {email}，請查收',
         'msg_forgot_sent': '如該郵箱已註冊，驗證碼已發送',
         'msg_reset_ok': '密碼重設成功！請使用新密碼登入',
-        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'msg_verify_ok': '郵箱驗證成功！請登入',
+        'payAlipay': '支付寶',
         'payCash': '現金',
         'payWechat': '微信',
-        'payAlipay': '支付寶',
-        'goods': '採購',
-        # ── Reserved for future backend reconciliation PDF / email rendering ──
-        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
-        # / tuan / jd) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'dineIn': '堂食',
-        'meituan': '美團',
-        'flashSale': '閃購',
-        'tuan': '團購',
-        'jd': '京東',
-        # ── Reserved for future backend platform fee PDF / email rendering ──
-        # The 4 `platform_fees` / `platform_fee_entries` channels
-        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
-        # currently have 0 _t() callsites. They are added preemptively to
-        # prevent raw keys leaking in future PDF / email / SMS outputs.
-        # DO NOT REMOVE. (added 2026-06-06)
-        'meituanCashier': '美團收銀',
-        'meituanWaimai': '美團外賣',
-        'shangouWaimai': '閃購外賣',
-        'meituanTuan': '美團團購',
-        # ── Reserved for future backend procurement batch PDF / email rendering ──
-        # The 2 procurement-batches-related labels (procNowBatch for the
-        # "{n}th batch" title and procBatchLabel for the "Batch" column
-        # header) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'procNowBatch': '第{n}次進貨',
-        'procBatchLabel': '採購批次',
-        'procNoteOptional': '可選備註',
-        'pdfTitle': '進貨單',
-        'pdfLabelDate': '進貨日期',
-        'pdfLabelPayment': '支付',
-        'pdfLabelCategory': '類別',
         'pdfColName': '商品名稱',
-        'pdfColSpec': '規格',
-        'pdfColUnitPrice': '單價',
         'pdfColQty': '數量',
+        'pdfColSpec': '規格',
         'pdfColSubtotal': '小計',
-        'pdfTotalCNY': '合計（人民幣）',
-        'pdfOperator': '經辦人',
+        'pdfColUnitPrice': '單價',
         'pdfGenDate': '生成日期',
         'pdfImgLabel': '採購憑證',
+        'pdfLabelCategory': '類別',
+        'pdfLabelDate': '進貨日期',
+        'pdfLabelPayment': '支付',
+        'pdfOperator': '經辦人',
+        'pdfTitle': '進貨單',
+        'pdfTotalCNY': '合計（人民幣）',
+        'procBatchLabel': '採購批次',
+        'procNoteOptional': '可選備註',
+        'procNowBatch': '第{n}次進貨',
+        'shangouWaimai': '閃購外賣',
+        'tuan': '團購',
     },
     'en': {
-        'err_empty_fields': 'Username and password required',
-        'err_need_verify': 'Email not verified, please verify first',
-        'err_wrong_credentials': 'Incorrect username or password',
-        'err_email_required': 'Email is required',
-        'err_pw_too_short': 'Password must be at least 8 characters',
-        'err_pw_no_letter': 'Password must contain a letter',
-        'err_pw_no_digit': 'Password must contain a digit',
-        'err_pw_no_special': 'Password must contain a special character (e.g. !@#$%)',
-        'err_username_exists': 'Username already taken',
-        'err_username_invalid': 'Username must be 2-32 characters: letters, digits, underscores, or Chinese',
-        'err_email_registered': 'This email is already registered',
-        'err_code_send_failed': 'Failed to send verification code, please try again',
-        'err_empty_email_code': 'Email and verification code required',
-        'err_wrong_code': 'Incorrect verification code',
+        'dineIn': 'Dine-in',
         'err_code_expired': 'Verification code expired, please register again',
-        'err_email_not_found': 'No registration found for this email',
-        'err_resend_failed': 'Failed to send verification code',
+        'err_code_send_failed': 'Failed to send verification code, please try again',
         'err_email_404': 'No registration found for this email',
-        'err_reset_code_wrong': 'Incorrect verification code',
-        'err_reset_code_expired': 'Verification code expired, please request a new one',
+        'err_email_invalid': 'Invalid email format',
+        'err_email_not_found': 'No registration found for this email',
+        'err_email_registered': 'This email is already registered',
+        'err_email_required': 'Email is required',
+        'err_empty_email_code': 'Email and verification code required',
+        'err_empty_fields': 'Username and password required',
         'err_incomplete': 'Please fill in all fields',
         'err_missing_fields': 'Missing required fields: {fields}',
+        'err_need_verify': 'Email not verified, please verify first',
+        'err_pw_no_digit': 'Password must contain a digit',
+        'err_pw_no_letter': 'Password must contain a letter',
+        'err_pw_no_special': 'Password must contain a special character (e.g. !@#$%)',
+        'err_pw_too_short': 'Password must be at least 8 characters',
+        'err_resend_failed': 'Failed to send verification code',
+        'err_reset_code_expired': 'Verification code expired, please request a new one',
+        'err_reset_code_wrong': 'Incorrect verification code',
         'err_session_expired': 'Session expired, please login again',
         'err_session_kicked': 'Signed in elsewhere. This session was ended.',
         'err_too_many_attempts': 'Too many attempts, please wait {mins}m {secs}s',
-        'err_email_invalid': 'Invalid email format',
-        'msg_code_sent': 'Verification code sent to {email}, please check',
-        'msg_verify_ok': 'Email verified! Please login',
+        'err_username_exists': 'Username already taken',
+        'err_username_invalid': 'Username must be 2-32 characters: letters, digits, underscores, or Chinese',
+        'err_wrong_code': 'Incorrect verification code',
+        'err_wrong_credentials': 'Incorrect username or password',
+        'flashSale': 'Flash Sale',
+        'goods': 'Procurement',
+        'jd': 'JD.com',
+        'meituan': 'Meituan',
+        'meituanCashier': 'Meituan POS',
+        'meituanTuan': 'Meituan Tuan',
+        'meituanWaimai': 'Meituan Waimai',
         'msg_code_resent': 'Verification code resent',
+        'msg_code_sent': 'Verification code sent to {email}, please check',
         'msg_forgot_sent': 'If registered, a verification code has been sent',
         'msg_reset_ok': 'Password reset! Please login with your new password',
-        # ── Internal-key translations (DB stores these, render to current lang) ──
+        'msg_verify_ok': 'Email verified! Please login',
+        'payAlipay': 'Alipay',
         'payCash': 'Cash',
         'payWechat': 'WeChat',
-        'payAlipay': 'Alipay',
-        'goods': 'Procurement',
-        # ── Reserved for future backend reconciliation PDF / email rendering ──
-        # The 5 `reconciliations` table channels (dine_in / meituan / flash_sale
-        # / tuan / jd) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'dineIn': 'Dine-in',
-        'meituan': 'Meituan',
-        'flashSale': 'Flash Sale',
-        'tuan': 'Group Buy',
-        'jd': 'JD.com',
-        # ── Reserved for future backend platform fee PDF / email rendering ──
-        # The 4 `platform_fees` / `platform_fee_entries` channels
-        # (meituan_cashier / meituan_waimai / shangou_waimai / meituan_tuan)
-        # currently have 0 _t() callsites. They are added preemptively to
-        # prevent raw keys leaking in future PDF / email / SMS outputs.
-        # DO NOT REMOVE. (added 2026-06-06)
-        'meituanCashier': 'Meituan POS',
-        'meituanWaimai': 'Meituan Waimai',
-        'shangouWaimai': 'Flash Waimai',
-        'meituanTuan': 'Meituan Tuan',
-        # ── Reserved for future backend procurement batch PDF / email rendering ──
-        # The 2 procurement-batches-related labels (procNowBatch for the
-        # "{n}th batch" title and procBatchLabel for the "Batch" column
-        # header) currently have 0 _t() callsites. They are added
-        # preemptively to prevent raw keys leaking in future PDF / email /
-        # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
-        'procNowBatch': 'Batch #{n}',
-        'procBatchLabel': 'Batch',
-        'procNoteOptional': 'Note (optional)',
-        'pdfTitle': 'Purchase Order',
-        'pdfLabelDate': 'Purchase Date',
-        'pdfLabelPayment': 'Payment',
-        'pdfLabelCategory': 'Category',
         'pdfColName': 'Product',
-        'pdfColSpec': 'Spec',
-        'pdfColUnitPrice': 'Unit Price',
         'pdfColQty': 'Qty',
+        'pdfColSpec': 'Spec',
         'pdfColSubtotal': 'Subtotal',
-        'pdfTotalCNY': 'Total (CNY)',
-        'pdfOperator': 'Operator',
+        'pdfColUnitPrice': 'Unit Price',
         'pdfGenDate': 'Generated',
         'pdfImgLabel': 'Receipts',
-    }
+        'pdfLabelCategory': 'Category',
+        'pdfLabelDate': 'Purchase Date',
+        'pdfLabelPayment': 'Payment',
+        'pdfOperator': 'Operator',
+        'pdfTitle': 'Purchase Order',
+        'pdfTotalCNY': 'Total (CNY)',
+        'procBatchLabel': 'Batch',
+        'procNoteOptional': 'Note (optional)',
+        'procNowBatch': 'Batch #{n}',
+        'shangouWaimai': 'Flash Waimai',
+        'tuan': 'Group Buy',
+    },
 }
+
 
 def get_lang(request):
     """从请求头获取语言，优先级：X-Lang > Accept-Language > 默认 zh-CN"""
@@ -255,6 +197,7 @@ def get_lang(request):
         return x_lang
     best = request.accept_languages.best_match(['zh-CN', 'zh-TW', 'en'], default='zh-CN')
     return best
+
 
 def t(key, lang='zh-CN', **kwargs):
     """翻译单个 key"""

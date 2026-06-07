@@ -136,6 +136,9 @@ def update_signature():
 @profile_bp.route('/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def delete_user(uid):
+    # Only allow self-deletion
+    if uid != g.user_id:
+        return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
     with get_db() as db:
         db.execute('PRAGMA foreign_keys = ON')
         user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()

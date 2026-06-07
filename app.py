@@ -483,12 +483,7 @@ def init_db():
             """)
         except sqlite3.OperationalError:
             pass  # may fail if procurement_batches doesn't exist yet
-
-
 init_db()
-with get_db() as db:
-    db.execute("UPDATE users SET is_verified=1 WHERE is_verified IS NULL OR is_verified=0")
-    db.commit()
 
 
 # ═══════════════════════════════════════════════════════════

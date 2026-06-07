@@ -150,5 +150,5 @@ def send_email_change_code(to_email, code, lang='zh-CN'):
 
 
 def generate_code():
-    import random, string
-    return ''.join(random.choices(string.digits, k=6))
+    import secrets
+    return ''.join(secrets.choice('0123456789') for _ in range(6))
