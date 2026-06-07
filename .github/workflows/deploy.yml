@@ -18,6 +18,7 @@ jobs:
         run: |
           python -m py_compile app.py
           python -m py_compile i18n_backend.py
+          for f in shared/*.py routes/*.py; do python -m py_compile "$f"; done
           echo "✅ 语法检查通过"
 
   deploy-staging:
@@ -64,7 +65,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/templates/procurement_order.html"
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/procurement_order.html"
           target: "/opt/snail-books-backend-staging/"
           strip_components: 1
 
@@ -125,7 +126,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/templates/procurement_order.html"
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/procurement_order.html"
           target: "/opt/snail-books-backend/"
           strip_components: 1
 
