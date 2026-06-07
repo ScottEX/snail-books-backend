@@ -30,8 +30,9 @@
   .title-block .sub {{ font-size: 10px; color: #8C8583; letter-spacing: 1px; margin-top: 2px; }}
   .meta-row {{
     display: flex; justify-content: space-between; margin-bottom: 22px;
-    font-size: 11px; padding: 0 4px;
+    font-size: 11px; padding: 0 4px; gap: 12px;
   }}
+  .meta-row > div {{ flex: 1; }}
   .meta-row .label {{ color: #8C8583; }}
   .meta-row .val {{ font-weight: 500; }}
   table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
@@ -93,24 +94,22 @@
   </div>
 
   <div class="title-block">
-    <div class="title">进 货 单</div>
+    <div class="title">{pdf_title}</div>
     <div class="sub">PURCHASE ORDER / RECEIPT</div>
   </div>
 
   <div class="meta-row">
-    <div><span class="label">日期</span> <span class="val">{date}</span></div>
-    <div><span class="label">支付</span> <span class="val">{payment_method}</span></div>
-    <div><span class="label">类别</span> <span class="val">{category}</span></div>
-  </div>
-  <div class="meta-row" style="margin-top:-12px;">
-    <div><span class="label">采购批次</span> <span class="val">{batch_label_text}</span></div>
+    <div><span class="label">{label_date}</span> <span class="val">{date}</span></div>
+    <div><span class="label">{label_payment}</span> <span class="val">{payment_method}</span></div>
+    <div><span class="label">{label_category}</span> <span class="val">{category}</span></div>
+    <div><span class="label">{label_batch}</span> <span class="val">{batch_label_text}</span></div>
   </div>
 
   <table>
-    <thead><tr><th>商品名称</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
+    <thead><tr><th>{col_name}</th><th>{col_spec}</th><th>{col_unit_price}</th><th>{col_qty}</th><th>{col_subtotal}</th></tr></thead>
     <tbody>
       {items_html}
-      <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:20px;">合计（人民币）</td><td>¥{total:,.2f}</td></tr>
+      <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:20px;">{total_cny}</td><td>¥{total:,.2f}</td></tr>
     </tbody>
   </table>
 
@@ -121,8 +120,8 @@
   <div class="footer" style="margin-top:16px;">
     {note_html}
     <div class="signatures">
-      <span>经办人：{operator}</span>
-      <span>生成日期：{gen_date}</span>
+      <span>{operator_label}：{operator}</span>
+      <span>{gen_date_label}：{gen_date}</span>
     </div>
     <div class="seal">
       <div class="seal-round">

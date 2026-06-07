@@ -791,6 +791,12 @@ EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 def validate_email(email):
     return bool(EMAIL_RE.match(email))
 
+def _format_pdf_date(d, lang):
+    """PDF date format per language: CN 年月日 / EN YYYY-MM-DD."""
+    if lang in ('zh-CN', 'zh-TW'):
+        return f"{d.year}年{d.month}月{d.day}日"
+    return f"{d.year:04d}-{d.month:02d}-{d.day:02d}"
+
 # ── Rate limiting (in-memory, resets on process restart) ──
 _login_attempts = {}  # { ip: [attempt_timestamps...] }
 _RATE_LIMIT_MAX = 5
@@ -1650,15 +1656,15 @@ def api_procurement_batch_pdf(id):
         if imgs:
             images_html = (
                 '<div class="images-section">'
-                '<div class="img-label">📎 采购凭证</div>'
+                f'<div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div>'
                 f'<div class="images-grid">{imgs}</div>'
                 '</div>'
             )
 
-    # 日期格式化: 2026-06-04 → 2026年6月4日
+    # 日期格式化: 2026-06-04 → 2026年6月4日（按语言）
     try:
         d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = f"{d.year}年{d.month}月{d.day}日"
+        date_str = _format_pdf_date(d, g.lang)
     except:
         date_str = b.get('date', '')
 
@@ -1667,9 +1673,9 @@ def api_procurement_batch_pdf(id):
     with open(template_path, 'r', encoding='utf-8') as f:
         html = f.read()
 
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行（PDF 只简中）
+    # 可选备注：仅当填了才渲染"可选备注：xxx"行
     _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">可选备注：{_note_raw}</div>' if _note_raw else ''
+    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
     # 填充数据
     now = datetime.now()
@@ -1683,9 +1689,23 @@ def api_procurement_batch_pdf(id):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
-        batch_label_text=f"第{b['batch_number']}次进货",
+        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
         operator=g.username,
-        gen_date=now.strftime('%Y年%m月%d日'),
+        gen_date=_format_pdf_date(now, g.lang),
+        # PDF template labels (i18n, 2026-06-07)
+        pdf_title=_t('pdfTitle', g.lang),
+        label_date=_t('pdfLabelDate', g.lang),
+        label_payment=_t('pdfLabelPayment', g.lang),
+        label_category=_t('pdfLabelCategory', g.lang),
+        label_batch=_t('procBatchLabel', g.lang),
+        col_name=_t('pdfColName', g.lang),
+        col_spec=_t('pdfColSpec', g.lang),
+        col_unit_price=_t('pdfColUnitPrice', g.lang),
+        col_qty=_t('pdfColQty', g.lang),
+        col_subtotal=_t('pdfColSubtotal', g.lang),
+        total_cny=_t('pdfTotalCNY', g.lang),
+        operator_label=_t('pdfOperator', g.lang),
+        gen_date_label=_t('pdfGenDate', g.lang),
     )
 
     # 生成 PDF
@@ -1750,6 +1770,10 @@ def api_share_pdf(token):
         b['images'] = json.loads(b['images']) if b['images'] else []
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
         b['items'] = [dict(it) for it in items]
+        # Look up operator username from the batch's user_id (share path is public,
+        # no g.username — 2026-06-07 fix "经办人：—" bug)
+        user_row = db.execute('SELECT username FROM users WHERE id=?', (b.get('user_id'),)).fetchone()
+        operator = user_row['username'] if user_row else '—'
     # 商品行
     items_html = ''
     for it in b['items']:
@@ -1765,11 +1789,11 @@ def api_share_pdf(token):
             if os.path.isfile(img_path):
                 imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
         if imgs:
-            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+            images_html = f'<div class="images-section"><div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div><div class="images-grid">{imgs}</div></div>'
     # 日期
     try:
         d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = f"{d.year}年{d.month}月{d.day}日"
+        date_str = _format_pdf_date(d, g.lang)
     except:
         date_str = b.get('date', '')
     # 渲染
@@ -1777,10 +1801,11 @@ def api_share_pdf(token):
     with open(template_path, 'r', encoding='utf-8') as f:
         html = f.read()
 
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行（PDF 只简中）
+    # 可选备注：仅当填了才渲染"可选备注：xxx"行
     _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">可选备注：{_note_raw}</div>' if _note_raw else ''
+    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
+    now = datetime.now()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
@@ -1791,9 +1816,22 @@ def api_share_pdf(token):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
-        batch_label_text=f"第{b['batch_number']}次进货",
-        operator='—',
-        gen_date='—',
+        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
+        operator=operator,
+        gen_date=_format_pdf_date(now, g.lang),
+        pdf_title=_t('pdfTitle', g.lang),
+        label_date=_t('pdfLabelDate', g.lang),
+        label_payment=_t('pdfLabelPayment', g.lang),
+        label_category=_t('pdfLabelCategory', g.lang),
+        label_batch=_t('procBatchLabel', g.lang),
+        col_name=_t('pdfColName', g.lang),
+        col_spec=_t('pdfColSpec', g.lang),
+        col_unit_price=_t('pdfColUnitPrice', g.lang),
+        col_qty=_t('pdfColQty', g.lang),
+        col_subtotal=_t('pdfColSubtotal', g.lang),
+        total_cny=_t('pdfTotalCNY', g.lang),
+        operator_label=_t('pdfOperator', g.lang),
+        gen_date_label=_t('pdfGenDate', g.lang),
     )
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     filename = f"procurement_{b['batch_number']:04d}.pdf"
@@ -1824,6 +1862,9 @@ def _render_procurement_png(batch_id):
         b['images'] = json.loads(b['images']) if b['images'] else []
         items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (batch_id,)).fetchall()
         b['items'] = [dict(it) for it in items]
+        # Look up operator username (2026-06-07 fix "经办人：—" bug)
+        user_row = db.execute('SELECT username FROM users WHERE id=?', (b.get('user_id'),)).fetchone()
+        operator = user_row['username'] if user_row else '—'
     items_html = ''
     for it in b['items']:
         spec = it.get('spec', '') or ''
@@ -1837,20 +1878,21 @@ def _render_procurement_png(batch_id):
             if os.path.isfile(img_path):
                 imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
         if imgs:
-            images_html = f'<div class="images-section"><div class="img-label">📎 采购凭证</div><div class="images-grid">{imgs}</div></div>'
+            images_html = f'<div class="images-section"><div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div><div class="images-grid">{imgs}</div></div>'
     try:
         d = datetime.strptime(b['date'], '%Y-%m-%d')
-        date_str = f"{d.year}年{d.month}月{d.day}日"
+        date_str = _format_pdf_date(d, g.lang)
     except:
         date_str = b.get('date', '')
     template_path = os.path.join(os.path.dirname(__file__), 'templates', 'procurement_order.html')
     with open(template_path, 'r', encoding='utf-8') as f:
         html = f.read()
 
-    # 可选备注：仅当填了才渲染"可选备注：xxx"行（PDF 只简中）
+    # 可选备注：仅当填了才渲染"可选备注：xxx"行
     _note_raw = (b.get('note') or '').strip()
-    note_html = f'<div class="note">可选备注：{_note_raw}</div>' if _note_raw else ''
+    note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
+    now = datetime.now()
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
@@ -1861,9 +1903,22 @@ def _render_procurement_png(batch_id):
         total=b['total'],
         images_html=images_html,
         note_html=note_html,
-        batch_label_text=f"第{b['batch_number']}次进货",
-        operator='—',
-        gen_date='—',
+        batch_label_text=_t('procNowBatch', g.lang, n=b['batch_number']),
+        operator=operator,
+        gen_date=_format_pdf_date(now, g.lang),
+        pdf_title=_t('pdfTitle', g.lang),
+        label_date=_t('pdfLabelDate', g.lang),
+        label_payment=_t('pdfLabelPayment', g.lang),
+        label_category=_t('pdfLabelCategory', g.lang),
+        label_batch=_t('procBatchLabel', g.lang),
+        col_name=_t('pdfColName', g.lang),
+        col_spec=_t('pdfColSpec', g.lang),
+        col_unit_price=_t('pdfColUnitPrice', g.lang),
+        col_qty=_t('pdfColQty', g.lang),
+        col_subtotal=_t('pdfColSubtotal', g.lang),
+        total_cny=_t('pdfTotalCNY', g.lang),
+        operator_label=_t('pdfOperator', g.lang),
+        gen_date_label=_t('pdfGenDate', g.lang),
     )
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")

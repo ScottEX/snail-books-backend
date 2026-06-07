@@ -66,6 +66,24 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': '第{n}次进货',
         'procBatchLabel': '采购批次',
+        # ── PDF template labels (procurement_order.html) ──
+        # All three PDF render paths (api_procurement_batch_pdf /
+        # api_share_pdf / _render_procurement_png) pass these through
+        # the template. PDF is now lang-aware following the visitor's
+        # X-Lang / Accept-Language header (2026-06-07).
+        'pdfTitle': '进货单',
+        'pdfLabelDate': '日期',
+        'pdfLabelPayment': '支付',
+        'pdfLabelCategory': '类别',
+        'pdfColName': '商品名称',
+        'pdfColSpec': '规格',
+        'pdfColUnitPrice': '单价',
+        'pdfColQty': '数量',
+        'pdfColSubtotal': '小计',
+        'pdfTotalCNY': '合计（人民币）',
+        'pdfOperator': '经办人',
+        'pdfGenDate': '生成日期',
+        'pdfImgLabel': '采购凭证',
     },
     'zh-TW': {
         'err_empty_fields': '使用者名稱和密碼不能為空',
@@ -132,6 +150,19 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': '第{n}次進貨',
         'procBatchLabel': '採購批次',
+        'pdfTitle': '進貨單',
+        'pdfLabelDate': '日期',
+        'pdfLabelPayment': '支付',
+        'pdfLabelCategory': '類別',
+        'pdfColName': '商品名稱',
+        'pdfColSpec': '規格',
+        'pdfColUnitPrice': '單價',
+        'pdfColQty': '數量',
+        'pdfColSubtotal': '小計',
+        'pdfTotalCNY': '合計（人民幣）',
+        'pdfOperator': '經辦人',
+        'pdfGenDate': '生成日期',
+        'pdfImgLabel': '採購憑證',
     },
     'en': {
         'err_empty_fields': 'Username and password required',
@@ -198,6 +229,19 @@ TRANSLATIONS = {
         # SMS outputs. DO NOT REMOVE. (added 2026-06-06)
         'procNowBatch': 'Batch #{n}',
         'procBatchLabel': 'Batch',
+        'pdfTitle': 'Purchase Order',
+        'pdfLabelDate': 'Date',
+        'pdfLabelPayment': 'Payment',
+        'pdfLabelCategory': 'Category',
+        'pdfColName': 'Product',
+        'pdfColSpec': 'Spec',
+        'pdfColUnitPrice': 'Unit Price',
+        'pdfColQty': 'Qty',
+        'pdfColSubtotal': 'Subtotal',
+        'pdfTotalCNY': 'Total (CNY)',
+        'pdfOperator': 'Operator',
+        'pdfGenDate': 'Generated',
+        'pdfImgLabel': 'Receipts',
     }
 }
 
