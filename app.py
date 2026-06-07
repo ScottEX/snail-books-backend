@@ -21,13 +21,16 @@ from flask import Flask, request, jsonify, session, g, make_response, send_file
 from i18n_backend import get_lang
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'snail-books-lanxu-2026-secret-key-v1')
+_secret = os.environ.get('FLASK_SECRET_KEY')
+if not _secret:
+    raise RuntimeError("FLASK_SECRET_KEY environment variable is required — generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
+app.secret_key = _secret
 app.permanent_session_lifetime = timedelta(hours=24)
 
 FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get(
     'FRONTEND_DIR',
-    os.path.join(os.path.dirname(__file__), '..', 'snail-books-web', 'dist'),
+    os.path.join(os.path.dirname(__file__), 'static', 'web-build', 'dist'),
 )
 EXPENSE_IMG_DIR = os.environ.get(
     'EXPENSE_IMG_DIR',
@@ -511,4 +514,5 @@ app.register_blueprint(tx_bp, url_prefix='/api')
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8600, debug=True)
+    init_db()
+    app.run(host='0.0.0.0', port=8600, debug=False)
