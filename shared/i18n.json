@@ -413,7 +413,8 @@
       "pdfLabelPayment": "支付",
       "pdfOperator": "经办人",
       "pdfTitle": "进货单",
-      "pdfTotalCNY": "合计（人民币）"
+      "pdfTotalCNY": "合计（人民币）",
+      "pdfSubtitle": "采购订单 / 收货凭证"
     }
   },
   "zh-TW": {
@@ -832,7 +833,8 @@
       "pdfLabelPayment": "支付",
       "pdfOperator": "經辦人",
       "pdfTitle": "進貨單",
-      "pdfTotalCNY": "合計（人民幣）"
+      "pdfTotalCNY": "合計（人民幣）",
+      "pdfSubtitle": "採購訂單 / 收貨憑證"
     }
   },
   "en": {
@@ -1249,7 +1251,8 @@
       "pdfLabelPayment": "Payment",
       "pdfOperator": "Operator",
       "pdfTitle": "Purchase Order",
-      "pdfTotalCNY": "Total (CNY)"
+      "pdfTotalCNY": "Total (CNY)",
+      "pdfSubtitle": "PURCHASE ORDER / RECEIPT"
     }
   }
 }
