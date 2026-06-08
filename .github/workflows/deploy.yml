@@ -14,31 +14,63 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Syntax check
+      - name: 语法检查
         run: |
           python -m py_compile app.py
           python -m py_compile i18n_backend.py
           for f in shared/*.py routes/*.py; do python -m py_compile "$f"; done
-          echo "✅ All syntax checks passed"
+          echo "✅ 语法检查通过"
 
-  deploy:
+  deploy-staging:
     needs: test
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Build web assets
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-web
+          ref: develop
+          path: web-build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm ci & build:web
+        working-directory: web-build
+        run: |
+          npm ci
+          npm run build:web
 
-      - name: SCP to server
+      - name: Sync web dist → server backend/static (staging)
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "i18n_backend.py,routes,shared,templates"
-          target: "/opt/snail-books-backend-staging/"
+          source: "web-build/dist/*"
+          target: "/opt/snail-books-backend-staging/static/"
+          strip_components: 0
+          rm: true
 
-      - name: Restart service
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-backend
+          ref: develop
+          path: backend
+
+      - name: SCP backend code → staging
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/procurement_order.html"
+          target: "/opt/snail-books-backend-staging/"
+          strip_components: 1
+
+      - name: Restart backend (staging)
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -47,3 +79,65 @@ jobs:
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
+            echo "✅ Staging 部署完成"
+
+  deploy-production:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Build web assets
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-web
+          ref: main
+          path: web-build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm ci & build:web
+        working-directory: web-build
+        run: |
+          npm ci
+          npm run build:web
+
+      - name: Sync web dist → server backend/static (production)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "web-build/dist/*"
+          target: "/opt/snail-books-backend/static/"
+          strip_components: 0
+          rm: true
+
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: ScottEX/snail-books-backend
+          ref: main
+          path: backend
+
+      - name: SCP backend code → production
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/procurement_order.html"
+          target: "/opt/snail-books-backend/"
+          strip_components: 1
+
+      - name: Restart backend (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            systemctl restart snail-books
+            sleep 2
+            systemctl is-active snail-books
+            echo "✅ 生产部署完成"
