@@ -70,17 +70,28 @@ def list_users():
         params = []
 
         if search:
-            # Search by username (exact or pinyin initials)
+            # Search by username, email, or pinyin initials
             pinyin_search = _pinyin_initials(search)
+            like = f'%{search.lower()}%'
+            pinyin_like = f'%{pinyin_search.lower()}%'
             where_clauses.append(
-                '(LOWER(username) LIKE ? OR LOWER(_pinyin(username)) LIKE ?)'
+                '(LOWER(username) LIKE ? OR LOWER(email) LIKE ? OR LOWER(_pinyin(username)) LIKE ?)'
             )
-            params.extend([f'%{search.lower()}%', f'%{pinyin_search.lower()}%'])
+            params.extend([like, like, pinyin_like])
 
         if status == 'normal':
             where_clauses.append('is_disabled = 0')
         elif status == 'disabled':
             where_clauses.append('is_disabled = 1')
+
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        if date_from:
+            where_clauses.append('created_at >= ?')
+            params.append(date_from)
+        if date_to:
+            where_clauses.append('created_at <= ?')
+            params.append(date_to + ' 23:59:59')
 
         where_sql = ' AND '.join(where_clauses) if where_clauses else '1=1'
 
@@ -237,7 +248,7 @@ def update_user(user_id):
 
         updates = []
         params = []
-        for field in ['role', 'remark', 'phone']:
+        for field in ['role', 'remark', 'phone', 'email']:
             if field in data:
                 updates.append(f'{field}=?')
                 params.append(data[field])
