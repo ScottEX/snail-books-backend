@@ -83,6 +83,29 @@ def transactions():
 def transaction_by_id(id):
     if request.method == 'PUT':
         data = request.get_json()
+
+        # Validate required fields
+        amount = data.get('amount')
+        if amount is not None:
+            try:
+                amount = float(amount)
+                if amount <= 0:
+                    return jsonify({'status': 'error', 'message': t('err_amount_positive', g.lang)}), 400
+            except (TypeError, ValueError):
+                return jsonify({'status': 'error', 'message': t('err_amount_invalid', g.lang)}), 400
+
+        category = data.get('category')
+        if category is not None and category not in ('daily', 'rent', 'salary', 'goods'):
+            return jsonify({'status': 'error', 'message': t('err_invalid_category', g.lang)}), 400
+
+        account = data.get('account')
+        if account is not None and account not in ('payCash', 'payWechat', 'payAlipay'):
+            return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
+
+        date = data.get('date')
+        if date is not None and not date:
+            return jsonify({'status': 'error', 'message': t('err_missing_date', g.lang)}), 400
+
         with get_db() as db:
             existing = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
             if not existing:
