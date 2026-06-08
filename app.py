@@ -643,7 +643,8 @@ def handle_500(e):
     import logging
     log = logging.getLogger('app')
     log.exception('Unhandled 500: %s', e)
-    return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+    lang = g.get('lang', 'zh-CN') if hasattr(g, 'lang') else 'zh-CN'
+    return jsonify({'status': 'error', 'message': _t('err_internal', lang)}), 500
 
 
 @app.errorhandler(404)
