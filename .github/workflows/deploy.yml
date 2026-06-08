@@ -1,22 +1,40 @@
-name: Deploy to Staging
+name: CI/CD
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: |
+          python -m py_compile app.py
+          python -m py_compile i18n_backend.py
+          for f in shared/*.py routes/*.py; do python -m py_compile "$f"; done
+          echo "✅ All syntax checks passed"
+
   deploy:
+    needs: test
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to server
+      - name: SCP to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "i18n_backend.py,routes/,shared/,templates/"
+          source: "i18n_backend.py routes/ shared/ templates/"
           target: "/opt/snail-books-backend-staging/"
 
       - name: Restart service
