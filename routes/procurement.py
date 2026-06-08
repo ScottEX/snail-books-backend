@@ -140,7 +140,7 @@ def api_procurement_batches():
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
                 'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category', 'goods'), round(total, 2),
+                (batch_no, data['date'], data['payment_method'], data.get('category', '采购'), round(total, 2),
                  images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
@@ -151,8 +151,8 @@ def api_procurement_batches():
                 )
             # Sync an expense transaction
             cur = db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category', 'goods'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json)
             )
             db.commit()
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -190,8 +190,8 @@ def api_procurement_batch_detail(id):
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             batch = dict(row)
             db.execute(
-                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category IN ('采购', 'goods') AND date=? AND amount=? AND account=?)",
-                (id, batch['date'], batch['total'], batch['payment_method'])
+                "DELETE FROM transactions WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
+                (batch['date'], batch['total'], batch['payment_method'])
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
@@ -221,6 +221,7 @@ def api_procurement_batch_detail(id):
                 return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
             images_json = json.dumps(data.get('images', []))
             thumbs_json = json.dumps(data.get('thumb_images', []))
+            old_batch = dict(row)
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
@@ -229,13 +230,14 @@ def api_procurement_batch_detail(id):
                 )
             db.execute(
                 "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
-                (data['date'], data['payment_method'], data.get('category', 'goods'),
+                (data['date'], data['payment_method'], data.get('category', '采购'),
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
             db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
-                (round(total, 2), data.get('category', 'goods'), data['payment_method'],
-                 data.get('note', ''), data['date'], images_json, thumbs_json, id)
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
+                (round(total, 2), data.get('category', '采购'), data['payment_method'],
+                 data.get('note', ''), data['date'], images_json, thumbs_json,
+                 old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
             db.commit()
             _delete_cached_pdf(id)

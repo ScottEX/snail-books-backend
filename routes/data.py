@@ -21,9 +21,6 @@ data_bp = Blueprint('data', __name__)
 @login_required
 def migrate_recon():
     """One-time migration: remove UNIQUE(date) constraint."""
-    data = request.get_json(silent=True) or {}
-    if data.get('confirm') != 'MIGRATE':
-        return jsonify({'error': 'Requires confirm="MIGRATE" — this is a destructive migration'}), 400
     with get_db() as db:
         try:
             db.execute('PRAGMA foreign_keys = OFF')

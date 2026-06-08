@@ -334,7 +334,6 @@ def frontend_version():
 
 
 @settings_bp.route('/frontend.zip')
-@login_required
 def frontend_zip():
     www = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
