@@ -34,11 +34,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: |
-            i18n_backend.py
-            routes/
-            shared/
-            templates/
+          source: "i18n_backend.py,routes,shared,templates"
           target: "/opt/snail-books-backend-staging/"
 
       - name: Restart service
