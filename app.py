@@ -456,6 +456,10 @@ def init_db():
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN is_disabled INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 init_db()
@@ -466,6 +470,7 @@ init_db()
 # ═══════════════════════════════════════════════════════════
 
 from routes.auth import auth_bp
+from routes.admin import admin_bp
 from routes.data import data_bp
 from routes.partners import bp as partners_bp
 from routes.procurement import procurement_bp
@@ -476,6 +481,7 @@ from routes.transactions import tx_bp
 # Auth routes at root level (login, register, verify, etc.)
 app.register_blueprint(auth_bp)
 # All other routes under /api
+app.register_blueprint(admin_bp, url_prefix='/api')
 app.register_blueprint(data_bp, url_prefix='/api')
 app.register_blueprint(partners_bp, url_prefix='/api')
 app.register_blueprint(procurement_bp, url_prefix='/api')
