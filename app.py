@@ -227,21 +227,46 @@ def init_db():
                 is_verified INTEGER DEFAULT 0,
                 reset_code TEXT,
                 reset_expires TIMESTAMP,
+                signature TEXT DEFAULT '',
+                enforce_single_session INTEGER DEFAULT 0,
+                session_timeout_hours INTEGER DEFAULT 24,
+                current_session_id TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 token TEXT NOT NULL UNIQUE,
+                session_id TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE TABLE IF NOT EXISTS transactions (
+                       CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL UNIQUE,
+                device_info TEXT DEFAULT '',
+                expires_at TIMESTAMP,
+                revoked_at TIMESTAMP,
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT,
+                PRIMARY KEY (user_id, key)
+            );
+ CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('income','expense')),
                 amount REAL NOT NULL,
                 category TEXT NOT NULL,
                 account TEXT NOT NULL,
                 note TEXT DEFAULT '',
+                images TEXT DEFAULT '[]',
+                thumb_images TEXT DEFAULT '[]',
+                date TEXT DEFAULT '',
+                procurement_batch_id INTEGER,
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -250,6 +275,8 @@ def init_db():
                 partner TEXT NOT NULL,
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
+                date TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
@@ -258,7 +285,8 @@ def init_db():
                 share REAL NOT NULL,
                 investment REAL NOT NULL DEFAULT 0,
                 status TEXT DEFAULT '',
-                note TEXT DEFAULT ''
+                note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,7 +294,9 @@ def init_db():
                 spec TEXT DEFAULT '',
                 unit TEXT DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                supplier TEXT DEFAULT '',
+                note TEXT DEFAULT '',
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS procurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -276,6 +306,7 @@ def init_db():
                 unit TEXT DEFAULT '',
                 unit_price REAL,
                 total REAL,
+                note TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -289,10 +320,7 @@ def init_db():
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
-                payment_method TEXT DEFAULT '',
-                supplier TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                batch_number INTEGER NOT NULL DEFAULT 1 CHECK(batch_number > 0),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_items (
@@ -301,11 +329,10 @@ def init_db():
                 product_id INTEGER,
                 product_name TEXT,
                 spec TEXT DEFAULT '',
-                unit TEXT DEFAULT '',
                 quantity REAL,
                 unit_price REAL,
-                total REAL,
-                supplier TEXT DEFAULT '',
+                subtotal REAL,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_cart (
@@ -327,6 +354,8 @@ def init_db():
                 channel_total REAL NOT NULL DEFAULT 0,
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
+                bill_date TEXT DEFAULT '',
+                reconciled_by TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
