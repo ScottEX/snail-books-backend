@@ -8,14 +8,17 @@ EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
 def validate_password(password, lang='zh-CN'):
     """Returns (bool, str). Password: >=8 chars, must contain letter, digit, special char."""
+    ok = True
     if len(password) < 8:
-        return False, t('err_pw_too_short', lang)
+        ok = False
     if not re.search(r'[A-Za-z]', password):
-        return False, t('err_pw_no_letter', lang)
+        ok = False
     if not re.search(r'[0-9]', password):
-        return False, t('err_pw_no_digit', lang)
-    if not re.search(r'[!@#$%^&*(),.?\":{}|<>]', password):
-        return False, t('err_pw_no_special', lang)
+        ok = False
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        ok = False
+    if not ok:
+        return False, t('err_pw_requirements', lang)
     return True, ''
 
 
