@@ -153,6 +153,17 @@ def generate_frontend(unified):
     lines.append('};')
     lines.append('')
 
+    # Generate I18nKey union type
+    all_keys = set()
+    for lang in ['zh-CN', 'zh-TW', 'en']:
+        all_keys.update(unified[lang]['common'].keys())
+        all_keys.update(unified[lang]['frontend'].keys())
+    key_lines = ['export type I18nKey =']
+    for k in sorted(all_keys):
+        key_lines.append(f"  | '{k}'")
+    lines.extend(key_lines)
+    lines.append('')
+
     # Append LangContext + LangProvider + useLang
     lines.append('''type Lang = 'zh-CN' | 'zh-TW' | 'en';
 
@@ -162,7 +173,7 @@ export const langs: [Lang, string][] = [
   ['en', 'EN'],
 ];
 
-export function t(key: string): string {
+export function t(key: I18nKey | string): string {
   const lang = (typeof window !== 'undefined' ? (window as any).curLang : null) || 'zh-CN';
   return I18N[lang]?.[key] || I18N['zh-CN']?.[key] || key;
 }
