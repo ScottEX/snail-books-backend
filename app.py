@@ -14,7 +14,7 @@ except ImportError:
     HAS_PIL = False
 
 from flask import Flask, request, jsonify, session, g, make_response, send_file
-from i18n_backend import get_lang
+from i18n_backend import get_lang, t as _t
 
 app = Flask(__name__)
 _secret = os.environ.get('FLASK_SECRET_KEY')
