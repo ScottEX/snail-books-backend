@@ -19,6 +19,8 @@ def transactions():
         if missing:
             return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
+            if data['type'] not in ('income', 'expense'):
+                return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
             db.execute(
                 'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,user_id) VALUES (?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
@@ -53,7 +55,7 @@ def transactions():
         cats = [c.strip() for c in category.split(',') if c.strip()]
         if cats:
             placeholders = ','.join(['?' for _ in cats])
-            where.append(f'category IN ({placeholders})')
+            where.append(f't.category IN ({placeholders})')
             params.extend(cats)
 
     where_sql = ' AND '.join(where) if where else '1=1'

@@ -65,11 +65,11 @@ def migrate_recon():
 def clear_reconciliations():
     data = request.get_json(silent=True) or {}
     if data.get('confirm') != 'YES':
-        return jsonify({'ok': False, 'message': '需要 confirm="YES" 二次确认'}), 400
+        return jsonify({'ok': False, 'message': t('err_recon_confirm', g.lang)}), 400
     with get_db() as db:
         db.execute('DELETE FROM reconciliations')
         db.commit()
-    return jsonify({'ok': True, 'message': 'All reconciliation records cleared'})
+    return jsonify({'ok': True, 'message': t('msg_recon_cleared', g.lang)})
 
 
 @data_bp.route('/reconciliations', methods=['POST'])
@@ -77,19 +77,19 @@ def clear_reconciliations():
 def create_reconciliation():
     data = request.get_json() or {}
     if validate_required(data, 'date'):
-        return jsonify({'error': '缺少日期'}), 400
+        return jsonify({'error': t('err_missing_date', g.lang)}), 400
     dt = data['date']
     try:
         datetime.strptime(dt, '%Y-%m-%d')
     except ValueError:
-        return jsonify({'error': '日期格式必须为 YYYY-MM-DD'}), 400
+        return jsonify({'error': t('err_date_format', g.lang)}), 400
 
     bill_date = data.get('bill_date', dt)
     if bill_date:
         try:
             datetime.strptime(bill_date, '%Y-%m-%d')
         except ValueError:
-            return jsonify({'error': '账单日期格式必须为 YYYY-MM-DD'}), 400
+            return jsonify({'error': t('err_bill_date_format', g.lang)}), 400
 
     reconciled_by = data.get('reconciled_by', g.username)
     if not reconciled_by and g.user_id:
@@ -97,7 +97,7 @@ def create_reconciliation():
             user = db.execute('SELECT username FROM users WHERE id=?', (g.user_id,)).fetchone()
             reconciled_by = user['username'] if user else str(g.user_id)
     if 'reconciled_by' in data and not re.match(r'^[\w\u4e00-\u9fa5@.\-]{1,32}$', reconciled_by):
-        return jsonify({'error': '录入人格式无效'}), 400
+        return jsonify({'error': t('err_invalid_reconciled_by', g.lang)}), 400
 
     balances = {}
     for field in ['card_balance', 'cash_balance', 'dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']:
@@ -105,11 +105,11 @@ def create_reconciliation():
         try:
             v = float(raw) if raw is not None else 0.0
         except (TypeError, ValueError):
-            return jsonify({'error': f'{field} 必须是有效数字'}), 400
+            return jsonify({'error': t('err_field_not_number', g.lang, field=field)}), 400
         if v < 0:
-            return jsonify({'error': f'{field} 不能为负'}), 400
+            return jsonify({'error': t('err_field_negative', g.lang, field=field)}), 400
         if abs(v) > 1e10:
-            return jsonify({'error': f'{field} 数值超出合理范围'}), 400
+            return jsonify({'error': t('err_field_too_large', g.lang, field=field)}), 400
         balances[field] = v
 
     card_balance = balances['card_balance']
