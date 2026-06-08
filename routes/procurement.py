@@ -691,6 +691,7 @@ def _render_procurement_png(batch_id):
         pdf_bytes = _write_pdf_with_timeout(html)
     except (concurrent.futures.TimeoutError, RuntimeError):
         return None, None
+    _save_cached_pdf(batch_id, pdf_bytes, g.lang)
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     page = doc[0]
     pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))
