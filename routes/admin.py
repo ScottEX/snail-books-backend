@@ -264,4 +264,37 @@ def update_user(user_id):
     return jsonify({'status': 'ok'})
 
 
+@admin_bp.route('/admin/check')
+@login_required
+def check_admin():
+    """Check if current user is admin."""
+    uid, err = _require_admin()
+    return jsonify({'is_admin': err is None})
+
+
+@admin_bp.route('/admin/users/<int:user_id>', methods=['DELETE'])
+@login_required
+def delete_user(user_id):
+    """Delete a user and all related data (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+
+    if str(user_id) == ADMIN_USER_ID:
+        return jsonify({'status': 'error', 'message': '不能删除管理员'}), 400
+
+    with get_db() as db:
+        row = db.execute('SELECT id FROM users WHERE id=?', (user_id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+
+        db.execute('DELETE FROM transactions WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM procurements WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM user_sessions WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM users WHERE id=?', (user_id,))
+        db.commit()
+
+    return jsonify({'status': 'ok'})
+
+
 _register_pinyin_function()
