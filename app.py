@@ -460,6 +460,18 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN is_disabled INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN remark TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
 
 init_db()

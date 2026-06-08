@@ -161,6 +161,7 @@ def _build_avatar(user_id):
     return ''
 
 
+
 def _register_pinyin_function():
     """Register the _pinyin SQLite function for server-side pinyin search."""
     import sqlite3
@@ -169,6 +170,87 @@ def _register_pinyin_function():
             db.create_function('_pinyin', 1, _pinyin_initials)
     except Exception:
         pass  # Already registered or DB not ready
+
+
+@admin_bp.route('/admin/users/<int:user_id>')
+@login_required
+def get_user_detail(user_id):
+    """Get full user detail (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+
+    with get_db() as db:
+        row = db.execute(
+            '''SELECT id, username, email, phone, role, remark,
+                      is_disabled, created_at, signature
+               FROM users WHERE id=?''', (user_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+
+        last_login = None
+        session_row = db.execute(
+            '''SELECT last_seen_at FROM user_sessions
+               WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1''',
+            (user_id,)
+        ).fetchone()
+        if session_row:
+            last_login = session_row['last_seen_at']
+
+        avatar = _build_avatar(user_id)
+
+    return jsonify({
+        'status': 'ok',
+        'data': {
+            'id': row['id'],
+            'username': row['username'],
+            'email': row['email'] or '',
+            'phone': row['phone'] or '',
+            'role': row['role'] or '',
+            'remark': row['remark'] or '',
+            'is_disabled': bool(row['is_disabled']),
+            'created_at': row['created_at'] or '',
+            'last_login': last_login or '',
+            'avatar': avatar,
+            'signature': row['signature'] or '',
+        }
+    })
+
+
+@admin_bp.route('/admin/users/<int:user_id>', methods=['PUT'])
+@login_required
+def update_user(user_id):
+    """Update user fields — role, remark, phone, is_disabled (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    if str(user_id) == ADMIN_USER_ID and 'is_disabled' in data:
+        return jsonify({'status': 'error', 'message': '不能禁用管理员'}), 400
+
+    with get_db() as db:
+        row = db.execute('SELECT id FROM users WHERE id=?', (user_id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+
+        updates = []
+        params = []
+        for field in ['role', 'remark', 'phone']:
+            if field in data:
+                updates.append(f'{field}=?')
+                params.append(data[field])
+        if 'is_disabled' in data:
+            updates.append('is_disabled=?')
+            params.append(1 if data['is_disabled'] else 0)
+
+        if updates:
+            params.append(user_id)
+            db.execute(f'UPDATE users SET {", ".join(updates)} WHERE id=?', params)
+            db.commit()
+
+    return jsonify({'status': 'ok'})
 
 
 _register_pinyin_function()
