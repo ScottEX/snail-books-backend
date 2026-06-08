@@ -78,9 +78,34 @@ def transactions():
     })
 
 
-@tx_bp.route('/transactions/<int:id>', methods=['DELETE'])
+@tx_bp.route('/transactions/<int:id>', methods=['DELETE', 'PUT'])
 @login_required
-def delete_transaction(id):
+def transaction_by_id(id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        with get_db() as db:
+            existing = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
+            if not existing:
+                return jsonify({'status': 'error', 'message': t('err_not_found', g.lang)}), 404
+            fields = []
+            values = []
+            for key in ('amount', 'category', 'account', 'note', 'date', 'images', 'thumb_images'):
+                if key in data:
+                    if key in ('images', 'thumb_images'):
+                        fields.append(f'{key}=?')
+                        values.append(json.dumps(data[key]))
+                    else:
+                        fields.append(f'{key}=?')
+                        values.append(data[key])
+            if not fields:
+                return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='fields')}), 400
+            values.append(id)
+            db.execute(f'UPDATE transactions SET {", ".join(fields)} WHERE id=?', values)
+            db.commit()
+            updated = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
+        return jsonify({'status': 'ok', 'transaction': dict(updated)})
+
+    # DELETE
     with get_db() as db:
         db.execute('DELETE FROM transactions WHERE id=?', (id,))
         db.commit()
