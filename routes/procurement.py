@@ -283,26 +283,35 @@ def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
         raise RuntimeError(f'PDF render failed: {e}') from e
 
 
-def _get_cached_pdf(batch_id):
+def _cached_pdf_path(batch_id, lang):
+    return os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}_{lang}.pdf')
+
+
+def _get_cached_pdf(batch_id, lang):
     _cleanup_orphaned_cache()
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    cache_path = _cached_pdf_path(batch_id, lang)
     if os.path.isfile(cache_path):
         with open(cache_path, 'rb') as f:
             return f.read()
     return None
 
 
-def _save_cached_pdf(batch_id, pdf_bytes):
+def _save_cached_pdf(batch_id, pdf_bytes, lang):
     os.makedirs(PDF_CACHE_DIR, exist_ok=True)
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    cache_path = _cached_pdf_path(batch_id, lang)
     with open(cache_path, 'wb') as f:
         f.write(pdf_bytes)
 
 
-def _delete_cached_pdf(batch_id):
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
-    if os.path.isfile(cache_path):
-        os.remove(cache_path)
+def _delete_cached_pdf(batch_id, lang=None):
+    """Delete cached PDF(s) for a batch. If lang is None, delete all language variants."""
+    import glob as _glob
+    pattern = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}_*.pdf') if lang is None else _cached_pdf_path(batch_id, lang)
+    if lang is None:
+        for p in _glob.glob(pattern):
+            os.remove(p)
+    elif os.path.isfile(pattern):
+        os.remove(pattern)
 
 
 _LAST_ORPHAN_CLEANUP = 0
@@ -318,17 +327,17 @@ def _cleanup_orphaned_cache():
     _LAST_ORPHAN_CLEANUP = now
     if not os.path.isdir(PDF_CACHE_DIR):
         return
+    import re
+    _CACHE_RE = re.compile(r'^batch_(\d+)(?:_(?:zh-CN|zh-TW|en))?\.pdf$')
     try:
         with get_db() as db:
             existing = set(r[0] for r in db.execute('SELECT id FROM procurement_batches').fetchall())
         removed = 0
         for fname in os.listdir(PDF_CACHE_DIR):
-            if not fname.startswith('batch_') or not fname.endswith('.pdf'):
+            m = _CACHE_RE.match(fname)
+            if not m:
                 continue
-            try:
-                fid = int(fname[len('batch_'):-len('.pdf')])
-            except ValueError:
-                continue
+            fid = int(m.group(1))
             if fid not in existing:
                 os.remove(os.path.join(PDF_CACHE_DIR, fname))
                 removed += 1
@@ -343,7 +352,7 @@ def _cleanup_orphaned_cache():
 @login_required
 def api_procurement_batch_pdf(id):
     refresh = request.args.get('refresh', '0') == '1'
-    cached = None if refresh else _get_cached_pdf(id)
+    cached = None if refresh else _get_cached_pdf(id, g.lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
@@ -445,7 +454,7 @@ def api_procurement_batch_pdf(id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(id, pdf_bytes)
+    _save_cached_pdf(id, pdf_bytes, g.lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -492,7 +501,7 @@ def api_share_pdf(token):
     if not batch_id:
         return jsonify({'status': 'error', 'message': '链接已过期或无效'}), 410
     refresh = request.args.get('refresh', '0') == '1'
-    cached = None if refresh else _get_cached_pdf(batch_id)
+    cached = None if refresh else _get_cached_pdf(batch_id, g.lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
@@ -582,7 +591,7 @@ def api_share_pdf(token):
     except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(batch_id, pdf_bytes)
+    _save_cached_pdf(batch_id, pdf_bytes, g.lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -595,7 +604,7 @@ def _render_procurement_png(batch_id):
         import pymupdf
     except ImportError:
         return None, None
-    cached_pdf = _get_cached_pdf(batch_id)
+    cached_pdf = _get_cached_pdf(batch_id, g.lang)
     if cached_pdf:
         try:
             doc = pymupdf.open(stream=cached_pdf, filetype="pdf")
