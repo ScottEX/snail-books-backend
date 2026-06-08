@@ -342,7 +342,8 @@ def _cleanup_orphaned_cache():
 @procurement_bp.route('/procurement-batches/<int:id>/pdf' , methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
-    cached = _get_cached_pdf(id)
+    refresh = request.args.get('refresh', '0') == '1'
+    cached = None if refresh else _get_cached_pdf(id)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
@@ -490,7 +491,8 @@ def api_share_pdf(token):
     batch_id = _verify_share_token(token)
     if not batch_id:
         return jsonify({'status': 'error', 'message': '链接已过期或无效'}), 410
-    cached = _get_cached_pdf(batch_id)
+    refresh = request.args.get('refresh', '0') == '1'
+    cached = None if refresh else _get_cached_pdf(batch_id)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
