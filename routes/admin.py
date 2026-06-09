@@ -277,7 +277,9 @@ def check_admin():
 @admin_bp.route('/admin/users/<int:user_id>', methods=['DELETE'])
 @login_required
 def delete_user(user_id):
-    """Delete a user and all related data (admin only)."""
+    """Delete a user — transfer business data to admin, remove personal data."""
+    from shared.auth import delete_user_cascade, ADMIN_USER_ID
+
     _, err = _require_admin()
     if err:
         return err
@@ -290,12 +292,7 @@ def delete_user(user_id):
         if not row:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
-        db.execute('DELETE FROM transactions WHERE user_id=?', (user_id,))
-        db.execute('DELETE FROM procurements WHERE user_id=?', (user_id,))
-        db.execute('DELETE FROM user_sessions WHERE user_id=?', (user_id,))
-        db.execute('DELETE FROM users WHERE id=?', (user_id,))
-        db.commit()
-
+    delete_user_cascade(user_id)
     return jsonify({'status': 'ok'})
 
 

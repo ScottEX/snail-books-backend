@@ -131,3 +131,56 @@ def login_required(f):
 
         return f(*a, **kw)
     return wrap
+
+
+# ── User deletion ──
+
+ADMIN_USER_ID = '64'
+
+
+def delete_user_cascade(user_id):
+    """Delete user: transfer business data to admin, remove personal data + files."""
+    import os
+    from .db import get_db
+
+    with get_db() as db:
+        # 1. Transfer business data to admin
+        business_tables = [
+            'transactions', 'dividends', 'products',
+            'procurements', 'procurement_batches', 'procurement_items',
+            'reconciliations', 'daily_revenue', 'partners',
+        ]
+        for table in business_tables:
+            db.execute(f'UPDATE {table} SET user_id=? WHERE user_id=?',
+                       (ADMIN_USER_ID, user_id))
+
+        # 2. Delete personal data
+        db.execute('DELETE FROM user_tokens WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM user_sessions WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM user_settings WHERE user_id=?', (user_id,))
+
+        # 3. Delete user
+        db.execute('DELETE FROM users WHERE id=?', (user_id,))
+        db.commit()
+
+    # 4. Delete disk files
+    _delete_user_files(user_id)
+
+
+def _delete_user_files(user_id):
+    """Remove avatar, background, and cover images for a user."""
+    import os
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BG_DIR = os.environ.get('BG_DIR', os.path.join(PROJECT_ROOT, 'user-images'))
+
+    files_to_remove = [
+        os.path.join(BG_DIR, 'avatars', f'{user_id}.jpg'),
+        os.path.join(BG_DIR, 'covers', f'cover-{user_id}.jpg'),
+        os.path.join(BG_DIR, f'home-bg-{user_id}.jpg'),
+    ]
+    for path in files_to_remove:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass

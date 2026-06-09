@@ -138,14 +138,19 @@ def update_signature():
 @profile_bp.route('/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def delete_user(uid):
+    """Self-delete: only the user themselves can delete their own account."""
+    from shared.auth import delete_user_cascade
+
+    if str(uid) != str(g.user_id):
+        return jsonify({'status': 'error', 'message': '只能注销自己的账户'}), 403
+
     with get_db() as db:
-        db.execute('PRAGMA foreign_keys = ON')
         user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
         if not user:
-            return jsonify({'status': 'error', 'message': 'User not found'}), 404
-        db.execute('DELETE FROM users WHERE id=?', (uid,))
-        db.commit()
-    return jsonify({'status': 'ok', 'message': f'User {uid} deleted'})
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+
+    delete_user_cascade(uid)
+    return jsonify({'status': 'ok', 'message': f'用户 {uid} 已注销'})
 
 
 # ── Avatar ──
