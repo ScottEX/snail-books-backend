@@ -172,6 +172,28 @@ def get_avatar():
     return '', 404
 
 
+# ── Background (public) ──
+
+@profile_bp.route('/users/background', methods=['GET'])
+def get_background():
+    """Public: get user background image by username or user_id."""
+    username = request.args.get('username', '')
+    user_id = request.args.get('user_id', '')
+    if not username and not user_id:
+        return '', 404
+    with get_db() as db:
+        if user_id:
+            user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
+        else:
+            user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
+    if not user:
+        return '', 404
+    bg_path = os.path.join(BG_DIR, f'home-bg-{user["id"]}.jpg')
+    if os.path.isfile(bg_path):
+        return send_file(bg_path, mimetype='image/jpeg')
+    return '', 404
+
+
 @profile_bp.route('/users/avatar', methods=['POST'])
 @login_required
 def upload_avatar():
