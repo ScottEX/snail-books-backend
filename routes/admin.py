@@ -61,7 +61,7 @@ def list_users():
         return err
 
     search = request.args.get('search', '').strip()
-    status = request.args.get('status', '').strip()  # '' = all, 'normal', 'disabled'
+    status = request.args.get('status', '').strip()  # '' = all, 'normal', 'disabled', 'grace'
     page = max(1, int(request.args.get('page', '1')))
     per_page = min(100, max(1, int(request.args.get('per_page', '10'))))
 
@@ -80,9 +80,11 @@ def list_users():
             params.extend([like, like, pinyin_like])
 
         if status == 'normal':
-            where_clauses.append('is_disabled = 0')
+            where_clauses.append('is_disabled = 0 AND delete_scheduled IS NULL')
         elif status == 'disabled':
-            where_clauses.append('is_disabled = 1')
+            where_clauses.append('is_disabled = 1 AND delete_scheduled IS NULL')
+        elif status == 'grace':
+            where_clauses.append('delete_scheduled IS NOT NULL')
 
         date_from = request.args.get('date_from', '').strip()
         date_to = request.args.get('date_to', '').strip()
