@@ -205,7 +205,7 @@ TRANSLATIONS = {
         'err_wrong_code': 'Incorrect verification code',
         'err_wrong_credentials': 'Incorrect username or password',
         'flashSale': 'Flash Sale',
-        'goods': 'Procurement',
+        'goods': 'Purchase',
         'jd': 'JD.com',
         'meituan': 'Meituan',
         'meituanCashier': 'Meituan POS',
