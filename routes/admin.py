@@ -3,7 +3,7 @@
 import re
 from flask import Blueprint, request, jsonify, session
 from shared.db import get_db
-from shared.auth import login_required
+from shared.auth import login_required, schedule_delete, cancel_delete
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -103,7 +103,7 @@ def list_users():
         # Fetch page
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'''SELECT id, username, email, is_disabled, created_at
+            f'''SELECT id, username, email, is_disabled, created_at, delete_scheduled, delete_by
                 FROM users
                 WHERE {where_sql}
                 ORDER BY id DESC
@@ -122,6 +122,8 @@ def list_users():
                 'is_disabled': bool(row['is_disabled']),
                 'created_at': row['created_at'] or '',
                 'avatar': avatar,
+                'delete_scheduled': row['delete_scheduled'] or '',
+                'delete_by': row['delete_by'] or '',
             })
 
     return jsonify({
@@ -194,7 +196,7 @@ def get_user_detail(user_id):
     with get_db() as db:
         row = db.execute(
             '''SELECT id, username, email, phone, role, remark,
-                      is_disabled, created_at, signature
+                      is_disabled, created_at, signature, delete_scheduled, delete_by
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
         if not row:
@@ -225,6 +227,8 @@ def get_user_detail(user_id):
             'last_login': last_login or '',
             'avatar': avatar,
             'signature': row['signature'] or '',
+            'delete_scheduled': row['delete_scheduled'] or '',
+            'delete_by': row['delete_by'] or '',
         }
     })
 
@@ -277,9 +281,7 @@ def check_admin():
 @admin_bp.route('/admin/users/<int:user_id>', methods=['DELETE'])
 @login_required
 def delete_user(user_id):
-    """Delete a user — transfer business data to admin, remove personal data."""
-    from shared.auth import delete_user_cascade, ADMIN_USER_ID
-
+    """Schedule user deletion with 5-day grace period (admin)."""
     _, err = _require_admin()
     if err:
         return err
@@ -292,8 +294,31 @@ def delete_user(user_id):
         if not row:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
-    delete_user_cascade(user_id)
-    return jsonify({'status': 'ok'})
+    scheduled = schedule_delete(user_id, 'admin', 5)
+    return jsonify({
+        'status': 'ok',
+        'message': f'账户已进入 5 天冷静期，将于 {scheduled[:10]} 永久删除。您可以在用户详情页随时恢复。',
+        'scheduled': scheduled,
+    })
+
+
+@admin_bp.route('/admin/users/<int:user_id>/restore', methods=['POST'])
+@login_required
+def restore_user(user_id):
+    """Cancel scheduled deletion and re-enable user (admin)."""
+    _, err = _require_admin()
+    if err:
+        return err
+
+    with get_db() as db:
+        row = db.execute('SELECT id, delete_scheduled FROM users WHERE id=?', (user_id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+        if not row['delete_scheduled']:
+            return jsonify({'status': 'error', 'message': '该用户未处于冷静期'}), 400
+
+    cancel_delete(user_id)
+    return jsonify({'status': 'ok', 'message': '账户已恢复'})
 
 
 _register_pinyin_function()

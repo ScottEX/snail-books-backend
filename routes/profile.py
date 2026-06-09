@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, session, g, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from shared.db import get_db
-from shared.auth import login_required
+from shared.auth import login_required, schedule_delete
 from shared.i18n import t
 from shared.email import generate_code, send_email_change_code
 from shared.validation import validate_password
@@ -138,9 +138,7 @@ def update_signature():
 @profile_bp.route('/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def delete_user(uid):
-    """Self-delete: only the user themselves can delete their own account."""
-    from shared.auth import delete_user_cascade
-
+    """Self-delete: 3-day grace period. Login within 3 days auto-restores."""
     if str(uid) != str(g.user_id):
         return jsonify({'status': 'error', 'message': '只能注销自己的账户'}), 403
 
@@ -149,8 +147,12 @@ def delete_user(uid):
         if not user:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
-    delete_user_cascade(uid)
-    return jsonify({'status': 'ok', 'message': f'用户 {uid} 已注销'})
+    scheduled = schedule_delete(uid, 'self', 3)
+    return jsonify({
+        'status': 'ok',
+        'message': f'您的账户已进入 3 天冷静期，将于 {scheduled[:10]} 永久注销。在此期间登录即可自动恢复账户。',
+        'scheduled': scheduled,
+    })
 
 
 # ── Avatar ──

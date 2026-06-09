@@ -102,6 +102,10 @@ def login_required(f):
         g.user_id = session['user_id']
         g.username = session.get('username', '')
 
+        # Clean up any expired scheduled deletions (lightweight, rare)
+        cleanup_expired_deletions()
+        send_deletion_reminders()
+
         with get_db() as db:
             user = db.execute('SELECT id, is_disabled FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user:
@@ -190,3 +194,72 @@ def _delete_user_files(user_id):
                 os.remove(path)
         except OSError:
             pass
+
+
+# ── Grace period deletion ──
+
+def schedule_delete(user_id, by_who, days):
+    """Mark user for deletion after a grace period (disabled + scheduled)."""
+    from datetime import datetime, timedelta
+    from .db import get_db
+
+    scheduled = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    with get_db() as db:
+        db.execute(
+            'UPDATE users SET is_disabled=1, delete_scheduled=?, delete_by=? WHERE id=?',
+            (scheduled, by_who, user_id)
+        )
+        db.commit()
+    return scheduled
+
+
+def cancel_delete(user_id):
+    """Cancel scheduled deletion, re-enable user."""
+    from .db import get_db
+
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET is_disabled=0, delete_scheduled=NULL, delete_by='', delete_reminded=0 WHERE id=?",
+            (user_id,)
+        )
+        db.commit()
+
+
+def cleanup_expired_deletions():
+    """Delete users whose grace period has expired. Call periodically."""
+    import os
+    from .db import get_db
+    from datetime import datetime
+
+    with get_db() as db:
+        expired = db.execute(
+            "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= datetime('now', 'localtime')"
+        ).fetchall()
+
+    for row in expired:
+        delete_user_cascade(row['id'])
+
+
+def send_deletion_reminders():
+    """Send email reminder 8 hours before scheduled deletion."""
+    from .db import get_db
+    from shared.email import _send_email
+
+    with get_db() as db:
+        due = db.execute(
+            """SELECT id, email, delete_scheduled, delete_by FROM users
+               WHERE delete_scheduled IS NOT NULL
+                 AND delete_reminded = 0
+                 AND delete_scheduled <= datetime('now', 'localtime', '+8 hours')
+                 AND delete_scheduled > datetime('now', 'localtime')"""
+        ).fetchall()
+
+    for user in due:
+        scheduled_date = user['delete_scheduled'][:10] if user['delete_scheduled'] else ''
+        by_who = '管理员' if user['delete_by'] == 'admin' else '您'
+        subject = '账户即将永久删除'
+        body = f'您的账户将于 {scheduled_date} 被{by_who}永久删除。如需保留账户，请尽快登录或联系管理员。'
+        if _send_email(user['email'], subject, body, ''):
+            with get_db() as db:
+                db.execute('UPDATE users SET delete_reminded=1 WHERE id=?', (user['id'],))
+                db.commit()

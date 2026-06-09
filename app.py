@@ -275,7 +275,10 @@ def init_db():
                 enforce_single_session INTEGER DEFAULT 0,
                 session_timeout_hours INTEGER DEFAULT 24,
                 current_session_id TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                delete_scheduled TIMESTAMP,
+                delete_by TEXT DEFAULT '',
+                delete_reminded INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -514,6 +517,18 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN remark TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN delete_scheduled TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN delete_by TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN delete_reminded INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass
 
