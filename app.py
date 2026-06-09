@@ -76,6 +76,51 @@ def serve_user_image(subpath):
     return resp
 
 
+MAINTENANCE_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>蓝姐螺蛳粉</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #FBF7F4;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100dvh; padding: 24px;
+  }
+  .card {
+    text-align: center; max-width: 320px;
+  }
+  .icon {
+    font-size: 48px; margin-bottom: 20px;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: .4; transform: scale(.96); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  h1 {
+    font-size: 18px; font-weight: 600; color: #5C3D2E;
+    margin-bottom: 8px;
+  }
+  p {
+    font-size: 14px; color: #8B7355; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🐌</div>
+  <h1>稍等片刻，马上就好</h1>
+  <p>页面正在更新中，请刷新试试</p>
+</div>
+</body>
+</html>"""
+
+
+@login_if_provided
 @app.route('/<path:path>')
 def serve_spa_static(path):
     if path.startswith('api/'):
@@ -91,7 +136,7 @@ def serve_spa_static(path):
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
+    return MAINTENANCE_HTML, 503, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.route('/', defaults={'path': ''})
@@ -99,7 +144,7 @@ def serve_spa_root(path):
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
         return send_file(index_path, mimetype='text/html')
-    return jsonify({'status': 'error', 'message': 'Frontend not built'}), 503
+    return MAINTENANCE_HTML, 503, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 
