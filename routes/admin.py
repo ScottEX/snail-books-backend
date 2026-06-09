@@ -63,7 +63,7 @@ def list_users():
     search = request.args.get('search', '').strip()
     status = request.args.get('status', '').strip()  # '' = all, 'normal', 'disabled'
     page = max(1, int(request.args.get('page', '1')))
-    per_page = min(100, max(1, int(request.args.get('per_page', '20'))))
+    per_page = min(100, max(1, int(request.args.get('per_page', '10'))))
 
     with get_db() as db:
         where_clauses = []

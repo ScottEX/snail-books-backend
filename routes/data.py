@@ -279,7 +279,7 @@ def get_daily_revenue():
     date_from = request.args.get('date_from', type=str)
     date_to = request.args.get('date_to', type=str)
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 30, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
 
     with get_db() as db:
         if days:
