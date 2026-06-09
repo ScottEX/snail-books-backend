@@ -199,9 +199,12 @@ def _delete_user_files(user_id):
 # ── Grace period deletion ──
 
 def schedule_delete(user_id, by_who, days):
-    """Mark user for deletion after a grace period (disabled + scheduled)."""
+    """Mark user for deletion after a grace period (disabled + scheduled).
+    Also sends immediate notification emails."""
+    import re
     from datetime import datetime, timedelta
     from .db import get_db
+    from shared.email import _send_email, RESEND_FROM
 
     scheduled = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
     with get_db() as db:
@@ -210,6 +213,57 @@ def schedule_delete(user_id, by_who, days):
             (scheduled, by_who, user_id)
         )
         db.commit()
+
+        # Get user details for email
+        user = db.execute(
+            'SELECT email, username FROM users WHERE id=?', (user_id,)
+        ).fetchone()
+        if not user or not user['email']:
+            return scheduled
+
+        # Get user language
+        lang_row = db.execute(
+            "SELECT value FROM user_settings WHERE user_id=? AND key='lang'",
+            (user_id,),
+        ).fetchone()
+        lang = lang_row['value'] if lang_row else 'zh-CN'
+
+        # Get admin email (for admin-initiated deletions)
+        admin_row = db.execute("SELECT email FROM users WHERE id=64").fetchone()
+        admin_email = admin_row['email'] if admin_row else ''
+
+    # Trilingual sender name
+    SENDER_NAMES = {
+        'zh-CN': '柳味探秘科技团队',
+        'zh-TW': '柳味探秘科技團隊',
+        'en': 'Liuwei Tech Team',
+    }
+    sender_name = SENDER_NAMES.get(lang, SENDER_NAMES['zh-CN'])
+    email_match = re.search(r'<([^>]+)>', RESEND_FROM)
+    email_addr = email_match.group(1) if email_match else RESEND_FROM
+    from_addr = f'{sender_name} <{email_addr}>'
+
+    # Format date
+    dt = datetime.strptime(scheduled, '%Y-%m-%d %H:%M:%S')
+    scheduled_str = f"{dt.year}年{dt.month}月{dt.day}日 {dt.strftime('%H:%M:%S')}"
+
+    if by_who == 'admin':
+        # Notify admin
+        admin_subject = '客户账户即将永久删除'
+        admin_body = f'用户 {user["email"]} 的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请前往用户管理 → 用户详情页，点击「恢复账户」按钮。'
+        if admin_email:
+            _send_email(admin_email, admin_subject, admin_body, '', from_addr=from_addr)
+
+        # Notify customer
+        cust_subject = '账户即将永久删除'
+        cust_body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
+        _send_email(user['email'], cust_subject, cust_body, '', from_addr=from_addr)
+    else:
+        # Self-deleted → notify user
+        subject = '账户即将永久删除'
+        body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
+        _send_email(user['email'], subject, body, '', from_addr=from_addr)
+
     return scheduled
 
 
