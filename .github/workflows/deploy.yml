@@ -50,7 +50,7 @@ jobs:
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend-staging/static/"
           strip_components: 0
-          rm: true
+          overwrite: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -111,7 +111,7 @@ jobs:
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend/static/"
           strip_components: 0
-          rm: true
+          overwrite: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
