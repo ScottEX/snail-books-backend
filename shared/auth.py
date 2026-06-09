@@ -198,13 +198,83 @@ def _delete_user_files(user_id):
 
 # ── Grace period deletion ──
 
+def _format_date_for_lang(date_str, lang):
+    """Format '2026-06-10 03:33:53' to locale-aware string."""
+    from datetime import datetime
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return date_str
+    if lang == 'en':
+        months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December']
+        return f"{months[dt.month - 1]} {dt.day}, {dt.year} {dt.strftime('%H:%M:%S')}"
+    # zh-CN / zh-TW
+    return f"{dt.year}年{dt.month}月{dt.day}日 {dt.strftime('%H:%M:%S')}"
+
+
+def _sender_for_lang(lang):
+    """Return trilingual sender name for the given language."""
+    import re
+    from shared.email import RESEND_FROM
+    NAMES = {
+        'zh-CN': '柳味探秘科技团队',
+        'zh-TW': '柳味探秘科技團隊',
+        'en': 'Liuwei Tech Team',
+    }
+    name = NAMES.get(lang, NAMES['zh-CN'])
+    m = re.search(r'<([^>]+)>', RESEND_FROM)
+    addr = m.group(1) if m else RESEND_FROM
+    return f'{name} <{addr}>'
+
+
+def _deletion_email(email_type, lang, email, scheduled_str):
+    """Build trilingual deletion email (subject, body)."""
+    if email_type == 'admin_notify':
+        t = {
+            'zh-CN': ('客户账户即将永久删除',
+                       f'用户 {email} 的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请前往用户管理 → 用户详情页，点击「恢复账户」按钮。'),
+            'zh-TW': ('客戶帳戶即將永久刪除',
+                       f'用戶 {email} 的帳戶將於 {scheduled_str} 被永久刪除。\n\n如需保留，請前往用戶管理 → 用戶詳情頁，點擊「恢復帳戶」按鈕。'),
+            'en': ('Customer Account Scheduled for Deletion',
+                    f'User {email}\'s account will be permanently deleted on {scheduled_str}.\n\nTo keep it, go to User Management → User Details and click "Restore Account".'),
+        }
+    elif email_type == 'customer_admin_deleted':
+        t = {
+            'zh-CN': ('账户即将被删除',
+                       f'管理员已将您的账户标记删除，将于 {scheduled_str} 被永久删除。\n\n如需保留，请尽快联系管理员。'),
+            'zh-TW': ('帳戶即將被刪除',
+                       f'管理員已將您的帳戶標記刪除，將於 {scheduled_str} 被永久刪除。\n\n如需保留，請盡快聯繫管理員。'),
+            'en': ('Account Scheduled for Deletion',
+                    f'Your account has been marked for deletion by the admin and will be permanently deleted on {scheduled_str}.\n\nTo keep it, please contact the admin as soon as possible.'),
+        }
+    else:  # customer_self_deleted
+        t = {
+            'zh-CN': ('账户即将永久删除',
+                       f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'),
+            'zh-TW': ('帳戶即將永久刪除',
+                       f'您的帳戶將於 {scheduled_str} 被永久刪除。\n\n如需保留，請在冷靜期內登入即可自動恢復。'),
+            'en': ('Account Scheduled for Permanent Deletion',
+                    f'Your account will be permanently deleted on {scheduled_str}.\n\nTo keep it, simply log in during the grace period to auto-restore.'),
+        }
+    return t.get(lang, t['zh-CN'])
+
+
+def _get_lang(db, user_id):
+    """Get user's language preference, default zh-CN."""
+    row = db.execute(
+        "SELECT value FROM user_settings WHERE user_id=? AND key='lang'",
+        (user_id,),
+    ).fetchone()
+    return row['value'] if row else 'zh-CN'
+
+
 def schedule_delete(user_id, by_who, days):
     """Mark user for deletion after a grace period (disabled + scheduled).
-    Also sends immediate notification emails."""
-    import re
+    Also sends immediate notification emails (trilingual)."""
     from datetime import datetime, timedelta
     from .db import get_db
-    from shared.email import _send_email, RESEND_FROM
+    from shared.email import _send_email
 
     scheduled = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
     with get_db() as db:
@@ -221,50 +291,75 @@ def schedule_delete(user_id, by_who, days):
         if not user or not user['email']:
             return scheduled
 
-        # Get user language
-        lang_row = db.execute(
-            "SELECT value FROM user_settings WHERE user_id=? AND key='lang'",
-            (user_id,),
-        ).fetchone()
-        lang = lang_row['value'] if lang_row else 'zh-CN'
+        user_lang = _get_lang(db, user_id)
+        user_scheduled_str = _format_date_for_lang(scheduled, user_lang)
+        user_from = _sender_for_lang(user_lang)
 
-        # Get admin email (for admin-initiated deletions)
-        admin_row = db.execute("SELECT email FROM users WHERE id=64").fetchone()
-        admin_email = admin_row['email'] if admin_row else ''
+        if by_who == 'admin':
+            # Notify admin (in admin's language)
+            admin_row = db.execute(
+                "SELECT email FROM users WHERE id=64"
+            ).fetchone()
+            if admin_row and admin_row['email']:
+                admin_lang = _get_lang(db, 64)
+                admin_scheduled_str = _format_date_for_lang(scheduled, admin_lang)
+                admin_from = _sender_for_lang(admin_lang)
+                subj, body = _deletion_email('admin_notify', admin_lang, user['email'], admin_scheduled_str)
+                _send_email(admin_row['email'], subj, body, '', from_addr=admin_from)
 
-    # Trilingual sender name
-    SENDER_NAMES = {
-        'zh-CN': '柳味探秘科技团队',
-        'zh-TW': '柳味探秘科技團隊',
-        'en': 'Liuwei Tech Team',
-    }
-    sender_name = SENDER_NAMES.get(lang, SENDER_NAMES['zh-CN'])
-    email_match = re.search(r'<([^>]+)>', RESEND_FROM)
-    email_addr = email_match.group(1) if email_match else RESEND_FROM
-    from_addr = f'{sender_name} <{email_addr}>'
-
-    # Format date
-    dt = datetime.strptime(scheduled, '%Y-%m-%d %H:%M:%S')
-    scheduled_str = f"{dt.year}年{dt.month}月{dt.day}日 {dt.strftime('%H:%M:%S')}"
-
-    if by_who == 'admin':
-        # Notify admin
-        admin_subject = '客户账户即将永久删除'
-        admin_body = f'用户 {user["email"]} 的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请前往用户管理 → 用户详情页，点击「恢复账户」按钮。'
-        if admin_email:
-            _send_email(admin_email, admin_subject, admin_body, '', from_addr=from_addr)
-
-        # Notify customer
-        cust_subject = '账户即将永久删除'
-        cust_body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
-        _send_email(user['email'], cust_subject, cust_body, '', from_addr=from_addr)
-    else:
-        # Self-deleted → notify user
-        subject = '账户即将永久删除'
-        body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
-        _send_email(user['email'], subject, body, '', from_addr=from_addr)
+            # Notify customer (in customer's language)
+            subj, body = _deletion_email('customer_admin_deleted', user_lang, user['email'], user_scheduled_str)
+            _send_email(user['email'], subj, body, '', from_addr=user_from)
+        else:
+            # Self-deleted → notify user
+            subj, body = _deletion_email('customer_self_deleted', user_lang, user['email'], user_scheduled_str)
+            _send_email(user['email'], subj, body, '', from_addr=user_from)
 
     return scheduled
+
+
+def send_deletion_reminders():
+    """Send email reminder 8 hours before scheduled deletion (trilingual)."""
+    from .db import get_db
+    from shared.email import _send_email
+
+    with get_db() as db:
+        due = db.execute(
+            """SELECT id, email, delete_scheduled, delete_by FROM users
+               WHERE delete_scheduled IS NOT NULL
+                 AND delete_reminded = 0
+                 AND delete_scheduled <= datetime('now', 'localtime', '+8 hours')
+                 AND delete_scheduled > datetime('now', 'localtime')"""
+        ).fetchall()
+
+        admin_row = db.execute("SELECT email FROM users WHERE id=64").fetchone()
+        admin_email = admin_row['email'] if admin_row else ''
+        admin_lang = _get_lang(db, 64) if admin_email else 'zh-CN'
+
+    for user in due:
+        raw_date = user['delete_scheduled'] if user['delete_scheduled'] else ''
+
+        if user['delete_by'] == 'admin':
+            # Admin deleted → remind the admin
+            if not admin_email:
+                continue
+            scheduled_str = _format_date_for_lang(raw_date, admin_lang)
+            from_addr = _sender_for_lang(admin_lang)
+            subj, body = _deletion_email('admin_notify', admin_lang, user['email'], scheduled_str)
+            to_email = admin_email
+        else:
+            # Self-deleted → remind the user
+            with get_db() as db:
+                user_lang = _get_lang(db, user['id'])
+            scheduled_str = _format_date_for_lang(raw_date, user_lang)
+            from_addr = _sender_for_lang(user_lang)
+            subj, body = _deletion_email('customer_self_deleted', user_lang, user['email'], scheduled_str)
+            to_email = user['email']
+
+        if _send_email(to_email, subj, body, '', from_addr=from_addr):
+            with get_db() as db:
+                db.execute('UPDATE users SET delete_reminded=1 WHERE id=?', (user['id'],))
+                db.commit()
 
 
 def cancel_delete(user_id):
@@ -292,70 +387,3 @@ def cleanup_expired_deletions():
 
     for row in expired:
         delete_user_cascade(row['id'])
-
-
-def send_deletion_reminders():
-    """Send email reminder 8 hours before scheduled deletion."""
-    import re
-    from .db import get_db
-    from shared.email import _send_email, RESEND_FROM
-
-    # Extract email address from RESEND_FROM (e.g., "Snail Books <x@y.com>" → "x@y.com")
-    email_match = re.search(r'<([^>]+)>', RESEND_FROM)
-    email_addr = email_match.group(1) if email_match else RESEND_FROM
-
-    # Trilingual sender name
-    SENDER_NAMES = {
-        'zh-CN': '柳味探秘科技团队',
-        'zh-TW': '柳味探秘科技團隊',
-        'en': 'Liuwei Tech Team',
-    }
-
-    with get_db() as db:
-        due = db.execute(
-            """SELECT id, email, delete_scheduled, delete_by FROM users
-               WHERE delete_scheduled IS NOT NULL
-                 AND delete_reminded = 0
-                 AND delete_scheduled <= datetime('now', 'localtime', '+8 hours')
-                 AND delete_scheduled > datetime('now', 'localtime')"""
-        ).fetchall()
-
-        # Get admin email for admin-initiated deletions
-        admin = db.execute("SELECT email FROM users WHERE id=64").fetchone()
-        admin_email = admin['email'] if admin else ''
-
-    for user in due:
-        raw_date = user['delete_scheduled'] if user['delete_scheduled'] else ''
-        # Format: "2026-06-10 03:33:53" → "2026年6月10日 03:33:53"
-        try:
-            from datetime import datetime
-            dt = datetime.strptime(raw_date, '%Y-%m-%d %H:%M:%S')
-            scheduled_str = f"{dt.year}年{dt.month}月{dt.day}日 {dt.strftime('%H:%M:%S')}"
-        except Exception:
-            scheduled_str = raw_date
-
-        # Determine recipient language
-        with get_db() as db:
-            lang_row = db.execute(
-                "SELECT value FROM user_settings WHERE user_id=? AND key='lang'",
-                (user['id'],),
-            ).fetchone()
-        lang = lang_row['value'] if lang_row else 'zh-CN'
-        sender_name = SENDER_NAMES.get(lang, SENDER_NAMES['zh-CN'])
-        from_addr = f'{sender_name} <{email_addr}>'
-
-        if user['delete_by'] == 'admin':
-            # Admin deleted → remind the admin
-            to_email = admin_email
-            subject = '客户账户即将永久删除'
-            body = f'用户 {user["email"]} 的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请前往用户管理 → 用户详情页，点击「恢复账户」按钮。'
-        else:
-            # Self-deleted → remind the user
-            to_email = user['email']
-            subject = '账户即将永久删除'
-            body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
-
-        if _send_email(to_email, subject, body, '', from_addr=from_addr):
-            with get_db() as db:
-                db.execute('UPDATE users SET delete_reminded=1 WHERE id=?', (user['id'],))
-                db.commit()
