@@ -55,17 +55,13 @@ def login():
             timeout_hours = int(user['session_timeout_hours']) if user['session_timeout_hours'] else 1
             if timeout_hours < 1:
                 timeout_hours = 1
-            # Remember me: 30-day permanent cookie; otherwise browser-session cookie
-            session.permanent = remember
-            # Cookie lifetime is set by app.permanent_session_lifetime (30d)
-            # for permanent sessions; non-permanent sessions use a browser-session
-            # cookie (no max-age, deleted on browser close).
-            # Per-user timeout is enforced in login_required via user_sessions.expires_at.
+            session.permanent = True
+            # Cookie lifetime: use the 24h process default (set at app init).
+            # Per-user timeout is enforced authoritatively in login_required via
+            # user_sessions.expires_at. Do NOT mutate app.permanent_session_lifetime
+            # here — it's process-global and clobbers multi-user isolation.
             new_session_id = secrets.token_hex(16)
-            if remember:
-                expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
+            expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=timeout_hours)).strftime('%Y-%m-%d %H:%M:%S')
             device_info = (request.user_agent.string or '')[:200]
 
             if enforce_sso:
