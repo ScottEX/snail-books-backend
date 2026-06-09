@@ -254,12 +254,32 @@ def send_deletion_reminders():
                  AND delete_scheduled > datetime('now', 'localtime')"""
         ).fetchall()
 
+        # Get admin email for admin-initiated deletions
+        admin = db.execute("SELECT email FROM users WHERE id=64").fetchone()
+        admin_email = admin['email'] if admin else ''
+
     for user in due:
-        scheduled_date = user['delete_scheduled'][:10] if user['delete_scheduled'] else ''
-        by_who = '管理员' if user['delete_by'] == 'admin' else '您'
-        subject = '账户即将永久删除'
-        body = f'您的账户将于 {scheduled_date} 被{by_who}永久删除。如需保留账户，请尽快登录或联系管理员。'
-        if _send_email(user['email'], subject, body, ''):
+        raw_date = user['delete_scheduled'] if user['delete_scheduled'] else ''
+        # Format: "2026-06-10 03:33:53" → "2026年6月10日 03:33:53"
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(raw_date, '%Y-%m-%d %H:%M:%S')
+            scheduled_str = f"{dt.year}年{dt.month}月{dt.day}日 {dt.strftime('%H:%M:%S')}"
+        except Exception:
+            scheduled_str = raw_date
+
+        if user['delete_by'] == 'admin':
+            # Admin deleted → remind the admin
+            to_email = admin_email
+            subject = '客户账户即将永久删除'
+            body = f'用户 {user["email"]} 的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请前往用户管理 → 用户详情页，点击「恢复账户」按钮。'
+        else:
+            # Self-deleted → remind the user
+            to_email = user['email']
+            subject = '账户即将永久删除'
+            body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
+
+        if _send_email(to_email, subject, body, ''):
             with get_db() as db:
                 db.execute('UPDATE users SET delete_reminded=1 WHERE id=?', (user['id'],))
                 db.commit()
