@@ -103,11 +103,17 @@ def login_required(f):
         g.username = session.get('username', '')
 
         with get_db() as db:
-            exists = db.execute('SELECT id FROM users WHERE id=?', (g.user_id,)).fetchone()
-        if not exists:
+            user = db.execute('SELECT id, is_disabled FROM users WHERE id=?', (g.user_id,)).fetchone()
+        if not user:
             session.clear()
             if request.path.startswith('/api/'):
                 return jsonify({'status': 'error', 'message': t('err_session_expired', g.lang), 'code': 'session_expired'}), 401
+            return redirect('/login')
+
+        if user['is_disabled']:
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员', 'code': 'account_disabled'}), 403
             return redirect('/login')
 
         # SSO enforcement

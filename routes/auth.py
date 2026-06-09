@@ -38,6 +38,8 @@ def login():
             (username, username.lower())
         ).fetchone()
         if user and check_password_hash(user['password'], password):
+            if user['is_disabled']:
+                return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员'}), 403
             if not user['is_verified']:
                 return jsonify({'status': 'error', 'message': t('err_need_verify', g.lang), 'need_verify': True, 'email': user['email']}), 403
 
