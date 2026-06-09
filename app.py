@@ -120,7 +120,6 @@ MAINTENANCE_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-@login_if_provided
 @app.route('/<path:path>')
 def serve_spa_static(path):
     if path.startswith('api/'):
