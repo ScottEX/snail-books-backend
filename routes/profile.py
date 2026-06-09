@@ -71,6 +71,8 @@ def auth_prefs():
     data = request.get_json() or {}
     enforce_sso = data.get('enforce_single_session')
     timeout_hours = data.get('session_timeout_hours')
+    if enforce_sso is None and timeout_hours is None:
+        return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
     if enforce_sso is not None and enforce_sso not in (0, 1):
         return jsonify({'status': 'error', 'message': 'enforce_single_session must be 0 or 1'}), 400
     if timeout_hours is not None:

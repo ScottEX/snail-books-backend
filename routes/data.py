@@ -255,6 +255,8 @@ def add_platform_fee_entry():
 @login_required
 def update_platform_fee(id):
     data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
     with get_db() as db:
         db.execute('''UPDATE platform_fees SET meituan_cashier=?, meituan_waimai=?, shangou_waimai=?, meituan_tuan=?
                       WHERE id=?''',

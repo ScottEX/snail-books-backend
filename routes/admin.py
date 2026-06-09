@@ -238,6 +238,8 @@ def update_user(user_id):
         return err
 
     data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({'status': 'error', 'message': '无更新字段'}), 400
     if str(user_id) == ADMIN_USER_ID and 'is_disabled' in data:
         return jsonify({'status': 'error', 'message': '不能禁用管理员'}), 400
 

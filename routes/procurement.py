@@ -200,6 +200,9 @@ def api_procurement_batch_detail(id):
 
         if request.method == 'PUT':
             data = request.get_json()
+            missing = validate_required(data, 'date', 'payment_method')
+            if missing:
+                return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
             items = data.get('items', [])
             if not items or not isinstance(items, list):
                 return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
