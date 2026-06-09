@@ -21,7 +21,7 @@ _secret = os.environ.get('FLASK_SECRET_KEY')
 if not _secret:
     raise RuntimeError("FLASK_SECRET_KEY environment variable is required -- generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
 app.secret_key = _secret
-app.permanent_session_lifetime = timedelta(hours=24)
+app.permanent_session_lifetime = timedelta(days=30)
 
 FRONTEND_VERSION = '1'
 FRONTEND_DIR = os.environ.get(
