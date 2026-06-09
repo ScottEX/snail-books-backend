@@ -17,8 +17,9 @@ def _load_template(name):
         return f.read()
 
 
-def _send_email(to_email, subject, body, code):
+def _send_email(to_email, subject, body, code, from_addr=None):
     """Send email: dev mode returns code to frontend, production uses Resend API."""
+    sender = from_addr or RESEND_FROM
     if not RESEND_API_KEY:
         print(f"[EMAIL] Dev mode: code={code} for {to_email} ({subject})")
         return True
@@ -29,7 +30,7 @@ def _send_email(to_email, subject, body, code):
                 'Authorization': f'Bearer {RESEND_API_KEY}',
                 'Content-Type': 'application/json',
             },
-            json={'from': RESEND_FROM, 'to': [to_email], 'subject': subject, 'html': body},
+            json={'from': sender, 'to': [to_email], 'subject': subject, 'html': body},
             timeout=15,
         )
         if r.status_code == 200:

@@ -242,8 +242,20 @@ def cleanup_expired_deletions():
 
 def send_deletion_reminders():
     """Send email reminder 8 hours before scheduled deletion."""
+    import re
     from .db import get_db
-    from shared.email import _send_email
+    from shared.email import _send_email, RESEND_FROM
+
+    # Extract email address from RESEND_FROM (e.g., "Snail Books <x@y.com>" → "x@y.com")
+    email_match = re.search(r'<([^>]+)>', RESEND_FROM)
+    email_addr = email_match.group(1) if email_match else RESEND_FROM
+
+    # Trilingual sender name
+    SENDER_NAMES = {
+        'zh-CN': '柳味探秘科技团队',
+        'zh-TW': '柳味探秘科技團隊',
+        'en': 'Liuwei Tech Team',
+    }
 
     with get_db() as db:
         due = db.execute(
@@ -268,6 +280,16 @@ def send_deletion_reminders():
         except Exception:
             scheduled_str = raw_date
 
+        # Determine recipient language
+        with get_db() as db:
+            lang_row = db.execute(
+                "SELECT value FROM user_settings WHERE user_id=? AND key='lang'",
+                (user['id'],),
+            ).fetchone()
+        lang = lang_row['value'] if lang_row else 'zh-CN'
+        sender_name = SENDER_NAMES.get(lang, SENDER_NAMES['zh-CN'])
+        from_addr = f'{sender_name} <{email_addr}>'
+
         if user['delete_by'] == 'admin':
             # Admin deleted → remind the admin
             to_email = admin_email
@@ -279,7 +301,7 @@ def send_deletion_reminders():
             subject = '账户即将永久删除'
             body = f'您的账户将于 {scheduled_str} 被永久删除。\n\n如需保留，请在冷静期内登录即可自动恢复。'
 
-        if _send_email(to_email, subject, body, ''):
+        if _send_email(to_email, subject, body, '', from_addr=from_addr):
             with get_db() as db:
                 db.execute('UPDATE users SET delete_reminded=1 WHERE id=?', (user['id'],))
                 db.commit()
