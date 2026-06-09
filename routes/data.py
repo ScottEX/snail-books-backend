@@ -43,7 +43,7 @@ def migrate_recon():
                 channel_total REAL NOT NULL DEFAULT 0,
                 real_total REAL NOT NULL DEFAULT 0,
                 diff REAL NOT NULL DEFAULT 0,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 bill_date TEXT
             )''')

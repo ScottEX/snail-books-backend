@@ -279,14 +279,14 @@ def init_db():
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id),
                 token TEXT NOT NULL UNIQUE,
                 session_id TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
                        CREATE TABLE IF NOT EXISTS user_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id),
                 session_id TEXT NOT NULL UNIQUE,
                 device_info TEXT DEFAULT '',
                 expires_at TIMESTAMP,
@@ -311,7 +311,7 @@ def init_db():
                 thumb_images TEXT DEFAULT '[]',
                 date TEXT DEFAULT '',
                 procurement_batch_id INTEGER,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS dividends (
@@ -320,7 +320,7 @@ def init_db():
                 amount REAL NOT NULL,
                 note TEXT DEFAULT '',
                 date TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS partners (
@@ -330,7 +330,7 @@ def init_db():
                 investment REAL NOT NULL DEFAULT 0,
                 status TEXT DEFAULT '',
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+                user_id INTEGER REFERENCES users(id)
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -340,7 +340,7 @@ def init_db():
                 price REAL NOT NULL DEFAULT 0,
                 supplier TEXT DEFAULT '',
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+                user_id INTEGER REFERENCES users(id)
             );
             CREATE TABLE IF NOT EXISTS procurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -351,7 +351,7 @@ def init_db():
                 unit_price REAL,
                 total REAL,
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_batches (
@@ -364,7 +364,7 @@ def init_db():
                 images TEXT DEFAULT '[]',
                 thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_items (
@@ -376,7 +376,7 @@ def init_db():
                 quantity REAL,
                 unit_price REAL,
                 subtotal REAL,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_cart (
@@ -400,7 +400,7 @@ def init_db():
                 diff REAL NOT NULL DEFAULT 0,
                 bill_date TEXT DEFAULT '',
                 reconciled_by TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS platform_fees (
@@ -430,7 +430,7 @@ def init_db():
                 key TEXT NOT NULL,
                 value TEXT,
                 PRIMARY KEY (user_id, key),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (user_id) REFERENCES users(id)
             );
             CREATE TABLE IF NOT EXISTS daily_revenue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -439,7 +439,7 @@ def init_db():
                 turnover REAL NOT NULL DEFAULT 0,
                 jd_revenue REAL DEFAULT 0,
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
                 archived INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
