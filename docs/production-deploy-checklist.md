@@ -4,16 +4,23 @@
 
 ---
 
-## 部署前：分支合并
+## 部署前：分支合并（⚠️ 两个仓库都要检查）
 
 ```bash
-cd /Users/lanx/projects/snail-books-backend
-git checkout main
+# ── 1. 前端 snail-books-web ──
+cd /Users/lanx/projects/snail-books-web
+git checkout main && git pull gh-ssh main --no-edit
 git merge develop --no-edit
-git push origin main    # 或 gh-https main（SSH 不通时）
+git push gh-ssh main    # main 受保护，走 gh pr create + merge
+
+# ── 2. 后端 snail-books-backend ──
+cd /Users/lanx/projects/snail-books-backend
+git checkout develop && git pull gh-https develop --no-edit
+# 后续流程：改 config.py APP_ENV → production → PR 合并 → CI 部署 → 还原 staging
 ```
 
-**触发 CI 后**，等待 GitHub Actions 完成（`test` + `deploy-production` 均绿），再继续检查。
+> ⚠️ **后端 CI 拉的是前端 main 分支构建 web bundle。**
+> 前端 develop 修了但 main 没合 = 部署的还是旧前端。两个仓库的 main 都必须是最新。
 
 ---
 
