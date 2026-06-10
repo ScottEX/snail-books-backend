@@ -10,12 +10,10 @@ from shared.auth import login_required, schedule_delete, ADMIN_USER_ID
 from shared.i18n import t
 from shared.email import generate_code, send_email_change_code
 from shared.validation import validate_password
+from shared.config import BG_DIR
 
 profile_bp = Blueprint('profile', __name__)
 
-# Storage directories (relative to project root — routes/profile.py → ../)
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BG_DIR = os.environ.get('BG_DIR', os.path.join(_PROJECT_ROOT, 'user-images'))
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 COVER_DIR = os.path.join(BG_DIR, 'covers')
 ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}

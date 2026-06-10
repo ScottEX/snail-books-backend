@@ -166,11 +166,8 @@ def toggle_user_status(user_id):
 def _build_avatar(user_id):
     """Return avatar URL or empty string."""
     import os
-    avatar_dir = os.environ.get(
-        'BG_DIR',
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'user-images'),
-    )
-    avatar_dir = os.path.join(avatar_dir, 'avatars')
+    from shared.config import BG_DIR
+    avatar_dir = os.path.join(BG_DIR, 'avatars')
     file_path = os.path.join(avatar_dir, f'{user_id}.jpg')
     if os.path.isfile(file_path):
         return f'/api/users/avatar?user_id={user_id}'

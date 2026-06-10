@@ -9,6 +9,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t as _t
 from shared.validation import validate_required
+from shared.config import EXPENSE_IMG_DIR
 
 procurement_bp = Blueprint('procurement', __name__)
 
@@ -391,7 +392,7 @@ def api_procurement_batch_pdf(id):
 
     # Images HTML
     images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    img_dir = EXPENSE_IMG_DIR
     if b['images']:
         imgs = ''
         for img in b['images']:
@@ -535,7 +536,7 @@ def api_share_pdf(token):
 
     # Images HTML
     images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    img_dir = EXPENSE_IMG_DIR
     if b['images']:
         imgs = ''
         for img in b['images']:
@@ -640,7 +641,7 @@ def _render_procurement_png(batch_id):
         items_html += f"<tr><td>{it['product_name']}</td><td>{spec}</td><td>¥{it['unit_price']:,.2f}</td><td>{it['quantity']}</td><td>¥{it['subtotal']:,.2f}</td></tr>"
 
     images_html = ''
-    img_dir = os.environ.get('EXPENSE_IMG_DIR', 'expense-imgs')
+    img_dir = EXPENSE_IMG_DIR
     if b['images']:
         imgs = ''
         for img in b['images']:

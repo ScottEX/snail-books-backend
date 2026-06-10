@@ -2,9 +2,8 @@
 
 import os
 import requests
+from .config import RESEND_API_KEY, RESEND_FROM
 
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
 DEV_MODE = not RESEND_API_KEY
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), '..', 'templates', 'email')
