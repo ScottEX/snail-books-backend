@@ -143,7 +143,7 @@ def delete_user(uid):
         return jsonify({'status': 'error', 'message': '只能注销自己的账户'}), 403
 
     if str(uid) == os.environ.get('ADMIN_USER_ID', '64'):
-        return jsonify({'status': 'error', 'message': t('err_admin_cannot_delete', g.lang)}), 403
+        return jsonify({'status': 'error', 'message': t('err_admin_cannot_delete', g.lang)}), 400
 
     with get_db() as db:
         user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
