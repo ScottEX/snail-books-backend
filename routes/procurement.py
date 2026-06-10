@@ -188,14 +188,67 @@ def api_procurement_batch_detail(id):
             return jsonify({'status': 'error', 'message': 'Not found'}), 404
 
         if request.method == 'DELETE':
-            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             batch = dict(row)
+
+            # Collect all image URLs from this batch before deletion
+            orphan_candidates = set()
+            for col in ('images', 'thumb_images'):
+                raw = batch.get(col)
+                if raw:
+                    try:
+                        arr = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(arr, list):
+                            orphan_candidates.update(arr)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # Also collect URLs from the matching transaction
+            batch_cat = batch.get('category', '采购')
+            tx = db.execute(
+                "SELECT images, thumb_images FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
+                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
+            ).fetchone()
+            if tx:
+                for col in ('images', 'thumb_images'):
+                    raw = tx[col]
+                    if raw:
+                        try:
+                            arr = json.loads(raw) if isinstance(raw, str) else raw
+                            if isinstance(arr, list):
+                                orphan_candidates.update(arr)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+            db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             db.execute(
-                "DELETE FROM transactions WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
-                (batch['date'], batch['total'], batch['payment_method'])
+                "DELETE FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
+                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
+
+            # Clean up orphan image files no longer referenced by any batch or transaction
+            for url in orphan_candidates:
+                if not url.startswith('/expense-imgs/'):
+                    continue
+                still_used = db.execute(
+                    "SELECT 1 FROM procurement_batches WHERE images LIKE ? OR thumb_images LIKE ? LIMIT 1",
+                    (f'%{url}%', f'%{url}%')
+                ).fetchone()
+                if not still_used:
+                    still_used = db.execute(
+                        "SELECT 1 FROM transactions WHERE images LIKE ? OR thumb_images LIKE ? LIMIT 1",
+                        (f'%{url}%', f'%{url}%')
+                    ).fetchone()
+                if not still_used:
+                    rel = url[len('/expense-imgs/'):]
+                    fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
+                    if fp.startswith(EXPENSE_IMG_DIR) and os.path.isfile(fp):
+                        try:
+                            os.remove(fp)
+                        except OSError:
+                            pass
+
             _delete_cached_pdf(id)
             return jsonify({'status': 'ok'})
 
