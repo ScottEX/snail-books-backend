@@ -146,7 +146,7 @@ def login_required(f):
 
 # ── User deletion ──
 
-ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '64')
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '4')
 
 
 def delete_user_cascade(user_id):
