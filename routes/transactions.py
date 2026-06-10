@@ -141,6 +141,20 @@ def transaction_by_id(id):
             db.execute(f'UPDATE transactions SET {", ".join(fields)} WHERE id=?', values)
             db.commit()
 
+            # Before deleting orphan files, collect all URLs still referenced by procurement_batches
+            proc_urls = set()
+            pb_rows = db.execute('SELECT images, thumb_images FROM procurement_batches').fetchall()
+            for pb in pb_rows:
+                for col_name in ('images', 'thumb_images'):
+                    raw = pb[col_name]
+                    if raw:
+                        try:
+                            arr = json.loads(raw) if isinstance(raw, str) else raw
+                            if isinstance(arr, list):
+                                proc_urls.update(arr)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
             # Delete orphan image files no longer referenced
             new_urls = set()
             for key in ('images', 'thumb_images'):
@@ -148,6 +162,9 @@ def transaction_by_id(id):
                     new_urls.update(data[key])
             for url in (old_urls - new_urls):
                 if url.startswith('/expense-imgs/'):
+                    # Only delete if not referenced by any procurement batch
+                    if url in proc_urls:
+                        continue
                     rel = url[len('/expense-imgs/'):]
                     fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
                     if fp.startswith(EXPENSE_IMG_DIR) and os.path.isfile(fp):
@@ -163,6 +180,20 @@ def transaction_by_id(id):
     with get_db() as db:
         row = db.execute('SELECT images, thumb_images FROM transactions WHERE id=?', (id,)).fetchone()
         if row:
+            # Collect all URLs still referenced by procurement_batches before cleanup
+            proc_urls = set()
+            pb_rows = db.execute('SELECT images, thumb_images FROM procurement_batches').fetchall()
+            for pb in pb_rows:
+                for col_name in ('images', 'thumb_images'):
+                    raw = pb[col_name]
+                    if raw:
+                        try:
+                            arr = json.loads(raw) if isinstance(raw, str) else raw
+                            if isinstance(arr, list):
+                                proc_urls.update(arr)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
             # Clean up orphan image files
             for col in ('images', 'thumb_images'):
                 raw = row[col]
@@ -172,6 +203,9 @@ def transaction_by_id(id):
                         if isinstance(urls, list):
                             for url in urls:
                                 if url.startswith('/expense-imgs/'):
+                                    # Only delete if not referenced by any procurement batch
+                                    if url in proc_urls:
+                                        continue
                                     rel = url[len('/expense-imgs/'):]
                                     fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
                                     if fp.startswith(EXPENSE_IMG_DIR) and os.path.isfile(fp):
