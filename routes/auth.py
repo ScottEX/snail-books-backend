@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from shared.db import get_db
 from shared.i18n import t
-from shared.auth import login_required
+from shared.auth import login_required, cancel_delete, cleanup_expired_deletions
 from shared.email import DEV_MODE, generate_code, send_verification_email, send_reset_email
 from shared.rate_limit import check_rate_limit, record_failed_attempt, check_forgot_limit, record_forgot_attempt
 from shared.validation import validate_password, validate_username, validate_required, validate_email
@@ -38,6 +38,16 @@ def login():
             (username, username.lower())
         ).fetchone()
         if user and check_password_hash(user['password'], password):
+            # Auto-restore if user is in self-delete cool-down period
+            if user['delete_scheduled'] and user['delete_by'] == 'self':
+                cancel_delete(user['id'])
+                user = db.execute(
+                    'SELECT * FROM users WHERE username=? OR email=?',
+                    (username, username.lower())
+                ).fetchone()
+
+            if user['is_disabled']:
+                return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员'}), 403
             if not user['is_verified']:
                 return jsonify({'status': 'error', 'message': t('err_need_verify', g.lang), 'need_verify': True, 'email': user['email']}), 403
 

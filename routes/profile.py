@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, session, g, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from shared.db import get_db
-from shared.auth import login_required
+from shared.auth import login_required, schedule_delete
 from shared.i18n import t
 from shared.email import generate_code, send_email_change_code
 from shared.validation import validate_password
@@ -71,6 +71,8 @@ def auth_prefs():
     data = request.get_json() or {}
     enforce_sso = data.get('enforce_single_session')
     timeout_hours = data.get('session_timeout_hours')
+    if enforce_sso is None and timeout_hours is None:
+        return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
     if enforce_sso is not None and enforce_sso not in (0, 1):
         return jsonify({'status': 'error', 'message': 'enforce_single_session must be 0 or 1'}), 400
     if timeout_hours is not None:
@@ -136,17 +138,24 @@ def update_signature():
 @profile_bp.route('/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def delete_user(uid):
-    # Only allow self-deletion
-    if uid != g.user_id:
-        return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
+    """Self-delete: 3-day grace period. Login within 3 days auto-restores."""
+    if str(uid) != str(g.user_id):
+        return jsonify({'status': 'error', 'message': '只能注销自己的账户'}), 403
+
+    if uid == 64:
+        return jsonify({'status': 'error', 'message': t('err_admin_cannot_delete', g.lang)}), 403
+
     with get_db() as db:
-        db.execute('PRAGMA foreign_keys = ON')
         user = db.execute('SELECT id FROM users WHERE id=?', (uid,)).fetchone()
         if not user:
-            return jsonify({'status': 'error', 'message': 'User not found'}), 404
-        db.execute('DELETE FROM users WHERE id=?', (uid,))
-        db.commit()
-    return jsonify({'status': 'ok', 'message': f'User {uid} deleted'})
+            return jsonify({'status': 'error', 'message': '用户不存在'}), 404
+
+    scheduled = schedule_delete(uid, 'self', 3)
+    return jsonify({
+        'status': 'ok',
+        'message': f'您的账户已进入 3 天冷静期，将于 {scheduled[:10]} 永久注销。在此期间登录即可自动恢复账户。',
+        'scheduled': scheduled,
+    })
 
 
 # ── Avatar ──
@@ -172,6 +181,28 @@ def get_avatar():
         path = os.path.join(AVATAR_DIR, f'{user["id"]}.{ext}')
         if os.path.isfile(path):
             return send_file(path, mimetype=f'image/{ext if ext != "jpg" else "jpeg"}')
+    return '', 404
+
+
+# ── Background (public) ──
+
+@profile_bp.route('/users/background', methods=['GET'])
+def get_background():
+    """Public: get user background image by username or user_id."""
+    username = request.args.get('username', '')
+    user_id = request.args.get('user_id', '')
+    if not username and not user_id:
+        return '', 404
+    with get_db() as db:
+        if user_id:
+            user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
+        else:
+            user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
+    if not user:
+        return '', 404
+    bg_path = os.path.join(BG_DIR, f'home-bg-{user["id"]}.jpg')
+    if os.path.isfile(bg_path):
+        return send_file(bg_path, mimetype='image/jpeg')
     return '', 404
 
 

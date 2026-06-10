@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify, g, send_file
 
 from shared.db import get_db
 from shared.auth import login_required
+from shared.i18n import t
 
 settings_bp = Blueprint('settings', __name__)
 
@@ -111,8 +112,9 @@ def get_lang():
 @login_required
 def save_lang():
     data = request.get_json()
-    if data and 'lang' in data:
-        with get_db() as db:
+    if not data or 'lang' not in data:
+        return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='lang')}), 400
+    with get_db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'lang', ?)",
                 (g.user_id, data['lang']),
@@ -141,8 +143,9 @@ def get_theme():
 @login_required
 def save_theme():
     data = request.get_json()
-    if data and 'theme' in data:
-        with get_db() as db:
+    if not data or 'theme' not in data:
+        return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='theme')}), 400
+    with get_db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'theme', ?)",
                 (g.user_id, data['theme']),
@@ -334,7 +337,6 @@ def frontend_version():
 
 
 @settings_bp.route('/frontend.zip')
-@login_required
 def frontend_zip():
     www = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),

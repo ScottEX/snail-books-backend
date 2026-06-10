@@ -140,7 +140,7 @@ def api_procurement_batches():
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
                 'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category', 'goods'), round(total, 2),
+                (batch_no, data['date'], data['payment_method'], data.get('category', '采购'), round(total, 2),
                  images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
@@ -151,8 +151,8 @@ def api_procurement_batches():
                 )
             # Sync an expense transaction
             cur = db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category', 'goods'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json)
             )
             db.commit()
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -190,15 +190,19 @@ def api_procurement_batch_detail(id):
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             batch = dict(row)
             db.execute(
-                "DELETE FROM transactions WHERE procurement_batch_id=? OR (type='expense' AND category IN ('采购', 'goods') AND date=? AND amount=? AND account=?)",
-                (id, batch['date'], batch['total'], batch['payment_method'])
+                "DELETE FROM transactions WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
+                (batch['date'], batch['total'], batch['payment_method'])
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
+            _delete_cached_pdf(id)
             return jsonify({'status': 'ok'})
 
         if request.method == 'PUT':
             data = request.get_json()
+            missing = validate_required(data, 'date', 'payment_method')
+            if missing:
+                return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
             items = data.get('items', [])
             if not items or not isinstance(items, list):
                 return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
@@ -220,6 +224,7 @@ def api_procurement_batch_detail(id):
                 return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
             images_json = json.dumps(data.get('images', []))
             thumbs_json = json.dumps(data.get('thumb_images', []))
+            old_batch = dict(row)
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
@@ -228,13 +233,14 @@ def api_procurement_batch_detail(id):
                 )
             db.execute(
                 "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
-                (data['date'], data['payment_method'], data.get('category', 'goods'),
+                (data['date'], data['payment_method'], data.get('category', '采购'),
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
             db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE procurement_batch_id=?",
-                (round(total, 2), data.get('category', 'goods'), data['payment_method'],
-                 data.get('note', ''), data['date'], images_json, thumbs_json, id)
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
+                (round(total, 2), data.get('category', '采购'), data['payment_method'],
+                 data.get('note', ''), data['date'], images_json, thumbs_json,
+                 old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
             db.commit()
             _delete_cached_pdf(id)
@@ -282,31 +288,76 @@ def _write_pdf_with_timeout(html, timeout=PDF_TIMEOUT):
         raise RuntimeError(f'PDF render failed: {e}') from e
 
 
-def _get_cached_pdf(batch_id):
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+def _cached_pdf_path(batch_id, lang):
+    return os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}_{lang}.pdf')
+
+
+def _get_cached_pdf(batch_id, lang):
+    _cleanup_orphaned_cache()
+    cache_path = _cached_pdf_path(batch_id, lang)
     if os.path.isfile(cache_path):
         with open(cache_path, 'rb') as f:
             return f.read()
     return None
 
 
-def _save_cached_pdf(batch_id, pdf_bytes):
+def _save_cached_pdf(batch_id, pdf_bytes, lang):
     os.makedirs(PDF_CACHE_DIR, exist_ok=True)
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
+    cache_path = _cached_pdf_path(batch_id, lang)
     with open(cache_path, 'wb') as f:
         f.write(pdf_bytes)
 
 
-def _delete_cached_pdf(batch_id):
-    cache_path = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}.pdf')
-    if os.path.isfile(cache_path):
-        os.remove(cache_path)
+def _delete_cached_pdf(batch_id, lang=None):
+    """Delete cached PDF(s) for a batch. If lang is None, delete all language variants."""
+    import glob as _glob
+    pattern = os.path.join(PDF_CACHE_DIR, f'batch_{batch_id}_*.pdf') if lang is None else _cached_pdf_path(batch_id, lang)
+    if lang is None:
+        for p in _glob.glob(pattern):
+            os.remove(p)
+    elif os.path.isfile(pattern):
+        os.remove(pattern)
+
+
+_LAST_ORPHAN_CLEANUP = 0
+_ORPHAN_CLEANUP_INTERVAL = 3600  # 1 hour between cleanup scans
+
+
+def _cleanup_orphaned_cache():
+    """Remove cached PDFs whose batch no longer exists in DB. Runs at most once per hour."""
+    global _LAST_ORPHAN_CLEANUP
+    now = time.time()
+    if now - _LAST_ORPHAN_CLEANUP < _ORPHAN_CLEANUP_INTERVAL:
+        return
+    _LAST_ORPHAN_CLEANUP = now
+    if not os.path.isdir(PDF_CACHE_DIR):
+        return
+    import re
+    _CACHE_RE = re.compile(r'^batch_(\d+)(?:_(?:zh-CN|zh-TW|en))?\.pdf$')
+    try:
+        with get_db() as db:
+            existing = set(r[0] for r in db.execute('SELECT id FROM procurement_batches').fetchall())
+        removed = 0
+        for fname in os.listdir(PDF_CACHE_DIR):
+            m = _CACHE_RE.match(fname)
+            if not m:
+                continue
+            fid = int(m.group(1))
+            if fid not in existing:
+                os.remove(os.path.join(PDF_CACHE_DIR, fname))
+                removed += 1
+        if removed:
+            import logging
+            logging.getLogger('procurement.pdf').info(f'Orphan cache cleanup: removed {removed} stale PDF(s)')
+    except Exception:
+        pass  # Never let cleanup break the request
 
 
 @procurement_bp.route('/procurement-batches/<int:id>/pdf' , methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
-    cached = _get_cached_pdf(id)
+    refresh = request.args.get('refresh', '0') == '1'
+    cached = None if refresh else _get_cached_pdf(id, g.lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
@@ -408,7 +459,7 @@ def api_procurement_batch_pdf(id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(id, pdf_bytes)
+    _save_cached_pdf(id, pdf_bytes, g.lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -454,7 +505,8 @@ def api_share_pdf(token):
     batch_id = _verify_share_token(token)
     if not batch_id:
         return jsonify({'status': 'error', 'message': '链接已过期或无效'}), 410
-    cached = _get_cached_pdf(batch_id)
+    refresh = request.args.get('refresh', '0') == '1'
+    cached = None if refresh else _get_cached_pdf(batch_id, g.lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (batch_id,)).fetchone()
@@ -544,7 +596,7 @@ def api_share_pdf(token):
     except RuntimeError as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(batch_id, pdf_bytes)
+    _save_cached_pdf(batch_id, pdf_bytes, g.lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -557,7 +609,7 @@ def _render_procurement_png(batch_id):
         import pymupdf
     except ImportError:
         return None, None
-    cached_pdf = _get_cached_pdf(batch_id)
+    cached_pdf = _get_cached_pdf(batch_id, g.lang)
     if cached_pdf:
         try:
             doc = pymupdf.open(stream=cached_pdf, filetype="pdf")
@@ -644,6 +696,7 @@ def _render_procurement_png(batch_id):
         pdf_bytes = _write_pdf_with_timeout(html)
     except (concurrent.futures.TimeoutError, RuntimeError):
         return None, None
+    _save_cached_pdf(batch_id, pdf_bytes, g.lang)
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     page = doc[0]
     pix = page.get_pixmap(matrix=pymupdf.Matrix(2.0, 2.0))

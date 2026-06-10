@@ -1,6 +1,7 @@
 """Transaction routes — CRUD for income/expense records with pagination."""
 
 import json
+import os
 from flask import Blueprint, request, jsonify, g
 from shared.db import get_db
 from shared.auth import login_required
@@ -8,6 +9,11 @@ from shared.i18n import t
 from shared.validation import validate_required
 
 tx_bp = Blueprint('transactions', __name__)
+
+EXPENSE_IMG_DIR = os.environ.get(
+    'EXPENSE_IMG_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'expense-imgs'),
+)
 
 
 @tx_bp.route('/transactions', methods=['GET', 'POST'])
@@ -19,6 +25,8 @@ def transactions():
         if missing:
             return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
+            if data['type'] not in ('income', 'expense'):
+                return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
             db.execute(
                 'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,user_id) VALUES (?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
@@ -53,7 +61,7 @@ def transactions():
         cats = [c.strip() for c in category.split(',') if c.strip()]
         if cats:
             placeholders = ','.join(['?' for _ in cats])
-            where.append(f'category IN ({placeholders})')
+            where.append(f't.category IN ({placeholders})')
             params.extend(cats)
 
     where_sql = ' AND '.join(where) if where else '1=1'
@@ -76,10 +84,107 @@ def transactions():
     })
 
 
-@tx_bp.route('/transactions/<int:id>', methods=['DELETE'])
+@tx_bp.route('/transactions/<int:id>', methods=['DELETE', 'PUT'])
 @login_required
-def delete_transaction(id):
+def transaction_by_id(id):
+    if request.method == 'PUT':
+        data = request.get_json()
+
+        # Validate required fields
+        amount = data.get('amount')
+        if amount is not None:
+            try:
+                amount = float(amount)
+                if amount <= 0:
+                    return jsonify({'status': 'error', 'message': t('err_amount_positive', g.lang)}), 400
+            except (TypeError, ValueError):
+                return jsonify({'status': 'error', 'message': t('err_amount_invalid', g.lang)}), 400
+
+        category = data.get('category')
+        if category is not None and category not in ('daily', 'rent', 'salary', 'goods'):
+            return jsonify({'status': 'error', 'message': t('err_invalid_category', g.lang)}), 400
+
+        account = data.get('account')
+        if account is not None and account not in ('payCash', 'payWechat', 'payAlipay'):
+            return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
+
+        date = data.get('date')
+        if date is not None and not date:
+            return jsonify({'status': 'error', 'message': t('err_missing_date', g.lang)}), 400
+
+        with get_db() as db:
+            existing = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
+            if not existing:
+                return jsonify({'status': 'error', 'message': t('err_not_found', g.lang)}), 404
+
+            # Snapshot old image URLs for orphan file cleanup
+            old_urls = set()
+            for col in ('images', 'thumb_images'):
+                raw = existing[col]
+                if raw:
+                    try:
+                        arr = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(arr, list):
+                            old_urls.update(arr)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            fields = []
+            values = []
+            for key in ('amount', 'category', 'account', 'note', 'date', 'images', 'thumb_images'):
+                if key in data:
+                    if key in ('images', 'thumb_images'):
+                        fields.append(f'{key}=?')
+                        values.append(json.dumps(data[key]))
+                    else:
+                        fields.append(f'{key}=?')
+                        values.append(data[key])
+            if not fields:
+                return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='fields')}), 400
+            values.append(id)
+            db.execute(f'UPDATE transactions SET {", ".join(fields)} WHERE id=?', values)
+            db.commit()
+
+            # Delete orphan image files no longer referenced
+            new_urls = set()
+            for key in ('images', 'thumb_images'):
+                if key in data and isinstance(data[key], list):
+                    new_urls.update(data[key])
+            for url in (old_urls - new_urls):
+                if url.startswith('/expense-imgs/'):
+                    rel = url[len('/expense-imgs/'):]
+                    fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
+                    if fp.startswith(EXPENSE_IMG_DIR) and os.path.isfile(fp):
+                        try:
+                            os.remove(fp)
+                        except OSError:
+                            pass
+
+            updated = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
+        return jsonify({'status': 'ok', 'transaction': dict(updated)})
+
+    # DELETE
     with get_db() as db:
+        row = db.execute('SELECT images, thumb_images FROM transactions WHERE id=?', (id,)).fetchone()
+        if row:
+            # Clean up orphan image files
+            for col in ('images', 'thumb_images'):
+                raw = row[col]
+                if raw:
+                    try:
+                        urls = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(urls, list):
+                            for url in urls:
+                                if url.startswith('/expense-imgs/'):
+                                    rel = url[len('/expense-imgs/'):]
+                                    fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
+                                    if fp.startswith(EXPENSE_IMG_DIR) and os.path.isfile(fp):
+                                        try:
+                                            os.remove(fp)
+                                        except OSError:
+                                            pass
+                    except (json.JSONDecodeError, TypeError):
+                        pass
         db.execute('DELETE FROM transactions WHERE id=?', (id,))
         db.commit()
     return jsonify({'status': 'ok'})

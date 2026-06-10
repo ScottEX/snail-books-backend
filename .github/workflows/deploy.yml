@@ -50,7 +50,7 @@ jobs:
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend-staging/static/"
           strip_components: 0
-          rm: true
+          overwrite: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py"
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
           target: "/opt/snail-books-backend-staging/"
           strip_components: 1
 
@@ -111,7 +111,7 @@ jobs:
           source: "web-build/dist/*"
           target: "/opt/snail-books-backend/static/"
           strip_components: 0
-          rm: true
+          overwrite: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -126,7 +126,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py"
+          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
           target: "/opt/snail-books-backend/"
           strip_components: 1
 
