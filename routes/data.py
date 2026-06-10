@@ -185,7 +185,7 @@ def get_reconciliations():
             pages = max(1, (count + per_page - 1) // per_page)
             offset = (page - 1) * per_page
             rows = db.execute(
-                f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ? OFFSET ?',
+                f'SELECT * FROM reconciliations {where} ORDER BY date DESC, bill_date DESC LIMIT ? OFFSET ?',
                 params + [per_page, offset]
             ).fetchall()
             return jsonify({
@@ -196,11 +196,11 @@ def get_reconciliations():
         else:
             if limit <= 0:
                 rows = db.execute(
-                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC', params
+                    f'SELECT * FROM reconciliations {where} ORDER BY date DESC, bill_date DESC', params
                 ).fetchall()
             else:
                 rows = db.execute(
-                    f'SELECT * FROM reconciliations {where} ORDER BY bill_date DESC, date DESC LIMIT ?',
+                    f'SELECT * FROM reconciliations {where} ORDER BY date DESC, bill_date DESC LIMIT ?',
                     params + [limit]
                 ).fetchall()
             return jsonify([dict(r) for r in rows])
