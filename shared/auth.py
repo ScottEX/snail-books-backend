@@ -4,6 +4,7 @@ Works with BOTH cookie sessions (Flask session) AND Bearer tokens (iOS WKWebView
 """
 
 import functools
+import os
 from datetime import datetime, timezone
 from flask import request, session, jsonify, redirect, g
 from .i18n import t
@@ -145,7 +146,7 @@ def login_required(f):
 
 # ── User deletion ──
 
-ADMIN_USER_ID = '64'
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '64')
 
 
 def delete_user_cascade(user_id):
