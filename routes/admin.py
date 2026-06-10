@@ -1,7 +1,7 @@
 """Admin routes — user management (Rowan-Lan only)."""
 
 import re
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from shared.db import get_db
 from shared.auth import login_required, schedule_delete, cancel_delete
 
@@ -148,6 +148,9 @@ def toggle_user_status(user_id):
     if str(user_id) == ADMIN_USER_ID:
         return jsonify({'status': 'error', 'message': '不能禁用管理员'}), 400
 
+    if str(user_id) == str(g.user_id):
+        return jsonify({'status': 'error', 'message': '不能禁用自己'}), 400
+
     with get_db() as db:
         row = db.execute(
             'SELECT is_disabled FROM users WHERE id=?', (user_id,)
@@ -248,6 +251,8 @@ def update_user(user_id):
         return jsonify({'status': 'error', 'message': '无更新字段'}), 400
     if str(user_id) == ADMIN_USER_ID and 'is_disabled' in data:
         return jsonify({'status': 'error', 'message': '不能禁用管理员'}), 400
+    if str(user_id) == str(g.user_id) and 'is_disabled' in data:
+        return jsonify({'status': 'error', 'message': '不能禁用自己'}), 400
 
     with get_db() as db:
         row = db.execute('SELECT id FROM users WHERE id=?', (user_id,)).fetchone()
@@ -290,6 +295,9 @@ def delete_user(user_id):
 
     if str(user_id) == ADMIN_USER_ID:
         return jsonify({'status': 'error', 'message': '不能删除管理员'}), 400
+
+    if str(user_id) == str(g.user_id):
+        return jsonify({'status': 'error', 'message': '不能删除自己'}), 400
 
     with get_db() as db:
         row = db.execute('SELECT id FROM users WHERE id=?', (user_id,)).fetchone()
