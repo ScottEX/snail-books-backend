@@ -142,7 +142,7 @@ def delete_user(uid):
     if str(uid) != str(g.user_id):
         return jsonify({'status': 'error', 'message': '只能注销自己的账户'}), 403
 
-    if uid == 64:
+    if str(uid) == os.environ.get('ADMIN_USER_ID', '64'):
         return jsonify({'status': 'error', 'message': t('err_admin_cannot_delete', g.lang)}), 403
 
     with get_db() as db:
