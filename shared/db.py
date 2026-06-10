@@ -1,12 +1,8 @@
 """Shared database utilities."""
 
-import sqlite3, os
+import sqlite3
 from contextlib import contextmanager
-
-DB_PATH = os.environ.get(
-    'DB',
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'snail.db'),
-)
+from .config import DB as DB_PATH
 
 
 @contextmanager

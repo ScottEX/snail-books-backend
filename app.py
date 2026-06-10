@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """🍜 蓝姐 · 记账系统"""
 
-import sqlite3, os, secrets, functools, re, json, time, mimetypes
+import sqlite3, os, functools, re, json, time, mimetypes
 from datetime import datetime, date
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -15,27 +15,13 @@ except ImportError:
 
 from flask import Flask, request, jsonify, session, g, make_response, send_file
 from i18n_backend import get_lang, t as _t
+from shared.config import FLASK_SECRET_KEY, FRONTEND_DIR, EXPENSE_IMG_DIR, BG_DIR, DB
 
 app = Flask(__name__)
-_secret = os.environ.get('FLASK_SECRET_KEY')
-if not _secret:
-    raise RuntimeError("FLASK_SECRET_KEY environment variable is required -- generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'")
-app.secret_key = _secret
+app.secret_key = FLASK_SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=24)
 
 FRONTEND_VERSION = '1'
-FRONTEND_DIR = os.environ.get(
-    'FRONTEND_DIR',
-    os.path.join(os.path.dirname(__file__), 'static', 'web-build', 'dist'),
-)
-EXPENSE_IMG_DIR = os.environ.get(
-    'EXPENSE_IMG_DIR',
-    os.path.join(os.path.dirname(__file__), 'expense-imgs'),
-)
-BG_DIR = os.environ.get(
-    'BG_DIR',
-    os.path.join(os.path.dirname(__file__), 'user-images'),
-)
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 
 # ── Global i18n: every request initializes g.lang from the X-Lang header ──
@@ -150,8 +136,6 @@ def serve_spa_root(path):
 # ═══════════════════════════════════════════════════════════
 #  Database
 # ═══════════════════════════════════════════════════════════
-
-DB = os.environ.get('DB', os.path.join(os.path.dirname(__file__), 'data', 'snail.db'))
 
 @contextmanager
 def get_db():

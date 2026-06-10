@@ -4,11 +4,11 @@ Works with BOTH cookie sessions (Flask session) AND Bearer tokens (iOS WKWebView
 """
 
 import functools
-import os
 from datetime import datetime, timezone
 from flask import request, session, jsonify, redirect, g
 from .i18n import t
 from .db import get_db
+from .config import ADMIN_USER_ID, BG_DIR
 
 
 def _session_expired(expires_at_str):
@@ -146,9 +146,6 @@ def login_required(f):
 
 # ── User deletion ──
 
-ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '4')
-
-
 def delete_user_cascade(user_id):
     """Delete user: transfer business data to admin, remove personal data + files."""
     import os
@@ -181,8 +178,6 @@ def delete_user_cascade(user_id):
 def _delete_user_files(user_id):
     """Remove avatar, background, and cover images for a user."""
     import os
-    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    BG_DIR = os.environ.get('BG_DIR', os.path.join(PROJECT_ROOT, 'user-images'))
 
     files_to_remove = [
         os.path.join(BG_DIR, 'avatars', f'{user_id}.jpg'),

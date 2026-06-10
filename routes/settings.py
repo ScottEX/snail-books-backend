@@ -11,16 +11,13 @@ from flask import Blueprint, request, jsonify, g, send_file
 from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
+from shared.config import BG_DIR
 
 settings_bp = Blueprint('settings', __name__)
 
 # ── Constants ──
 ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
 MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
-BG_DIR = os.environ.get(
-    'BG_DIR',
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'user-images'),
-)
 FRONTEND_VERSION = '1'
 
 

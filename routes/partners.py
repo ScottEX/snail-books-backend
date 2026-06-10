@@ -8,6 +8,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
+from shared.config import EXPENSE_IMG_DIR
 
 # ── Pillow availability (for image thumbnail generation) ──
 try:
@@ -17,14 +18,8 @@ except ImportError:
     _PILImage = None  # type: ignore
     HAS_PIL = False
 
-# ── Expense image storage directory ──
-EXPENSE_IMG_DIR = os.environ.get(
-    'EXPENSE_IMG_DIR',
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'expense-imgs'),
-)
 
-bp = Blueprint('etc', __name__)
-
+bp = Blueprint('partners', __name__)
 
 # ═══════════════════════════════════════════════════════════
 #  Expense image upload
