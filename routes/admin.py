@@ -326,4 +326,44 @@ def restore_user(user_id):
     return jsonify({'status': 'ok', 'message': '账户已恢复'})
 
 
+# ── Invoice info (system-level, editable by admin) ──
+
+@admin_bp.route('/admin/invoice')
+@login_required
+def get_invoice():
+    """Get invoice info (any logged-in user can read)."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT value FROM system_config WHERE key='invoice_info'"
+        ).fetchone()
+    if row:
+        import json
+        return jsonify({'status': 'ok', 'data': json.loads(row['value'])})
+    return jsonify({'status': 'ok', 'data': {}})
+
+
+@admin_bp.route('/admin/invoice', methods=['PUT'])
+@login_required
+def update_invoice():
+    """Update invoice info (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+
+    import json
+    data = request.get_json(silent=True) or {}
+    allowed = ['company_name', 'tax_id', 'bank_name', 'bank_account', 'address', 'phone']
+    invoice = {k: str(data.get(k, '')).strip() for k in allowed}
+
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO system_config (key, value) VALUES ('invoice_info', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=?",
+            (json.dumps(invoice, ensure_ascii=False), json.dumps(invoice, ensure_ascii=False))
+        )
+        db.commit()
+
+    return jsonify({'status': 'ok', 'data': invoice})
+
+
 _register_pinyin_function()

@@ -287,6 +287,10 @@ def init_db():
                 value TEXT,
                 PRIMARY KEY (user_id, key)
             );
+            CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
+            );
  CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -418,6 +422,10 @@ def init_db():
                 value TEXT,
                 PRIMARY KEY (user_id, key),
                 FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS daily_revenue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
