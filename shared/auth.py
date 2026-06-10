@@ -117,7 +117,7 @@ def login_required(f):
         if user['is_disabled']:
             session.clear()
             if request.path.startswith('/api/'):
-                return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员', 'code': 'account_disabled'}), 403
+                return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员', 'code': 'account_disabled'}), 401
             return redirect('/login')
 
         # SSO enforcement
