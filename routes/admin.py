@@ -1,14 +1,11 @@
 """Admin routes — user management (Rowan-Lan only)."""
 
-import os
 import re
 from flask import Blueprint, request, jsonify, session, g
 from shared.db import get_db
-from shared.auth import login_required, schedule_delete, cancel_delete
+from shared.auth import login_required, schedule_delete, cancel_delete, ADMIN_USER_ID
 
 admin_bp = Blueprint('admin', __name__)
-
-ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '64')
 
 
 def _require_admin():
