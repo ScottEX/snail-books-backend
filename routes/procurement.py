@@ -237,12 +237,19 @@ def api_procurement_batch_detail(id):
                 (data['date'], data['payment_method'], data.get('category', '采购'),
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
-            db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE type='expense' AND category IN ('采购') AND date=? AND amount=? AND account=?",
+            cur = db.execute(
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
                 (round(total, 2), data.get('category', '采购'), data['payment_method'],
                  data.get('note', ''), data['date'], images_json, thumbs_json,
-                 old_batch['date'], old_batch['total'], old_batch['payment_method'])
+                 old_batch.get('category', '采购'), old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
+            # If no matching transaction found (e.g. category mismatch), create one
+            if cur.rowcount == 0:
+                db.execute(
+                    "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
+                    (round(total, 2), data.get('category', '采购'), data['payment_method'],
+                     data.get('note', ''), data['date'], images_json, thumbs_json)
+                )
             db.commit()
             _delete_cached_pdf(id)
             return jsonify({'status': 'ok', 'batch_id': id, 'total': round(total, 2)})
