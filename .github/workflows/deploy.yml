@@ -65,17 +65,18 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
+          source: "backend/requirements.txt,backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
           target: "/opt/snail-books-backend-staging/"
           strip_components: 1
 
-      - name: Restart backend (staging)
+      - name: Install deps & restart backend (staging)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            /opt/snail-books-backend-staging/venv/bin/pip install -r /opt/snail-books-backend-staging/requirements.txt
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
@@ -126,17 +127,18 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
+          source: "backend/requirements.txt,backend/app.py,backend/i18n_backend.py,backend/shared/*,backend/routes/*,backend/templates/**"
           target: "/opt/snail-books-backend/"
           strip_components: 1
 
-      - name: Restart backend (production)
+      - name: Install deps & restart backend (production)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            /opt/snail-books-backend/venv/bin/pip install -r /opt/snail-books-backend/requirements.txt
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books

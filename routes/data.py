@@ -13,6 +13,14 @@ from shared.validation import validate_required
 data_bp = Blueprint('data', __name__)
 
 
+# ── Server time (Beijing) ──
+@data_bp.route('/server-date', methods=['GET'])
+def server_date():
+    """Return current Beijing date. No login required."""
+    today = date.today()
+    return jsonify({'date': today.isoformat()})
+
+
 # ═══════════════════════════════════════════
 # Reconciliations
 # ═══════════════════════════════════════════
@@ -76,13 +84,8 @@ def clear_reconciliations():
 @login_required
 def create_reconciliation():
     data = request.get_json() or {}
-    if validate_required(data, 'date'):
-        return jsonify({'error': t('err_missing_date', g.lang)}), 400
-    dt = data['date']
-    try:
-        datetime.strptime(dt, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'error': t('err_date_format', g.lang)}), 400
+    # date is now server-submission time, not user-provided
+    dt = date.today().isoformat()
 
     bill_date = data.get('bill_date', dt)
     if bill_date:
