@@ -255,9 +255,9 @@ def chart():
                    COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
             FROM transactions
-            WHERE user_id=? AND date >= date('now', '-12 months')
+            WHERE date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """, (g.user_id,)).fetchall()
+        """).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -274,27 +274,27 @@ def chart_monthly():
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) as income
             FROM daily_revenue
-            WHERE user_id=? AND date >= date('now', '-12 months')
+            WHERE date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """, (g.user_id,)).fetchall()
+        """).fetchall()
 
         # Monthly expense from transactions (by expense date, not creation time)
         expense_rows = db.execute("""
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(amount), 0) as expense
             FROM transactions
-            WHERE type='expense' AND user_id=? AND date >= date('now', '-12 months')
+            WHERE type='expense' AND date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """, (g.user_id,)).fetchall()
+        """).fetchall()
 
         # Current month expense category breakdown (by expense date)
         month_str = date.today().strftime('%Y-%m')
         cat_rows = db.execute("""
             SELECT category, COALESCE(SUM(amount), 0) as total
             FROM transactions
-            WHERE type='expense' AND user_id=? AND strftime('%Y-%m', date)=?
+            WHERE type='expense' AND strftime('%Y-%m', date)=?
             GROUP BY category ORDER BY total DESC
-        """, (g.user_id, month_str)).fetchall()
+        """, (month_str,)).fetchall()
 
     # Build 12-month label list (oldest first)
     today = date.today()
