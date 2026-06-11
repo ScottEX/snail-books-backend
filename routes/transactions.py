@@ -24,11 +24,12 @@ def transactions():
             if data['type'] not in ('income', 'expense'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
             db.execute(
-                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,user_id) VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
                  data.get('note', ''),
                  json.dumps(data.get('images', [])),
                  json.dumps(data.get('thumb_images', [])),
+                 data.get('date', ''),
                  g.user_id)
             )
             db.commit()
