@@ -24,11 +24,12 @@ def transactions():
             if data['type'] not in ('income', 'expense'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
             db.execute(
-                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,user_id) VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
                  data.get('note', ''),
                  json.dumps(data.get('images', [])),
                  json.dumps(data.get('thumb_images', [])),
+                 data.get('date', ''),
                  g.user_id)
             )
             db.commit()
@@ -48,10 +49,10 @@ def transactions():
         where.append('type=?')
         params.append(tx_type)
     if date_from:
-        where.append('date(t.created_at) >= ?')
+        where.append('t.date >= ?')
         params.append(date_from)
     if date_to:
-        where.append('date(t.created_at) <= ?')
+        where.append('t.date <= ?')
         params.append(date_to)
     if category:
         cats = [c.strip() for c in category.split(',') if c.strip()]
@@ -70,7 +71,7 @@ def transactions():
         rows = db.execute(
             f'SELECT t.*, pb.batch_number AS proc_batch_number FROM transactions t '
             f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
-            f'WHERE {where_sql} ORDER BY t.created_at DESC LIMIT ? OFFSET ?',
+            f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
     return jsonify({
