@@ -49,10 +49,10 @@ def transactions():
         where.append('type=?')
         params.append(tx_type)
     if date_from:
-        where.append('date(t.created_at) >= ?')
+        where.append('t.date >= ?')
         params.append(date_from)
     if date_to:
-        where.append('date(t.created_at) <= ?')
+        where.append('t.date <= ?')
         params.append(date_to)
     if category:
         cats = [c.strip() for c in category.split(',') if c.strip()]
