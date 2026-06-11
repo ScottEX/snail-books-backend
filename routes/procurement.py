@@ -152,8 +152,8 @@ def api_procurement_batches():
                 )
             # Sync an expense transaction
             cur = db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json)
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
+                (round(total, 2), data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
             )
             db.commit()
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -203,10 +203,9 @@ def api_procurement_batch_detail(id):
                         pass
 
             # Also collect URLs from the matching transaction
-            batch_cat = batch.get('category', '采购')
             tx = db.execute(
-                "SELECT images, thumb_images FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
-                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
+                "SELECT images, thumb_images FROM transactions WHERE procurement_batch_id=?",
+                (id,)
             ).fetchone()
             if tx:
                 for col in ('images', 'thumb_images'):
@@ -221,8 +220,8 @@ def api_procurement_batch_detail(id):
 
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             db.execute(
-                "DELETE FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
-                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
+                "DELETE FROM transactions WHERE procurement_batch_id=?",
+                (id,)
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
@@ -291,17 +290,17 @@ def api_procurement_batch_detail(id):
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
             cur = db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=? WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
                 (round(total, 2), data.get('category', '采购'), data['payment_method'],
-                 data.get('note', ''), data['date'], images_json, thumbs_json,
+                 data.get('note', ''), data['date'], images_json, thumbs_json, id,
                  old_batch.get('category', '采购'), old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
             # If no matching transaction found (e.g. category mismatch), create one
             if cur.rowcount == 0:
                 db.execute(
-                    "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images) VALUES ('expense',?,?,?,?,?,?,?)",
+                    "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
                     (round(total, 2), data.get('category', '采购'), data['payment_method'],
-                     data.get('note', ''), data['date'], images_json, thumbs_json)
+                     data.get('note', ''), data['date'], images_json, thumbs_json, id)
                 )
             db.commit()
             _delete_cached_pdf(id)
