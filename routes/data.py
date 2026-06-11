@@ -368,8 +368,15 @@ def business_summary():
         platform_fees_total = pf['total_pf']
         cumulative_revenue = actual_received - platform_fees_total
 
-        exp = db.execute("SELECT COALESCE(SUM(amount),0) as total_exp FROM transactions WHERE type='expense'").fetchone()
+        exp = db.execute("SELECT COALESCE(SUM(amount),0) as total_exp FROM transactions WHERE type='expense' AND user_id=?", (g.user_id,)).fetchone()
         cumulative_expense = exp['total_exp']
+
+        # Category breakdown for glass card
+        cat_rows = db.execute(
+            "SELECT category, COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND user_id=? GROUP BY category",
+            (g.user_id,)
+        ).fetchall()
+        expense_by_category = {r['category']: r['total'] for r in cat_rows}
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
         total_investment = pinv['total_inv']
@@ -381,6 +388,7 @@ def business_summary():
             'actual_received': actual_received, 'receivable': receivable, 'discount': discount,
             'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
             'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
+            'expense_by_category': expense_by_category,
         })
 
 
