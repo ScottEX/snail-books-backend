@@ -203,10 +203,9 @@ def api_procurement_batch_detail(id):
                         pass
 
             # Also collect URLs from the matching transaction
-            batch_cat = batch.get('category', '采购')
             tx = db.execute(
-                "SELECT images, thumb_images FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
-                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
+                "SELECT images, thumb_images FROM transactions WHERE procurement_batch_id=?",
+                (id,)
             ).fetchone()
             if tx:
                 for col in ('images', 'thumb_images'):
@@ -221,8 +220,8 @@ def api_procurement_batch_detail(id):
 
             db.execute('DELETE FROM procurement_items WHERE batch_id=?', (id,))
             db.execute(
-                "DELETE FROM transactions WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
-                (batch_cat, batch['date'], batch['total'], batch['payment_method'])
+                "DELETE FROM transactions WHERE procurement_batch_id=?",
+                (id,)
             )
             db.execute('DELETE FROM procurement_batches WHERE id=?', (id,))
             db.commit()
