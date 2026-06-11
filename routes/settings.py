@@ -251,13 +251,13 @@ def procurement_stats():
 def chart():
     with get_db() as db:
         rows = db.execute("""
-            SELECT strftime('%Y-%m', created_at) as month,
+            SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
             FROM transactions
-            WHERE created_at >= date('now', '-12 months')
+            WHERE user_id=? AND date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (g.user_id,)).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -274,27 +274,27 @@ def chart_monthly():
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) as income
             FROM daily_revenue
-            WHERE date >= date('now', '-12 months')
+            WHERE user_id=? AND date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (g.user_id,)).fetchall()
 
-        # Monthly expense from transactions
+        # Monthly expense from transactions (by expense date, not creation time)
         expense_rows = db.execute("""
-            SELECT strftime('%Y-%m', created_at) as month,
+            SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(amount), 0) as expense
             FROM transactions
-            WHERE type='expense' AND created_at >= date('now', '-12 months')
+            WHERE type='expense' AND user_id=? AND date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (g.user_id,)).fetchall()
 
-        # Current month expense category breakdown
+        # Current month expense category breakdown (by expense date)
         month_str = date.today().strftime('%Y-%m')
         cat_rows = db.execute("""
             SELECT category, COALESCE(SUM(amount), 0) as total
             FROM transactions
-            WHERE type='expense' AND strftime('%Y-%m', created_at)=?
+            WHERE type='expense' AND user_id=? AND strftime('%Y-%m', date)=?
             GROUP BY category ORDER BY total DESC
-        """, (month_str,)).fetchall()
+        """, (g.user_id, month_str)).fetchall()
 
     # Build 12-month label list (oldest first)
     today = date.today()
