@@ -139,6 +139,24 @@ def transaction_by_id(id):
                 return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='fields')}), 400
             values.append(id)
             db.execute(f'UPDATE transactions SET {", ".join(fields)} WHERE id=?', values)
+
+            # Sync images to linked procurement batch (if images changed)
+            if 'images' in data or 'thumb_images' in data:
+                # Use OLD values to find the matching batch
+                old_cat = existing['category'] or ''
+                old_date = existing['date'] or ''
+                old_amount = existing['amount']
+                old_account = existing['account'] or ''
+                # Build update values for procurement batch
+                pb_images = data.get('images', json.loads(existing['images']) if existing['images'] else [])
+                pb_thumbs = data.get('thumb_images', json.loads(existing['thumb_images']) if existing['thumb_images'] else [])
+                db.execute(
+                    "UPDATE procurement_batches SET images=?, thumb_images=? WHERE category=? AND date=? AND total=? AND payment_method=?",
+                    (json.dumps(pb_images) if isinstance(pb_images, list) else pb_images,
+                     json.dumps(pb_thumbs) if isinstance(pb_thumbs, list) else pb_thumbs,
+                     old_cat, old_date, old_amount, old_account)
+                )
+
             db.commit()
 
             # Before deleting orphan files, collect all URLs still referenced by procurement_batches
