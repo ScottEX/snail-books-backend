@@ -70,7 +70,7 @@ def transactions():
         rows = db.execute(
             f'SELECT t.*, pb.batch_number AS proc_batch_number FROM transactions t '
             f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
-            f'WHERE {where_sql} ORDER BY t.created_at DESC LIMIT ? OFFSET ?',
+            f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
     return jsonify({
