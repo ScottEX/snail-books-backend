@@ -25,6 +25,8 @@ def transactions():
                 return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
             if data['category'] not in ('daily', 'rent', 'salary', 'goods'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_category', g.lang)}), 400
+            if data['account'] not in ('payCash', 'payWechat', 'payAlipay'):
+                return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
             db.execute(
                 'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
