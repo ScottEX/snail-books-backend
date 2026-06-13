@@ -181,12 +181,16 @@ def unreviewed_count():
 @admin_bp.route('/admin/users/mark-reviewed', methods=['POST'])
 @login_required
 def mark_reviewed():
-    """Mark all unreviewed users as reviewed (admin only)."""
+    """Mark one user as reviewed (admin only)."""
     _, err = _require_admin()
     if err:
         return err
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({"status": "error", "message": "user_id required"}), 400
     with get_db() as db:
-        db.execute("UPDATE users SET reviewed = 1 WHERE reviewed = 0")
+        db.execute("UPDATE users SET reviewed = 1 WHERE id = ? AND reviewed = 0", (user_id,))
         db.commit()
     return jsonify({"status": "ok"})
 

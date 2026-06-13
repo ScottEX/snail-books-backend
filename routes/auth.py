@@ -50,8 +50,6 @@ def login():
                 return jsonify({'status': 'error', 'message': '账户已被禁用，请联系管理员'}), 403
             if not user['is_verified']:
                 return jsonify({'status': 'error', 'message': t('err_need_verify', g.lang), 'need_verify': True, 'email': user['email']}), 403
-            if not user['reviewed']:
-                return jsonify({'status': 'error', 'message': t('err_review_pending', g.lang)}), 403
 
             enforce_sso = int(user['enforce_single_session']) if user['enforce_single_session'] is not None else 1
             timeout_hours = int(user['session_timeout_hours']) if user['session_timeout_hours'] else 1
@@ -123,7 +121,7 @@ def register():
         code = generate_code()
         expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         db.execute(
-            'INSERT INTO users (username,password,email,verification_code,code_expires,is_verified) VALUES (?,?,?,?,?,0)',
+            'INSERT INTO users (username,password,email,verification_code,code_expires,is_verified,is_disabled) VALUES (?,?,?,?,?,0,1)',
             (username, generate_password_hash(password), email, code, expires)
         )
         db.commit()
