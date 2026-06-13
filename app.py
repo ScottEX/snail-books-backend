@@ -21,7 +21,6 @@ app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=24)
 
-FRONTEND_VERSION = '1'
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 
 # ── Global i18n: every request initializes g.lang from the X-Lang header ──

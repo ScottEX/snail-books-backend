@@ -12,13 +12,14 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.config import BG_DIR
+from shared.version import get_frontend_version
 
 settings_bp = Blueprint('settings', __name__)
 
 # ── Constants ──
 ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
 MAX_BG_SIZE = 5 * 1024 * 1024  # 5MB
-FRONTEND_VERSION = '1'
+FRONTEND_VERSION = get_frontend_version()
 
 
 # ═══════════════════════════════════════════════════════════════════════
