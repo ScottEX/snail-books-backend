@@ -262,7 +262,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 delete_scheduled TIMESTAMP,
                 delete_by TEXT DEFAULT '',
-                delete_reminded INTEGER DEFAULT 0
+                delete_reminded INTEGER DEFAULT 0,
+                reviewed INTEGER DEFAULT 0,
+                is_disabled INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -499,6 +501,10 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN is_disabled INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN reviewed INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
         except sqlite3.OperationalError:

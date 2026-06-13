@@ -103,7 +103,7 @@ def list_users():
         # Fetch page
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'''SELECT id, username, email, is_disabled, created_at, delete_scheduled, delete_by
+            f'''SELECT id, username, email, is_disabled, reviewed, created_at, delete_scheduled, delete_by
                 FROM users
                 WHERE {where_sql}
                 ORDER BY id DESC
@@ -120,6 +120,7 @@ def list_users():
                 'username': row['username'],
                 'email': row['email'] or '',
                 'is_disabled': bool(row['is_disabled']),
+                'reviewed': bool(row['reviewed']),
                 'created_at': row['created_at'] or '',
                 'avatar': avatar,
                 'delete_scheduled': row['delete_scheduled'] or '',
@@ -163,6 +164,33 @@ def toggle_user_status(user_id):
     return jsonify({'status': 'ok', 'is_disabled': bool(new_val)})
 
 
+@admin_bp.route('/admin/users/unreviewed-count')
+@login_required
+def unreviewed_count():
+    """Return count of users awaiting review (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+    with get_db() as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM users WHERE reviewed = 0"
+        ).fetchone()[0]
+    return jsonify({"status": "ok", "count": count})
+
+
+@admin_bp.route('/admin/users/mark-reviewed', methods=['POST'])
+@login_required
+def mark_reviewed():
+    """Mark all unreviewed users as reviewed (admin only)."""
+    _, err = _require_admin()
+    if err:
+        return err
+    with get_db() as db:
+        db.execute("UPDATE users SET reviewed = 1 WHERE reviewed = 0")
+        db.commit()
+    return jsonify({"status": "ok"})
+
+
 def _build_avatar(user_id):
     """Return avatar URL or empty string."""
     import os
@@ -196,7 +224,7 @@ def get_user_detail(user_id):
     with get_db() as db:
         row = db.execute(
             '''SELECT id, username, email, phone, role, remark,
-                      is_disabled, created_at, signature, delete_scheduled, delete_by
+                      is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
         if not row:
@@ -223,6 +251,7 @@ def get_user_detail(user_id):
             'role': row['role'] or '',
             'remark': row['remark'] or '',
             'is_disabled': bool(row['is_disabled']),
+            'reviewed': bool(row['reviewed']),
             'created_at': row['created_at'] or '',
             'last_login': last_login or '',
             'avatar': avatar,
