@@ -329,11 +329,13 @@ def chart_monthly():
 # ═══════════════════════════════════════════════════════════════════════
 
 @settings_bp.route('/frontend-version')
+@login_required
 def frontend_version():
     return jsonify({'version': FRONTEND_VERSION})
 
 
 @settings_bp.route('/frontend.zip')
+@login_required
 def frontend_zip():
     www = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),

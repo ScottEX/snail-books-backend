@@ -95,6 +95,14 @@ def login():
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    ip = request.remote_addr or 'unknown'
+    allowed, wait = check_rate_limit(ip)
+    if not allowed:
+        mins = wait // 60
+        secs = wait % 60
+        return jsonify({'status': 'error', 'message': t('err_too_many_attempts', g.lang, mins=mins, secs=secs) or f'Too many attempts. Please wait {mins}m{secs}s.'}), 429
+    record_failed_attempt(ip)
+
     data = request.get_json()
     username = data.get('username', '').strip()
     password = data.get('password', '')
@@ -228,6 +236,9 @@ def reset_password():
             return jsonify({'status': 'error', 'message': t('err_reset_code_expired', g.lang)}), 410
         db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
                    (generate_password_hash(new_password), user['id']))
+        # Revoke all existing sessions & tokens — force re-login everywhere
+        db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL", (user['id'],))
+        db.execute("DELETE FROM user_tokens WHERE user_id=?", (user['id'],))
         db.commit()
     return jsonify({'status': 'ok', 'message': t('msg_reset_ok', g.lang)})
 

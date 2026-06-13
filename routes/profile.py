@@ -281,6 +281,10 @@ def change_password():
         if not user or not check_password_hash(user['password'], old_pw):
             return jsonify({'status': 'error', 'message': '当前密码错误'}), 400
         db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
+        # Revoke all other sessions — keep current one (user just verified old password)
+        cur_sid = session.get('session_id', '')
+        db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (g.user_id, cur_sid))
+        db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
 

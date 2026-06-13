@@ -119,6 +119,7 @@ def api_procurement_batches():
         if not items or not isinstance(items, list):
             return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
         with get_db() as db:
+            db.execute('BEGIN IMMEDIATE')
             cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
             batch_no = cur[0] + 1
             total = 0.0
