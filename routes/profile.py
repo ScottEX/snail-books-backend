@@ -328,5 +328,9 @@ def profile_email_verify():
             return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
                    (new_email, g.user_id))
+        # Revoke all other sessions — keep current one (user just verified code)
+        cur_sid = session.get('session_id', '')
+        db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (g.user_id, cur_sid))
+        db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
     return jsonify({'status': 'ok', 'message': '邮箱修改成功'})

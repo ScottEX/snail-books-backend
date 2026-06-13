@@ -30,13 +30,21 @@ BG_DIR = os.environ.get('BG_DIR', os.path.join(_PROJECT_ROOT, 'user-images'))
 # ── Secrets ──
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
 if not FLASK_SECRET_KEY:
-    if APP_ENV != 'production':
+    _secret_file = os.path.join(_PROJECT_ROOT, 'data', '.flask_secret')
+    if os.path.isfile(_secret_file):
+        with open(_secret_file, 'r') as f:
+            FLASK_SECRET_KEY = f.read().strip()
+    elif APP_ENV != 'production':
         FLASK_SECRET_KEY = _secrets.token_hex(32)
+        os.makedirs(os.path.dirname(_secret_file), exist_ok=True)
+        with open(_secret_file, 'w') as f:
+            f.write(FLASK_SECRET_KEY)
     else:
-        raise RuntimeError(
-            "FLASK_SECRET_KEY is required in production. "
-            "Generate: python3 -c 'import secrets; print(secrets.token_hex(32))'"
-        )
+        if not FLASK_SECRET_KEY:
+            raise RuntimeError(
+                "FLASK_SECRET_KEY is required in production. "
+                "Generate: python3 -c 'import secrets; print(secrets.token_hex(32))'"
+            )
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
