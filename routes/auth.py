@@ -124,6 +124,9 @@ def register():
         if exists:
             if exists['is_verified']:
                 return jsonify({'status': 'error', 'message': t('err_username_exists', g.lang)}), 409
+            db.execute('DELETE FROM user_tokens WHERE user_id=?', (exists['id'],))
+            db.execute('DELETE FROM user_sessions WHERE user_id=?', (exists['id'],))
+            db.execute('DELETE FROM user_settings WHERE user_id=?', (exists['id'],))
             db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
 
         code = generate_code()
@@ -251,12 +254,6 @@ def logout():
         try:
             with get_db() as db:
                 db.execute('DELETE FROM user_sessions WHERE session_id=?', (sid,))
-                db.commit()
-        except:
-            pass
-    if sid:
-        try:
-            with get_db() as db:
                 db.execute('DELETE FROM user_tokens WHERE session_id=?', (sid,))
                 db.commit()
         except:

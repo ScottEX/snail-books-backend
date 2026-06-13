@@ -112,10 +112,13 @@ def save_lang():
     data = request.get_json()
     if not data or 'lang' not in data:
         return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='lang')}), 400
+    lang = data['lang']
+    if lang not in ('zh-CN', 'zh-TW', 'en'):
+        return jsonify({'status': 'error', 'message': t('err_invalid_lang', g.lang) or 'Invalid language'}), 400
     with get_db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'lang', ?)",
-                (g.user_id, data['lang']),
+                (g.user_id, lang),
             )
             db.commit()
     return jsonify({'status': 'ok'})
@@ -143,10 +146,13 @@ def save_theme():
     data = request.get_json()
     if not data or 'theme' not in data:
         return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields='theme')}), 400
+    theme = data['theme']
+    if theme not in ('burgundy-warm', 'obsidian-gold', 'deep-teal'):
+        return jsonify({'status': 'error', 'message': t('err_invalid_theme', g.lang) or 'Invalid theme'}), 400
     with get_db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'theme', ?)",
-                (g.user_id, data['theme']),
+                (g.user_id, theme),
             )
             db.commit()
     return jsonify({'status': 'ok'})
@@ -160,14 +166,12 @@ def save_theme():
 @login_required
 def stats():
     with get_db() as db:
-        income = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income'"
-        ).fetchone()[0]
-        expense = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense'"
-        ).fetchone()[0]
-        tx_count = db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
-    return jsonify({'income': income, 'expense': expense, 'count': tx_count})
+        row = db.execute(
+            "SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) AS income,"
+            "       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,"
+            "       COUNT(*) AS count FROM transactions"
+        ).fetchone()
+    return jsonify({'income': row['income'], 'expense': row['expense'], 'count': row['count']})
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -180,22 +184,22 @@ def summary():
     today_str = date.today().isoformat()
     month_str = date.today().strftime('%Y-%m')
     with get_db() as db:
-        # Today
+        # Today — use business date, not created_at (P1-TTT)
         today_income = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND date(created_at)=?",
+            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND date=?",
             (today_str,),
         ).fetchone()[0]
         today_expense = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND date(created_at)=?",
+            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND date=?",
             (today_str,),
         ).fetchone()[0]
-        # Month
+        # Month — use business date, not created_at (P1-TTT)
         month_income = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND strftime('%Y-%m', created_at)=?",
+            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND strftime('%Y-%m', date)=?",
             (month_str,),
         ).fetchone()[0]
         month_expense = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND strftime('%Y-%m', created_at)=?",
+            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND strftime('%Y-%m', date)=?",
             (month_str,),
         ).fetchone()[0]
         month_procurement = db.execute(

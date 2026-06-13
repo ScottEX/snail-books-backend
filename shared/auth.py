@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from flask import request, session, jsonify, redirect, g
 from .i18n import t
 from .db import get_db
-from .config import ADMIN_USER_ID, BG_DIR
+from .config import ADMIN_USER_ID, BG_DIR, EXPENSE_IMG_DIR
 
 
 def _session_expired(expires_at_str):
@@ -104,8 +104,7 @@ def login_required(f):
         g.username = session.get('username', '')
 
         # Clean up any expired scheduled deletions (lightweight, rare)
-        cleanup_expired_deletions()
-        send_deletion_reminders()
+        # Moved to cron job (P1-YY/ZZ) — see cron job "清理过期删除用户"
 
         with get_db() as db:
             user = db.execute('SELECT id, is_disabled FROM users WHERE id=?', (g.user_id,)).fetchone()
@@ -176,7 +175,7 @@ def delete_user_cascade(user_id):
 
 
 def _delete_user_files(user_id):
-    """Remove avatar, background, and cover images for a user."""
+    """Remove avatar, background, cover images, and expense images for a user."""
     import os
 
     files_to_remove = [
@@ -188,6 +187,15 @@ def _delete_user_files(user_id):
         try:
             if os.path.exists(path):
                 os.remove(path)
+        except OSError:
+            pass
+
+    # Clean up per-user expense image directory (P1-WW)
+    expense_user_dir = os.path.join(EXPENSE_IMG_DIR, str(user_id))
+    if os.path.isdir(expense_user_dir):
+        try:
+            import shutil
+            shutil.rmtree(expense_user_dir)
         except OSError:
             pass
 
@@ -294,10 +302,10 @@ def schedule_delete(user_id, by_who, days):
         if by_who == 'admin':
             # Notify admin (in admin's language)
             admin_row = db.execute(
-                "SELECT email FROM users WHERE id=64"
+                f"SELECT email FROM users WHERE id={ADMIN_USER_ID}"
             ).fetchone()
             if admin_row and admin_row['email']:
-                admin_lang = _get_lang(db, 64)
+                admin_lang = _get_lang(db, ADMIN_USER_ID)
                 admin_scheduled_str = _format_date_for_lang(scheduled, admin_lang)
                 admin_from = _sender_for_lang(admin_lang)
                 subj, body = _deletion_email('admin_notify', admin_lang, user['email'], admin_scheduled_str)
@@ -328,9 +336,9 @@ def send_deletion_reminders():
                  AND delete_scheduled > datetime('now', 'localtime')"""
         ).fetchall()
 
-        admin_row = db.execute("SELECT email FROM users WHERE id=64").fetchone()
+        admin_row = db.execute(f"SELECT email FROM users WHERE id={ADMIN_USER_ID}").fetchone()
         admin_email = admin_row['email'] if admin_row else ''
-        admin_lang = _get_lang(db, 64) if admin_email else 'zh-CN'
+        admin_lang = _get_lang(db, ADMIN_USER_ID) if admin_email else 'zh-CN'
 
     for user in due:
         raw_date = user['delete_scheduled'] if user['delete_scheduled'] else ''
