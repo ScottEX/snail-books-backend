@@ -334,7 +334,6 @@ def chart_monthly():
 # ═══════════════════════════════════════════════════════════════════════
 
 @settings_bp.route('/frontend-version')
-@login_required
 def frontend_version():
     return jsonify({'version': FRONTEND_VERSION})
 
