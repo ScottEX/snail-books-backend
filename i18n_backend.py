@@ -32,7 +32,7 @@ TRANSLATIONS = {
         'err_field_negative': '{field} 不能为负',
         'err_field_too_large': '{field} 数值超出合理范围',
         'err_invalid_type': 'type 只能是 income 或 expense',
-        'err_resend_failed': '验证码发送失败','
+        'err_resend_failed': '验证码发送失败',
         'err_reset_code_expired': '验证码已过期，请重新获取',
         'err_reset_code_wrong': '验证码错误',
         'err_session_expired': '登录已过期，请重新登录',
@@ -175,7 +175,7 @@ TRANSLATIONS = {
         'err_invalid_account': 'Invalid payment method',
         'err_need_verify': 'Email not verified, please verify first',
         'err_review_pending': 'Account pending admin review',
-        'err_pw_requirements': 'Password must be 8+ chars with letters, digits, and special characters','
+        'err_pw_requirements': 'Password must be 8+ chars with letters, digits, and special characters',
         'err_recon_confirm': 'Requires confirm="YES"',
         'msg_recon_cleared': 'All reconciliation records cleared',
         'err_missing_date': 'Missing date',
