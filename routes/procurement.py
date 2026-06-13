@@ -292,9 +292,9 @@ def api_procurement_batch_detail(id):
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
             cur = db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=? AND category=? AND date=? AND amount=? AND account=?",
                 (round(total, 2), data.get('category', '采购'), data['payment_method'],
-                 data.get('note', ''), data['date'], images_json, thumbs_json, id,
+                 data.get('note', ''), data['date'], images_json, thumbs_json, id, id,
                  old_batch.get('category', '采购'), old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
             # If no matching transaction found by OLD values, try procurement_batch_id (P1-NN)
