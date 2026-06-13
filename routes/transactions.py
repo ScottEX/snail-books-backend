@@ -92,7 +92,7 @@ def transaction_by_id(id):
         if amount is not None:
             try:
                 amount = float(amount)
-                if amount <= 0:
+                if amount == 0:
                     return jsonify({'status': 'error', 'message': t('err_amount_positive', g.lang)}), 400
             except (TypeError, ValueError):
                 return jsonify({'status': 'error', 'message': t('err_amount_invalid', g.lang)}), 400
