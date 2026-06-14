@@ -364,10 +364,7 @@ def restore_user(user_id):
 @admin_bp.route('/admin/invoice')
 @login_required
 def get_invoice():
-    """Get invoice info (admin only)."""
-    _, err = _require_admin()
-    if err:
-        return err
+    """Get invoice info (any logged-in user can read; only admin can write)."""
     with get_db() as db:
         row = db.execute(
             "SELECT value FROM system_config WHERE key='invoice_info'"
