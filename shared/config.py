@@ -26,6 +26,7 @@ DB = os.environ.get('DB', os.path.join(_PROJECT_ROOT, 'data', 'snail.db'))
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(_PROJECT_ROOT, 'static', 'web-build', 'dist'))
 EXPENSE_IMG_DIR = os.environ.get('EXPENSE_IMG_DIR', os.path.join(_PROJECT_ROOT, 'expense-imgs'))
 BG_DIR = os.environ.get('BG_DIR', os.path.join(_PROJECT_ROOT, 'user-images'))
+INVOICE_FILE_DIR = os.environ.get('INVOICE_FILE_DIR', os.path.join(_PROJECT_ROOT, 'invoice-files'))
 
 # ── Secrets ──
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')

@@ -431,6 +431,24 @@ def init_db():
                 archived INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS invoice_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id),
+                procurement_batch_id INTEGER,
+                type TEXT NOT NULL CHECK(type IN ('vat','general')),
+                company TEXT NOT NULL DEFAULT '',
+                tax_id TEXT DEFAULT '',
+                amount REAL NOT NULL DEFAULT 0,
+                date TEXT NOT NULL,
+                invoice_number TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                status TEXT NOT NULL CHECK(status IN ('pending','done')) DEFAULT 'pending',
+                file_path TEXT DEFAULT '',
+                file_type TEXT DEFAULT '',
+                file_size INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -545,6 +563,7 @@ init_db()
 from routes.auth import auth_bp
 from routes.admin import admin_bp
 from routes.data import data_bp
+from routes.invoice import invoice_bp
 from routes.partners import bp as partners_bp
 from routes.procurement import procurement_bp
 from routes.profile import profile_bp
@@ -556,6 +575,7 @@ app.register_blueprint(auth_bp)
 # All other routes under /api
 app.register_blueprint(admin_bp, url_prefix='/api')
 app.register_blueprint(data_bp, url_prefix='/api')
+app.register_blueprint(invoice_bp, url_prefix='/api')
 app.register_blueprint(partners_bp, url_prefix='/api')
 app.register_blueprint(procurement_bp, url_prefix='/api')
 app.register_blueprint(profile_bp, url_prefix='/api')
