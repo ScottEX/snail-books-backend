@@ -17,7 +17,7 @@ from shared.config import INVOICE_FILE_DIR
 
 invoice_bp = Blueprint('invoice', __name__)
 
-ALLOWED_EXT = {'.pdf', '.jpg', '.jpeg', '.png'}
+ALLOWED_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 VALID_STATUS = {'pending', 'done'}
