@@ -196,13 +196,14 @@ def mark_reviewed():
 
 
 def _build_avatar(user_id):
-    """Return avatar URL or empty string."""
+    """Return avatar URL or empty string. Checks .jpg and .png."""
     import os
     from shared.config import BG_DIR
     avatar_dir = os.path.join(BG_DIR, 'avatars')
-    file_path = os.path.join(avatar_dir, f'{user_id}.jpg')
-    if os.path.isfile(file_path):
-        return f'/api/users/avatar?user_id={user_id}'
+    for ext in ('.jpg', '.png'):
+        file_path = os.path.join(avatar_dir, f'{user_id}{ext}')
+        if os.path.isfile(file_path):
+            return f'/api/users/avatar?user_id={user_id}'
     return ''
 
 
