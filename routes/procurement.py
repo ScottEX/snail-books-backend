@@ -166,7 +166,9 @@ def api_procurement_batches():
     with get_db() as db:
         total = db.execute('SELECT COUNT(*) FROM procurement_batches').fetchone()[0]
         rows = db.execute(
-            'SELECT * FROM procurement_batches ORDER BY date DESC, id DESC LIMIT ? OFFSET ?',
+            'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '
+            'LEFT JOIN users su ON pb.settled_by = su.id '
+            'ORDER BY pb.date DESC, pb.id DESC LIMIT ? OFFSET ?',
             (per_page, (page - 1) * per_page)
         ).fetchall()
         batches = []
@@ -185,7 +187,11 @@ def api_procurement_batches():
 def api_procurement_batch_detail(id):
     """Single procurement batch: detail, edit, delete."""
     with get_db() as db:
-        row = db.execute('SELECT * FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        row = db.execute(
+            'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '
+            'LEFT JOIN users su ON pb.settled_by = su.id WHERE pb.id=?',
+            (id,)
+        ).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': 'Not found'}), 404
 
@@ -319,6 +325,34 @@ def api_procurement_batch_detail(id):
             user_row = db.execute('SELECT username FROM users WHERE id=?', (b['user_id'],)).fetchone()
             b['operator'] = user_row['username'] if user_row else ''
     return jsonify(b)
+
+
+# ── Settle (mark batch as settled — one-way, irreversible) ──
+@procurement_bp.route('/procurement-batches/<int:id>/settle', methods=['POST'])
+@login_required
+def api_procurement_batch_settle(id):
+    """Mark a procurement batch as settled. One-way: cannot be undone."""
+    with get_db() as db:
+        row = db.execute('SELECT id, settled_at FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': _t('err_not_found', g.lang)}), 404
+        if row['settled_at']:
+            return jsonify({'status': 'error', 'message': _t('err_already_settled', g.lang)}), 409
+        db.execute(
+            'UPDATE procurement_batches SET settled_at=CURRENT_TIMESTAMP, settled_by=? WHERE id=?',
+            (g.user_id, id)
+        )
+        db.commit()
+        # Return the updated batch with settled_by_username
+        updated = db.execute(
+            'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '
+            'LEFT JOIN users su ON pb.settled_by = su.id WHERE pb.id=?',
+            (id,)
+        ).fetchone()
+        b = dict(updated)
+        b['images'] = json.loads(b['images']) if b['images'] else []
+        b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
+    return jsonify({'status': 'ok', 'batch': b})
 
 
 # ── PDF generation (with 30s timeout) ──

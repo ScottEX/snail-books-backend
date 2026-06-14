@@ -347,6 +347,8 @@ def init_db():
                 thumb_images TEXT DEFAULT '[]',
                 note TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id),
+                settled_at TIMESTAMP DEFAULT NULL,
+                settled_by INTEGER REFERENCES users(id) DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS procurement_items (
@@ -485,6 +487,14 @@ def init_db():
             pass  # column already exists
         try:
             db.execute("ALTER TABLE procurement_batches ADD COLUMN thumb_images TEXT DEFAULT '[]'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE procurement_batches ADD COLUMN settled_at TIMESTAMP DEFAULT NULL")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE procurement_batches ADD COLUMN settled_by INTEGER REFERENCES users(id) DEFAULT NULL")
         except sqlite3.OperationalError:
             pass  # column already exists
         try:

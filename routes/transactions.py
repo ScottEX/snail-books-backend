@@ -73,8 +73,11 @@ def transactions():
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'SELECT t.*, pb.batch_number AS proc_batch_number FROM transactions t '
+            f'SELECT t.*, pb.batch_number AS proc_batch_number, '
+            f'pb.settled_at AS proc_settled_at, pb.settled_by AS proc_settled_by, '
+            f'su.username AS proc_settled_by_username FROM transactions t '
             f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
+            f'LEFT JOIN users su ON pb.settled_by = su.id '
             f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
