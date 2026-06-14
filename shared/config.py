@@ -11,7 +11,7 @@ Set APP_ENV to 'production' on the production server. Default is 'staging'.
 import os
 import secrets as _secrets
 
-APP_ENV = os.environ.get('APP_ENV', 'production')
+APP_ENV = os.environ.get('APP_ENV', 'staging')
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
