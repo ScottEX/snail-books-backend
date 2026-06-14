@@ -4,6 +4,10 @@ import os
 import uuid
 from flask import Blueprint, request, jsonify, g
 
+# Expire store for share links
+EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
+ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
+
 from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
@@ -46,6 +50,8 @@ def upload_expense_images():
             continue
         # Keep original extension, generate unique name
         ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
+        if ext.lower() not in ALLOWED_IMG_EXT:
+            continue
         safe_name = f"{uuid.uuid4().hex}{ext}"
         save_path = os.path.join(user_dir, safe_name)
         f.save(save_path)
