@@ -198,6 +198,15 @@ def api_procurement_batch_detail(id):
         if request.method == 'DELETE':
             batch = dict(row)
 
+            # Settled batches are a financial snapshot — deletion is forbidden.
+            # Frontend also disables the delete button, but enforce here too in case
+            # someone bypasses the UI (direct API call, etc.).
+            if batch.get('settled_at'):
+                return jsonify({
+                    'status': 'error',
+                    'message': _t('err_settled_cannot_delete', g.lang),
+                }), 403
+
             # Collect all image URLs from this batch before deletion
             orphan_candidates = set()
             for col in ('images', 'thumb_images'):
