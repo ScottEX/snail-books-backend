@@ -242,15 +242,24 @@ def api_invoice_record_delete(rid):
         row = db.execute('SELECT * FROM invoice_records WHERE id=?', (rid,)).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': _t('err_invoice_not_found', g.lang)}), 404
-        # Also remove the file from disk if exists
+        # Also remove all files from disk if they exist
         rec = dict(row)
-        if rec.get('file_path'):
+        fp = rec.get('file_path') or ''
+        import json as _json
+        if fp.startswith('['):
+            try: paths = _json.loads(fp)
+            except: paths = [fp] if fp else []
+        elif fp:
+            paths = [fp]
+        else:
+            paths = []
+        for p in paths:
             try:
-                full = os.path.join(INVOICE_FILE_DIR, rec['file_path'])
+                full = os.path.join(INVOICE_FILE_DIR, p)
                 if os.path.isfile(full):
                     os.remove(full)
             except OSError:
-                pass  # don't fail delete on filesystem error
+                pass
         db.execute('DELETE FROM invoice_records WHERE id=?', (rid,))
     return jsonify({'status': 'ok'})
 
@@ -290,17 +299,25 @@ def api_invoice_record_upload(rid):
     f.save(full_path)
     rel_path = f'{user_id}/{new_name}'
     with get_db() as db:
-        row = db.execute('SELECT id FROM invoice_records WHERE id=?', (rid,)).fetchone()
+        row = db.execute('SELECT id, file_path FROM invoice_records WHERE id=?', (rid,)).fetchone()
         if not row:
-            # Clean up orphan file
-            try:
-                os.remove(full_path)
-            except OSError:
-                pass
+            try: os.remove(full_path)
+            except OSError: pass
             return jsonify({'status': 'error', 'message': _t('err_invoice_not_found', g.lang)}), 404
+        # Merge existing paths (handle old single-path and new JSON array)
+        import json as _json
+        existing = row['file_path'] or ''
+        if existing.startswith('['):
+            try: paths = _json.loads(existing)
+            except: paths = [existing] if existing else []
+        elif existing:
+            paths = [existing]
+        else:
+            paths = []
+        paths.append(rel_path)
         db.execute(
             'UPDATE invoice_records SET file_path=?, file_type=?, file_size=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            (rel_path, content_type, size, rid)
+            (_json.dumps(paths), content_type, size, rid)
         )
     return jsonify({'status': 'ok', 'file_path': rel_path, 'file_type': content_type, 'file_size': size})
 
