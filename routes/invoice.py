@@ -138,7 +138,7 @@ def api_invoice_record_create():
     # 'done' requires invoice_number
     if status == 'done' and not (data.get('invoice_number') or '').strip():
         return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
-    user_id = g.user['id'] if hasattr(g, 'user') and g.user else None
+    user_id = g.user_id if hasattr(g, 'user_id') and g.user_id else None
     batch_id = data.get('procurement_batch_id')
     # One batch → one invoice record (enforce uniqueness when batch_id is set)
     if batch_id:
@@ -281,7 +281,7 @@ def api_invoice_record_upload(rid):
     mime, _ = mimetypes.guess_type(safe_name)
     content_type = mime or 'application/octet-stream'
     # Resolve user dir
-    user_id = g.user['id'] if hasattr(g, 'user') and g.user else None
+    user_id = g.user_id if hasattr(g, 'user_id') and g.user_id else None
     if not user_id:
         return jsonify({'status': 'error', 'message': _t('err_need_verify', g.lang)}), 401
     user_dir = _ensure_user_dir(user_id)
