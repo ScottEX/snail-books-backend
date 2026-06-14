@@ -242,16 +242,12 @@ def api_invoice_record_delete(rid):
         row = db.execute('SELECT * FROM invoice_records WHERE id=?', (rid,)).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': _t('err_invoice_not_found', g.lang)}), 404
-        # Also remove all files from disk if they exist
-        rec = dict(row)
-        fp = rec.get('file_path') or ''
+        # Parse file paths (always JSON array)
         import json as _json
-        if fp.startswith('['):
-            try: paths = _json.loads(fp)
-            except: paths = [fp] if fp else []
-        elif fp:
-            paths = [fp]
-        else:
+        existing = row['file_path'] or ''
+        try:
+            paths = _json.loads(existing) if existing else []
+        except:
             paths = []
         for p in paths:
             try:
@@ -304,15 +300,12 @@ def api_invoice_record_upload(rid):
             try: os.remove(full_path)
             except OSError: pass
             return jsonify({'status': 'error', 'message': _t('err_invoice_not_found', g.lang)}), 404
-        # Merge existing paths (handle old single-path and new JSON array)
+        # Parse existing file paths (always JSON array)
         import json as _json
         existing = row['file_path'] or ''
-        if existing.startswith('['):
-            try: paths = _json.loads(existing)
-            except: paths = [existing] if existing else []
-        elif existing:
-            paths = [existing]
-        else:
+        try:
+            paths = _json.loads(existing) if existing else []
+        except:
             paths = []
         paths.append(rel_path)
         db.execute(
