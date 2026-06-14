@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json, os, time, hmac, base64, hashlib
+import html as _html
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g, make_response, current_app
 
@@ -119,6 +120,7 @@ def api_procurement_batches():
         if not items or not isinstance(items, list):
             return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
         with get_db() as db:
+            db.execute('BEGIN IMMEDIATE')
             cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
             batch_no = cur[0] + 1
             total = 0.0
@@ -290,17 +292,17 @@ def api_procurement_batch_detail(id):
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
             cur = db.execute(
-                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND category=? AND date=? AND amount=? AND account=?",
+                "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=? AND category=? AND date=? AND amount=? AND account=?",
                 (round(total, 2), data.get('category', '采购'), data['payment_method'],
-                 data.get('note', ''), data['date'], images_json, thumbs_json, id,
+                 data.get('note', ''), data['date'], images_json, thumbs_json, id, id,
                  old_batch.get('category', '采购'), old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
-            # If no matching transaction found (e.g. category mismatch), create one
+            # If no matching transaction found by OLD values, try procurement_batch_id (P1-NN)
             if cur.rowcount == 0:
                 db.execute(
-                    "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
+                    "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=?",
                     (round(total, 2), data.get('category', '采购'), data['payment_method'],
-                     data.get('note', ''), data['date'], images_json, thumbs_json, id)
+                     data.get('note', ''), data['date'], images_json, thumbs_json, id, id)
                 )
             db.commit()
             _delete_cached_pdf(id)
@@ -442,8 +444,8 @@ def api_procurement_batch_pdf(id):
     for it in b['items']:
         spec = it.get('spec', '') or ''
         items_html += (
-            f"<tr><td>{it['product_name']}</td>"
-            f"<td>{spec}</td>"
+            f"<tr><td>{_html.escape(it['product_name'])}</td>"
+            f"<td>{_html.escape(spec)}</td>"
             f"<td>¥{it['unit_price']:,.2f}</td>"
             f"<td>{it['quantity']}</td>"
             f"<td>¥{it['subtotal']:,.2f}</td></tr>"

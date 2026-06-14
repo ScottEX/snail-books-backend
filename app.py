@@ -21,7 +21,6 @@ app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=24)
 
-FRONTEND_VERSION = '1'
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 
 # ── Global i18n: every request initializes g.lang from the X-Lang header ──
@@ -283,16 +282,6 @@ def init_db():
                 last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE TABLE IF NOT EXISTS user_settings (
-                user_id INTEGER NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT,
-                PRIMARY KEY (user_id, key)
-            );
-            CREATE TABLE IF NOT EXISTS system_config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL DEFAULT ''
-            );
  CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -454,6 +443,11 @@ def init_db():
             db.execute('ALTER TABLE daily_revenue ADD COLUMN archived INTEGER DEFAULT 0')
         except sqlite3.OperationalError:
             pass  # column already exists
+        # Ensure email uniqueness at DB level (P2-FF)
+        try:
+            db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+        except sqlite3.OperationalError:
+            pass
         db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:

@@ -23,6 +23,10 @@ def transactions():
         with get_db() as db:
             if data['type'] not in ('income', 'expense'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_type', g.lang)}), 400
+            if data['category'] not in ('daily', 'rent', 'salary', 'goods'):
+                return jsonify({'status': 'error', 'message': t('err_invalid_category', g.lang)}), 400
+            if data['account'] not in ('payCash', 'payWechat', 'payAlipay'):
+                return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
             db.execute(
                 'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
@@ -143,20 +147,31 @@ def transaction_by_id(id):
 
             # Sync images to linked procurement batch (if images changed)
             if 'images' in data or 'thumb_images' in data:
-                # Use OLD values to find the matching batch
-                old_cat = existing['category'] or ''
-                old_date = existing['date'] or ''
-                old_amount = existing['amount']
-                old_account = existing['account'] or ''
                 # Build update values for procurement batch
                 pb_images = data.get('images', json.loads(existing['images']) if existing['images'] else [])
                 pb_thumbs = data.get('thumb_images', json.loads(existing['thumb_images']) if existing['thumb_images'] else [])
-                db.execute(
-                    "UPDATE procurement_batches SET images=?, thumb_images=? WHERE category=? AND date=? AND total=? AND payment_method=?",
-                    (json.dumps(pb_images) if isinstance(pb_images, list) else pb_images,
-                     json.dumps(pb_thumbs) if isinstance(pb_thumbs, list) else pb_thumbs,
-                     old_cat, old_date, old_amount, old_account)
+                pb_values = (
+                    json.dumps(pb_images) if isinstance(pb_images, list) else pb_images,
+                    json.dumps(pb_thumbs) if isinstance(pb_thumbs, list) else pb_thumbs,
                 )
+
+                # Prefer procurement_batch_id for reliable linkage (P1-Z)
+                pb_id = existing['procurement_batch_id']
+                if pb_id:
+                    db.execute(
+                        "UPDATE procurement_batches SET images=?, thumb_images=? WHERE id=?",
+                        pb_values + (pb_id,)
+                    )
+                else:
+                    # Fallback: match by OLD category/date/total/payment_method
+                    old_cat = existing['category'] or ''
+                    old_date = existing['date'] or ''
+                    old_amount = existing['amount']
+                    old_account = existing['account'] or ''
+                    db.execute(
+                        "UPDATE procurement_batches SET images=?, thumb_images=? WHERE category=? AND date=? AND total=? AND payment_method=?",
+                        pb_values + (old_cat, old_date, old_amount, old_account)
+                    )
 
             db.commit()
 

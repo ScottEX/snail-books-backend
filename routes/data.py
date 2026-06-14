@@ -9,6 +9,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
+from shared.config import ADMIN_USER_ID
 
 data_bp = Blueprint('data', __name__)
 
@@ -64,8 +65,7 @@ def migrate_recon():
             db.commit()
             return jsonify({'message': f'Migrated {n} rows, UNIQUE removed', 'rows': n})
         except Exception as e:
-            import traceback
-            return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+            return jsonify({'error': 'Migration failed'}), 500
 
 
 @data_bp.route('/reconciliations/clear', methods=['POST'])
@@ -74,6 +74,8 @@ def clear_reconciliations():
     data = request.get_json(silent=True) or {}
     if data.get('confirm') != 'YES':
         return jsonify({'ok': False, 'message': t('err_recon_confirm', g.lang)}), 400
+    if str(session.get('user_id', '')) != ADMIN_USER_ID:
+        return jsonify({'status': 'error', 'message': '仅管理员可操作'}), 403
     with get_db() as db:
         db.execute('DELETE FROM reconciliations')
         db.commit()
