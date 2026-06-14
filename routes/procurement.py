@@ -267,6 +267,19 @@ def api_procurement_batch_detail(id):
             items = data.get('items', [])
             if not items or not isinstance(items, list):
                 return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
+            # For SETTLED batches, preserve historical unit prices on re-insert. The
+            # frontend UI locks the cart for settled batches, but if the user somehow
+            # manages to save, the historical snapshot must not be overwritten with the
+            # current product price. For UNSETTLED, fall back to current product price
+            # (intentional: the user may need to fix entry errors by re-editing).
+            is_settled = bool(row['settled_at'])
+            historical_prices: dict = {}
+            if is_settled:
+                existing_items = db.execute(
+                    'SELECT product_id, unit_price FROM procurement_items WHERE batch_id=?',
+                    (id,),
+                ).fetchall()
+                historical_prices = {it['product_id']: it['unit_price'] for it in existing_items}
             total = 0.0
             item_rows = []
             for item in items:
@@ -277,7 +290,10 @@ def api_procurement_batch_detail(id):
                 product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
                 if not product:
                     continue
-                unit_price = product['price']
+                # Settled: keep historical price. Unsettled: use current product price.
+                # If a NEW product is added to a settled batch (shouldn't happen via UI,
+                # but the API doesn't enforce it), use the current product price for the new row.
+                unit_price = historical_prices.get(pid, product['price'])
                 subtotal = unit_price * qty
                 total += subtotal
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
