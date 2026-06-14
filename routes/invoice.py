@@ -101,6 +101,21 @@ def api_invoice_record_create():
     if status == 'done' and not (data.get('invoice_number') or '').strip():
         return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
     user_id = g.user['id'] if hasattr(g, 'user') and g.user else None
+    batch_id = data.get('procurement_batch_id')
+    # One batch → one invoice record (enforce uniqueness when batch_id is set)
+    if batch_id:
+        with get_db() as db:
+            existing = db.execute(
+                'SELECT id FROM invoice_records WHERE procurement_batch_id=?', (batch_id,)
+            ).fetchone()
+            if existing:
+                return jsonify({'status': 'error', 'message': '该批次已开过发票，不能重复申请'}), 409
+    # 'done' status requires invoice_number + file (file uploaded via separate endpoint)
+    if status == 'done' and not (data.get('invoice_number') or '').strip():
+        return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
+    # Note: file is uploaded separately, so we can't check it here. Backend accepts 'done'
+    # without file at create time (file will be uploaded immediately after by front-end).
+    # The PUT endpoint enforces file requirement for 'done' status.
     with get_db() as db:
         cur = db.execute(
             'INSERT INTO invoice_records (user_id, procurement_batch_id, type, company, tax_id, amount, date, invoice_number, email, status, file_path, file_type, file_size) '

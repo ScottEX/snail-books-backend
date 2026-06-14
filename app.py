@@ -468,6 +468,11 @@ def init_db():
             db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)')
         except sqlite3.OperationalError:
             pass
+        # One procurement batch can only have one invoice record
+        try:
+            db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_batch ON invoice_records(procurement_batch_id) WHERE procurement_batch_id IS NOT NULL')
+        except sqlite3.OperationalError:
+            pass
         db.execute("UPDATE users SET email = LOWER(email) WHERE email != LOWER(email)")
         count = db.execute('SELECT COUNT(*) FROM partners').fetchone()[0]
         if count == 0:
