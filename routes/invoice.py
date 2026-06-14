@@ -212,10 +212,6 @@ def api_invoice_record_update(rid):
         merged_invoice_no = data.get('invoice_number', rec['invoice_number'] or '').strip()
         if new_status == 'done' and not merged_invoice_no:
             return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
-        # If transitioning to 'done' or already 'done', file must exist
-        merged_file = data.get('file_path', rec['file_path'] or '')
-        if new_status == 'done' and not merged_file:
-            return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='file')}), 400
         # Apply update — only known fields
         updatable = ['procurement_batch_id', 'type', 'company', 'tax_id', 'amount', 'date',
                      'invoice_number', 'email', 'status', 'file_path', 'file_type', 'file_size']
