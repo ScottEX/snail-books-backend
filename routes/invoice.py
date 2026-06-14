@@ -14,6 +14,7 @@ from shared.auth import login_required
 from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import INVOICE_FILE_DIR
+from shared.email import _send_email
 
 invoice_bp = Blueprint('invoice', __name__)
 
@@ -42,6 +43,40 @@ def _validate_date(date_str, lang):
     return None
 
 
+def _send_invoice_email(to_email, status, invoice_number, company, lang='zh-CN'):
+    """Send invoice notification email (pending → submitted, done → issued)."""
+    if not to_email:
+        return
+    if status == 'pending':
+        subjects = {
+            'zh-CN': '【柳味探秘】开票申请已提交',
+            'zh-TW': '【柳味探秘】開票申請已提交',
+            'en': '[LiuWei TanMi] Invoice Request Submitted',
+        }
+        bodies = {
+            'zh-CN': f'<p>您好，</p><p>您的开票申请已收到，我们正在处理中。</p><p>公司：{company}</p><p>如有疑问，请联系我们。</p>',
+            'zh-TW': f'<p>您好，</p><p>您的開票申請已收到，我們正在處理中。</p><p>公司：{company}</p><p>如有疑問，請聯繫我們。</p>',
+            'en': f'<p>Hello,</p><p>Your invoice request has been received and is being processed.</p><p>Company: {company}</p><p>Contact us if you have questions.</p>',
+        }
+    else:  # done
+        no_str = f'发票号：{invoice_number}' if invoice_number else ''
+        no_str_tw = f'發票號：{invoice_number}' if invoice_number else ''
+        no_str_en = f'Invoice No.: {invoice_number}' if invoice_number else ''
+        subjects = {
+            'zh-CN': '【柳味探秘】发票已开具',
+            'zh-TW': '【柳味探秘】發票已開具',
+            'en': '[LiuWei TanMi] Invoice Issued',
+        }
+        bodies = {
+            'zh-CN': f'<p>您好，</p><p>您的发票已开具。</p><p>公司：{company}</p><p>{no_str}</p><p>请登录系统下载查看。</p>',
+            'zh-TW': f'<p>您好，</p><p>您的發票已開具。</p><p>公司：{company}</p><p>{no_str_tw}</p><p>請登入系統下載查看。</p>',
+            'en': f'<p>Hello,</p><p>Your invoice has been issued.</p><p>Company: {company}</p><p>{no_str_en}</p><p>Please log in to download.</p>',
+        }
+    subject = subjects.get(lang, subjects['zh-CN'])
+    body = bodies.get(lang, bodies['zh-CN'])
+    _send_email(to_email, subject, body, '')
+
+
 # ── List (with filter) ──
 @invoice_bp.route('/invoice-records', methods=['GET'])
 @login_required
@@ -49,18 +84,21 @@ def api_invoice_records_list():
     status = request.args.get('status')  # 'pending' | 'done' | None
     type_ = request.args.get('type')      # 'vat' | 'general' | None
     batch_id = request.args.get('procurement_batch_id', type=int)
-    sql = 'SELECT * FROM invoice_records WHERE 1=1'
+    sql = '''SELECT ir.*, pb.batch_number
+             FROM invoice_records ir
+             LEFT JOIN procurement_batches pb ON ir.procurement_batch_id = pb.id
+             WHERE 1=1'''
     params = []
     if status in VALID_STATUS:
-        sql += ' AND status=?'
+        sql += ' AND ir.status=?'
         params.append(status)
     if type_ in VALID_TYPE:
-        sql += ' AND type=?'
+        sql += ' AND ir.type=?'
         params.append(type_)
     if batch_id:
-        sql += ' AND procurement_batch_id=?'
+        sql += ' AND ir.procurement_batch_id=?'
         params.append(batch_id)
-    sql += ' ORDER BY date DESC, id DESC'
+    sql += ' ORDER BY ir.date DESC, ir.id DESC'
     with get_db() as db:
         rows = db.execute(sql, params).fetchall()
     return jsonify([_row_to_dict(r) for r in rows])
@@ -137,6 +175,14 @@ def api_invoice_record_create():
             )
         )
         rid = cur.lastrowid
+    # Send email notification (new record)
+    _send_invoice_email(
+        (data.get('email') or '').strip(),
+        status,
+        (data.get('invoice_number') or '').strip(),
+        data['company'].strip(),
+        getattr(g, 'lang', 'zh-CN')
+    )
     return jsonify({'status': 'ok', 'id': rid})
 
 
@@ -183,6 +229,12 @@ def api_invoice_record_update(rid):
         sets.append('updated_at=CURRENT_TIMESTAMP')
         vals.append(rid)
         db.execute(f'UPDATE invoice_records SET {", ".join(sets)} WHERE id=?', vals)
+    # Send email if transitioning from pending to done
+    if data.get('status') == 'done' and rec.get('status') == 'pending':
+        to_email = (data.get('email') or rec.get('email') or '').strip()
+        inv_no = (data.get('invoice_number') or rec.get('invoice_number') or '').strip()
+        company = (data.get('company') or rec.get('company') or '').strip()
+        _send_invoice_email(to_email, 'done', inv_no, company, getattr(g, 'lang', 'zh-CN'))
     return jsonify({'status': 'ok'})
 
 
@@ -281,8 +333,10 @@ def api_procurement_batches_lite():
     limit = min(request.args.get('limit', 20, type=int), 100)
     with get_db() as db:
         rows = db.execute(
-            'SELECT id, batch_number, date, total FROM procurement_batches '
-            'ORDER BY date DESC, id DESC LIMIT ?',
+            'SELECT pb.id, pb.batch_number, pb.date, pb.total '
+            'FROM procurement_batches pb '
+            'WHERE pb.id NOT IN (SELECT procurement_batch_id FROM invoice_records WHERE procurement_batch_id IS NOT NULL) '
+            'ORDER BY pb.date DESC, pb.id DESC LIMIT ?',
             (limit,)
         ).fetchall()
     return jsonify([dict(r) for r in rows])
