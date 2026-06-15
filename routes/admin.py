@@ -196,13 +196,14 @@ def mark_reviewed():
 
 
 def _build_avatar(user_id):
-    """Return avatar URL or empty string."""
+    """Return avatar URL or empty string. Checks .jpg and .png."""
     import os
     from shared.config import BG_DIR
     avatar_dir = os.path.join(BG_DIR, 'avatars')
-    file_path = os.path.join(avatar_dir, f'{user_id}.jpg')
-    if os.path.isfile(file_path):
-        return f'/api/users/avatar?user_id={user_id}'
+    for ext in ('.jpg', '.png'):
+        file_path = os.path.join(avatar_dir, f'{user_id}{ext}')
+        if os.path.isfile(file_path):
+            return f'/api/users/avatar?user_id={user_id}'
     return ''
 
 
@@ -364,10 +365,7 @@ def restore_user(user_id):
 @admin_bp.route('/admin/invoice')
 @login_required
 def get_invoice():
-    """Get invoice info (admin only)."""
-    _, err = _require_admin()
-    if err:
-        return err
+    """Get invoice info (any logged-in user can read; only admin can write)."""
     with get_db() as db:
         row = db.execute(
             "SELECT value FROM system_config WHERE key='invoice_info'"

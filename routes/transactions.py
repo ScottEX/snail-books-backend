@@ -50,7 +50,7 @@ def transactions():
     where = []
     params = []
     if tx_type:
-        where.append('type=?')
+        where.append('t.type=?')
         params.append(tx_type)
     if date_from:
         where.append('t.date >= ?')
@@ -75,9 +75,10 @@ def transactions():
         rows = db.execute(
             f'SELECT t.*, pb.batch_number AS proc_batch_number, '
             f'pb.settled_at AS proc_settled_at, pb.settled_by AS proc_settled_by, '
-            f'su.username AS proc_settled_by_username FROM transactions t '
+            f'su.username AS proc_settled_by_username, ir.status AS invoice_status FROM transactions t '
             f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
             f'LEFT JOIN users su ON pb.settled_by = su.id '
+            f'LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id '
             f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()

@@ -166,8 +166,9 @@ def api_procurement_batches():
     with get_db() as db:
         total = db.execute('SELECT COUNT(*) FROM procurement_batches').fetchone()[0]
         rows = db.execute(
-            'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '
+            'SELECT pb.*, su.username AS settled_by_username, ir.status AS invoice_status FROM procurement_batches pb '
             'LEFT JOIN users su ON pb.settled_by = su.id '
+            'LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id '
             'ORDER BY pb.date DESC, pb.id DESC LIMIT ? OFFSET ?',
             (per_page, (page - 1) * per_page)
         ).fetchall()
