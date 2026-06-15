@@ -119,7 +119,11 @@ def serve_spa_static(path):
         return resp
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
-        return send_file(index_path, mimetype='text/html')
+        resp = make_response(send_file(index_path, mimetype='text/html'))
+        resp.headers['Cache-Control'] = 'no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
     return MAINTENANCE_HTML, 503, {'Content-Type': 'text/html; charset=utf-8'}
 
 
@@ -127,7 +131,11 @@ def serve_spa_static(path):
 def serve_spa_root(path):
     index_path = os.path.join(FRONTEND_DIR, 'index.html')
     if os.path.isfile(index_path):
-        return send_file(index_path, mimetype='text/html')
+        resp = make_response(send_file(index_path, mimetype='text/html'))
+        resp.headers['Cache-Control'] = 'no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
     return MAINTENANCE_HTML, 503, {'Content-Type': 'text/html; charset=utf-8'}
 
 
