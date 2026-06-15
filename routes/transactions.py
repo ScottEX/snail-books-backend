@@ -50,7 +50,7 @@ def transactions():
     where = []
     params = []
     if tx_type:
-        where.append('type=?')
+        where.append('t.type=?')
         params.append(tx_type)
     if date_from:
         where.append('t.date >= ?')
