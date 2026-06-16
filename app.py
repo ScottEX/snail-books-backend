@@ -454,6 +454,7 @@ def init_db():
                 file_path TEXT DEFAULT '',
                 file_type TEXT DEFAULT '',
                 file_size INTEGER DEFAULT 0,
+                note TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -562,6 +563,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN delete_reminded INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN note TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
 
