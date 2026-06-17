@@ -43,8 +43,17 @@ def api_products():
         if missing:
             return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
         with get_db() as db:
+            old = db.execute('SELECT * FROM products WHERE id=?', (data['id'],)).fetchone()
+            if not old:
+                return jsonify({'status': 'error', 'message': _t('err_not_found', g.lang)}), 404
             db.execute('UPDATE products SET name=?, spec=?, unit=?, price=?, supplier=?, note=? WHERE id=?',
-                       (data['name'], data.get('spec', ''), data.get('unit', ''), data.get('price', 0), data.get('supplier', ''), data.get('note', ''), data['id']))
+                       (data['name'],
+                        'spec' in data and data['spec'] is not None and data['spec'] != '' and data['spec'] or old['spec'],
+                        'unit' in data and data['unit'] is not None and data['unit'] != '' and data['unit'] or old['unit'],
+                        (data['price'] if ('price' in data and data['price'] is not None and data['price'] != '') else old['price']),
+                        'supplier' in data and data['supplier'] is not None and data['supplier'] != '' and data['supplier'] or old['supplier'],
+                        'note' in data and data['note'] is not None and data['note'] != '' and data['note'] or old['note'],
+                        data['id']))
             db.commit()
         return jsonify({'status': 'ok'})
     if request.method == 'DELETE':
