@@ -152,10 +152,10 @@ def api_procurement_batches():
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
                     (batch_id, pid, name, spec, up, qty, round(sub, 2))
                 )
-            # Sync an expense transaction
+            # Sync an expense transaction (amount=0 until settled)
             cur = db.execute(
                 "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (round(total, 2), data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
+                (0, data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
             )
             db.commit()
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -323,9 +323,10 @@ def api_procurement_batch_detail(id):
                 (data['date'], data['payment_method'], data.get('category', '采购'),
                  round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
             )
+            expense_amount = round(total, 2) if is_settled else 0
             cur = db.execute(
                 "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=? AND category=? AND date=? AND amount=? AND account=?",
-                (round(total, 2), data.get('category', '采购'), data['payment_method'],
+                (expense_amount, data.get('category', '采购'), data['payment_method'],
                  data.get('note', ''), data['date'], images_json, thumbs_json, id, id,
                  old_batch.get('category', '采购'), old_batch['date'], old_batch['total'], old_batch['payment_method'])
             )
@@ -333,7 +334,7 @@ def api_procurement_batch_detail(id):
             if cur.rowcount == 0:
                 db.execute(
                     "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=?",
-                    (round(total, 2), data.get('category', '采购'), data['payment_method'],
+                    (expense_amount, data.get('category', '采购'), data['payment_method'],
                      data.get('note', ''), data['date'], images_json, thumbs_json, id, id)
                 )
             db.commit()
@@ -359,7 +360,7 @@ def api_procurement_batch_detail(id):
 def api_procurement_batch_settle(id):
     """Mark a procurement batch as settled. One-way: cannot be undone."""
     with get_db() as db:
-        row = db.execute('SELECT id, settled_at FROM procurement_batches WHERE id=?', (id,)).fetchone()
+        row = db.execute('SELECT id, settled_at, total FROM procurement_batches WHERE id=?', (id,)).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': _t('err_not_found', g.lang)}), 404
         if row['settled_at']:
@@ -367,6 +368,11 @@ def api_procurement_batch_settle(id):
         db.execute(
             'UPDATE procurement_batches SET settled_at=CURRENT_TIMESTAMP, settled_by=? WHERE id=?',
             (g.user_id, id)
+        )
+        # Update the linked expense transaction — amount goes from 0 to batch total
+        db.execute(
+            "UPDATE transactions SET amount=? WHERE procurement_batch_id=? AND type='expense'",
+            (row['total'], id)
         )
         db.commit()
         # Return the updated batch with settled_by_username
