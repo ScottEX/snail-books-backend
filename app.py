@@ -66,7 +66,7 @@ MAINTENANCE_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>蓝姐螺蛳粉</title>
+<title>柳味探秘</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
