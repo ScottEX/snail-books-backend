@@ -233,7 +233,7 @@ def procurement_stats():
             "SELECT COALESCE(SUM(total),0) FROM procurement_batches"
         ).fetchone()[0]
         total_income = db.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income'"
+            "SELECT COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) FROM daily_revenue"
         ).fetchone()[0]
         batch_count = db.execute("SELECT COUNT(*) FROM procurement_batches").fetchone()[0]
         margin_pct = round(
