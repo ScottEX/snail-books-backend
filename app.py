@@ -536,6 +536,10 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
         try:
+            db.execute("ALTER TABLE procurements ADD COLUMN unit TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
             db.execute("ALTER TABLE dividends ADD COLUMN date TEXT DEFAULT ''")
         except:
             pass
@@ -573,6 +577,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN delete_reminded INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP")
         except sqlite3.OperationalError:
             pass
         try:
