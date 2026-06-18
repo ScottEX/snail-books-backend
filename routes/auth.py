@@ -83,7 +83,7 @@ def login():
             session['username'] = user['username']
             session['session_id'] = new_session_id
 
-            db.execute("DELETE FROM user_tokens WHERE created_at < datetime('now', '-90 days')")
+            db.execute("DELETE FROM user_tokens WHERE created_at < ?", ((datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
             token = secrets.token_hex(32)
             db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user['id'], token, new_session_id))
             db.commit()

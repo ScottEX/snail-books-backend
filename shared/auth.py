@@ -324,16 +324,21 @@ def schedule_delete(user_id, by_who, days):
 
 def send_deletion_reminders():
     """Send email reminder 8 hours before scheduled deletion (trilingual)."""
+    from datetime import datetime, timedelta
     from .db import get_db
     from shared.email import _send_email
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    window_end = (datetime.now() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
 
     with get_db() as db:
         due = db.execute(
             """SELECT id, email, delete_scheduled, delete_by FROM users
                WHERE delete_scheduled IS NOT NULL
                  AND delete_reminded = 0
-                 AND delete_scheduled <= datetime('now', '+16 hours')
-                 AND delete_scheduled > datetime('now', '+8 hours')"""
+                 AND delete_scheduled <= ?
+                 AND delete_scheduled > ?""",
+            (window_end, now)
         ).fetchall()
 
         admin_row = db.execute(f"SELECT email FROM users WHERE id={ADMIN_USER_ID}").fetchone()
@@ -385,8 +390,10 @@ def cleanup_expired_deletions():
     from datetime import datetime
 
     with get_db() as db:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         expired = db.execute(
-            "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= datetime('now', '+8 hours')"
+            "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= ?",
+            (now,)
         ).fetchall()
 
     for row in expired:
