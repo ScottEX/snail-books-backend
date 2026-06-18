@@ -332,8 +332,8 @@ def send_deletion_reminders():
             """SELECT id, email, delete_scheduled, delete_by FROM users
                WHERE delete_scheduled IS NOT NULL
                  AND delete_reminded = 0
-                 AND delete_scheduled <= datetime('now', 'localtime', '+8 hours')
-                 AND delete_scheduled > datetime('now', 'localtime')"""
+                 AND delete_scheduled <= datetime('now', '+16 hours')
+                 AND delete_scheduled > datetime('now', '+8 hours')"""
         ).fetchall()
 
         admin_row = db.execute(f"SELECT email FROM users WHERE id={ADMIN_USER_ID}").fetchone()
@@ -386,7 +386,7 @@ def cleanup_expired_deletions():
 
     with get_db() as db:
         expired = db.execute(
-            "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= datetime('now', 'localtime')"
+            "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= datetime('now', '+8 hours')"
         ).fetchall()
 
     for row in expired:
