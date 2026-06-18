@@ -27,7 +27,12 @@ MAX_BG_SIZE = 5 * 1024 * 1024
 def users_me():
     with get_db() as db:
         user = db.execute(
-            'SELECT id, username, email, signature, created_at, enforce_single_session, session_timeout_hours FROM users WHERE id=?',
+            '''SELECT u.id, u.username, u.email, u.signature, u.created_at,
+                      u.enforce_single_session, u.session_timeout_hours,
+                      p.name as partner_name
+               FROM users u
+               LEFT JOIN partners p ON p.linked_user_id = u.id
+               WHERE u.id=?''',
             (g.user_id,)
         ).fetchone()
     if not user:
