@@ -341,8 +341,13 @@ def update_user(user_id):
             db.execute(f'UPDATE users SET {", ".join(updates)} WHERE id=?', params)
             # 同步合伙人姓名
             if 'real_name' in data:
+                old = db.execute('SELECT name FROM partners WHERE linked_user_id=?', (user_id,)).fetchone()
+                old_name = old['name'] if old else ''
                 db.execute('UPDATE partners SET name=? WHERE linked_user_id=?',
                            (data['real_name'], user_id))
+                if old_name and old_name != data['real_name']:
+                    db.execute('UPDATE dividends SET partner=? WHERE partner=?',
+                               (data['real_name'], old_name))
             # 关联合伙人换绑/解绑
             if 'linked_partner_id' in data:
                 # 先解除此用户旧的关联
@@ -356,7 +361,12 @@ def update_user(user_id):
                         rn = db.execute('SELECT real_name FROM users WHERE id=?', (user_id,)).fetchone()
                         rn = (rn['real_name'] or '') if rn else ''
                     if rn:
+                        old2 = db.execute('SELECT name FROM partners WHERE id=?', (pid,)).fetchone()
+                        old_name2 = old2['name'] if old2 else ''
                         db.execute('UPDATE partners SET name=? WHERE id=?', (rn, pid))
+                        if old_name2 and old_name2 != rn:
+                            db.execute('UPDATE dividends SET partner=? WHERE partner=?',
+                                       (rn, old_name2))
             db.commit()
 
     return jsonify({'status': 'ok'})
