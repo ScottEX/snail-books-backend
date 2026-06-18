@@ -180,7 +180,11 @@ def dividends():
         return jsonify({'status': 'ok'})
     with get_db() as db:
         rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
+    data = [dict(r) for r in rows]
+    for d in data:
+        d['name_pinyin'] = _to_pinyin(d.get('partner', ''))
+        d['name_tw'] = _to_traditional(d.get('partner', ''))
+    return jsonify(data)
 
 
 @bp.route('/dividends/<int:id>', methods=['DELETE'])
