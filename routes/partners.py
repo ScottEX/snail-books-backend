@@ -5,6 +5,25 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
+from shared.auth import login_required
+from shared.db import get_db
+
+
+def _to_pinyin(name: str) -> str:
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan LiuFu'"""
+    if not name:
+        return ''
+    try:
+        from pypinyin import pinyin, Style
+        parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
+        if len(parts) <= 1:
+            return parts[0].capitalize() if parts else ''
+        surname = parts[0].capitalize()
+        given = ''.join(p.capitalize() for p in parts[1:])
+        return f'{surname} {given}'
+    except ImportError:
+        return name
+
 # Expire store for share links
 EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
 ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
@@ -98,7 +117,10 @@ def list_partners():
                              FROM partners p
                              LEFT JOIN dividends d ON d.partner = p.name
                              GROUP BY p.id""").fetchall()
-    return jsonify([dict(r) for r in rows])
+    data = [dict(r) for r in rows]
+    for d in data:
+        d['name_pinyin'] = _to_pinyin(d.get('name', ''))
+    return jsonify(data)
 
 
 @bp.route('/partners/<int:id>', methods=['DELETE'])
