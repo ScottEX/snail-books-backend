@@ -21,13 +21,18 @@ MAX_BG_SIZE = 5 * 1024 * 1024
 
 
 def _to_pinyin(name: str) -> str:
-    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan Liufu'"""
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan LiuFu'"""
     if not name:
         return ''
     try:
         from pypinyin import pinyin, Style
-        parts = pinyin(name, style=Style.NORMAL)
-        return ' '.join(p[0].capitalize() for p in parts if p)
+        parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
+        if len(parts) <= 1:
+            return parts[0].capitalize() if parts else ''
+        # 姓 + 空格 + 名连写（每个字首字母大写）
+        surname = parts[0].capitalize()
+        given = ''.join(p.capitalize() for p in parts[1:])
+        return f'{surname} {given}'
     except ImportError:
         return name
 
