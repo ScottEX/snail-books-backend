@@ -36,7 +36,7 @@ def validate_username(username):
 
 def validate_required(data, *fields):
     """Return list of missing field names; empty if all present."""
-    return [f for f in fields if data.get(f) is None]
+    return [f for f in fields if data.get(f) in (None, '')]
 
 
 def validate_email(email):
