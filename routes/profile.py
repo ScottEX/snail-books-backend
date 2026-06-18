@@ -20,6 +20,18 @@ ALLOWED_BG_EXT = {'jpg', 'jpeg', 'png', 'webp'}
 MAX_BG_SIZE = 5 * 1024 * 1024
 
 
+def _to_pinyin(name: str) -> str:
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan Liufu'"""
+    if not name:
+        return ''
+    try:
+        from pypinyin import pinyin, Style
+        parts = pinyin(name, style=Style.NORMAL)
+        return ' '.join(p[0].capitalize() for p in parts if p)
+    except ImportError:
+        return name
+
+
 # ── User info ──
 
 @profile_bp.route('/users/me')
@@ -27,7 +39,7 @@ MAX_BG_SIZE = 5 * 1024 * 1024
 def users_me():
     with get_db() as db:
         user = db.execute(
-            '''SELECT u.id, u.username, u.email, u.signature, u.created_at,
+            '''SELECT u.id, u.username, u.email, u.signature, u.real_name, u.created_at,
                       u.enforce_single_session, u.session_timeout_hours,
                       p.name as partner_name
                FROM users u
@@ -38,6 +50,8 @@ def users_me():
     if not user:
         return jsonify({'status': 'error', 'message': 'User not found'}), 404
     d = dict(user)
+    if d.get('real_name'):
+        d['real_name_pinyin'] = _to_pinyin(d['real_name'])
     if d.get('enforce_single_session') is None:
         d['enforce_single_session'] = 1
     if d.get('session_timeout_hours') is None:

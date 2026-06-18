@@ -8,6 +8,18 @@ from shared.auth import login_required, schedule_delete, cancel_delete, ADMIN_US
 admin_bp = Blueprint('admin', __name__)
 
 
+def _to_pinyin(name: str) -> str:
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan Liufu'"""
+    if not name:
+        return ''
+    try:
+        from pypinyin import pinyin, Style
+        parts = pinyin(name, style=Style.NORMAL)
+        return ' '.join(p[0].capitalize() for p in parts if p)
+    except ImportError:
+        return name
+
+
 def _require_admin():
     """Return (user_id, error_response) — error_response is None if admin."""
     uid = str(session.get('user_id', ''))
@@ -255,6 +267,8 @@ def get_user_detail(user_id):
             'phone': row['phone'] or '',
             'role': row['role'] or '',
             'remark': row['remark'] or '',
+            'real_name': row['real_name'] or '',
+            'real_name_pinyin': _to_pinyin(row['real_name'] or ''),
             'is_disabled': bool(row['is_disabled']),
             'reviewed': bool(row['reviewed']),
             'created_at': row['created_at'] or '',
