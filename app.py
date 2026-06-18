@@ -263,6 +263,7 @@ def init_db():
                 reset_code TEXT,
                 reset_expires TIMESTAMP,
                 signature TEXT DEFAULT '',
+                real_name TEXT DEFAULT '',
                 enforce_single_session INTEGER DEFAULT 0,
                 session_timeout_hours INTEGER DEFAULT 24,
                 current_session_id TEXT DEFAULT '',
@@ -555,6 +556,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN remark TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN real_name TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
         try:

@@ -228,7 +228,7 @@ def get_user_detail(user_id):
 
     with get_db() as db:
         row = db.execute(
-            '''SELECT id, username, email, phone, role, remark,
+            '''SELECT id, username, email, phone, role, remark, real_name,
                       is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
@@ -290,7 +290,7 @@ def update_user(user_id):
 
         updates = []
         params = []
-        for field in ['role', 'remark', 'phone', 'email']:
+        for field in ['role', 'remark', 'phone', 'email', 'real_name']:
             if field in data:
                 updates.append(f'{field}=?')
                 params.append(data[field])
