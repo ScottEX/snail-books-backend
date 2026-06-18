@@ -572,6 +572,18 @@ def init_db():
             db.execute("ALTER TABLE invoice_records ADD COLUMN note TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        try:
+            db.execute("ALTER TABLE partners ADD COLUMN init_capital REAL NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE partners ADD COLUMN init_date TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE partners ADD COLUMN add_date TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
 
 init_db()
