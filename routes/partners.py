@@ -24,6 +24,17 @@ def _to_pinyin(name: str) -> str:
         return f'{given} {surname}'
     except ImportError:
         return name
+
+
+def _to_traditional(name: str) -> str:
+    """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
+    if not name:
+        return ''
+    try:
+        from opencc import OpenCC
+        return OpenCC('s2t').convert(name)
+    except ImportError:
+        return name
 # Expire store for share links
 EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
 ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
@@ -120,6 +131,7 @@ def list_partners():
     data = [dict(r) for r in rows]
     for d in data:
         d['name_pinyin'] = _to_pinyin(d.get('name', ''))
+        d['name_tw'] = _to_traditional(d.get('name', ''))
     return jsonify(data)
 
 
