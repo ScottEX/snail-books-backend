@@ -124,8 +124,10 @@ def upload_expense_images():
 def list_partners():
     with get_db() as db:
         rows = db.execute("""SELECT p.*, COALESCE(SUM(d.amount),0) as total_dividends,
-                                    (p.investment - p.init_capital) as add_amount
+                                    (p.investment - p.init_capital) as add_amount,
+                                    u.role as linked_user_role
                              FROM partners p
+                             LEFT JOIN users u ON u.id = p.linked_user_id
                              LEFT JOIN dividends d ON d.partner = p.name
                              GROUP BY p.id""").fetchall()
     data = [dict(r) for r in rows]
