@@ -257,22 +257,28 @@ def get_user_detail(user_id):
     with get_db() as db:
         row = db.execute(
             '''SELECT id, username, email, phone, role, remark, real_name,
-                      is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by
+                      is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by, last_login_at
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
-        last_login = None
-        session_row = db.execute(
-            '''SELECT last_seen_at FROM user_sessions
-               WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1''',
-            (user_id,)
-        ).fetchone()
-        if session_row:
-            last_login = session_row['last_seen_at']
+        last_login = row['last_login_at'] or None
+        if not last_login:
+            session_row = db.execute(
+                '''SELECT last_seen_at FROM user_sessions
+                   WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1''',
+                (user_id,)
+            ).fetchone()
+            if session_row:
+                last_login = session_row['last_seen_at']
 
         avatar = _build_avatar(user_id)
+
+        # 查关联合伙人
+        linked = db.execute(
+            'SELECT id, name FROM partners WHERE linked_user_id=?', (user_id,)
+        ).fetchone()
 
     return jsonify({
         'status': 'ok',
@@ -294,6 +300,10 @@ def get_user_detail(user_id):
             'signature': row['signature'] or '',
             'delete_scheduled': row['delete_scheduled'] or '',
             'delete_by': row['delete_by'] or '',
+            'linked_partner_id': linked['id'] if linked else None,
+            'linked_partner_name': linked['name'] if linked else '',
+            'linked_partner_name_pinyin': _to_pinyin(linked['name']) if linked else '',
+            'linked_partner_name_tw': _to_traditional(linked['name']) if linked else '',
         }
     })
 
@@ -334,9 +344,37 @@ def update_user(user_id):
             db.execute(f'UPDATE users SET {", ".join(updates)} WHERE id=?', params)
             # 同步合伙人姓名
             if 'real_name' in data:
+                old = db.execute('SELECT name FROM partners WHERE linked_user_id=?', (user_id,)).fetchone()
+                old_name = old['name'] if old else ''
                 db.execute('UPDATE partners SET name=? WHERE linked_user_id=?',
                            (data['real_name'], user_id))
-            db.commit()
+                if old_name and old_name != data['real_name']:
+                    db.execute('UPDATE dividends SET partner=? WHERE partner=?',
+                               (data['real_name'], old_name))
+        # 关联合伙人换绑/解绑 — 独立于 updates，linked_partner_id 不写 users 表
+        if 'linked_partner_id' in data:
+            # 先解除此用户旧的关联
+            db.execute('UPDATE partners SET linked_user_id=NULL WHERE linked_user_id=?', (user_id,))
+            pid = data['linked_partner_id']
+            if pid is not None and pid != 0:
+                # 检查该合伙人是否已被其他用户关联
+                existing = db.execute('SELECT linked_user_id FROM partners WHERE id=?', (pid,)).fetchone()
+                if existing and existing['linked_user_id'] and str(existing['linked_user_id']) != str(user_id):
+                    return jsonify({'status': 'error', 'message': '该合伙人已被其他用户关联'}), 409
+                db.execute('UPDATE partners SET linked_user_id=? WHERE id=?', (user_id, pid))
+                # 同步合伙人姓名为用户真实姓名
+                rn = data.get('real_name')
+                if not rn:
+                    rn = db.execute('SELECT real_name FROM users WHERE id=?', (user_id,)).fetchone()
+                    rn = (rn['real_name'] or '') if rn else ''
+                if rn:
+                    old2 = db.execute('SELECT name FROM partners WHERE id=?', (pid,)).fetchone()
+                    old_name2 = old2['name'] if old2 else ''
+                    db.execute('UPDATE partners SET name=? WHERE id=?', (rn, pid))
+                    if old_name2 and old_name2 != rn:
+                        db.execute('UPDATE dividends SET partner=? WHERE partner=?',
+                                   (rn, old_name2))
+        db.commit()
 
     return jsonify({'status': 'ok'})
 

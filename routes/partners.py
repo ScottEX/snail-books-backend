@@ -124,8 +124,10 @@ def upload_expense_images():
 def list_partners():
     with get_db() as db:
         rows = db.execute("""SELECT p.*, COALESCE(SUM(d.amount),0) as total_dividends,
-                                    (p.investment - p.init_capital) as add_amount
+                                    (p.investment - p.init_capital) as add_amount,
+                                    u.role as linked_user_role
                              FROM partners p
+                             LEFT JOIN users u ON u.id = p.linked_user_id
                              LEFT JOIN dividends d ON d.partner = p.name
                              GROUP BY p.id""").fetchall()
     data = [dict(r) for r in rows]
@@ -180,7 +182,11 @@ def dividends():
         return jsonify({'status': 'ok'})
     with get_db() as db:
         rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()
-    return jsonify([dict(r) for r in rows])
+    data = [dict(r) for r in rows]
+    for d in data:
+        d['name_pinyin'] = _to_pinyin(d.get('partner', ''))
+        d['name_tw'] = _to_traditional(d.get('partner', ''))
+    return jsonify(data)
 
 
 @bp.route('/dividends/<int:id>', methods=['DELETE'])
