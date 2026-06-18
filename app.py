@@ -318,6 +318,9 @@ def init_db():
                 name TEXT NOT NULL,
                 share REAL NOT NULL,
                 investment REAL NOT NULL DEFAULT 0,
+                init_capital REAL NOT NULL DEFAULT 0,
+                init_date TEXT DEFAULT '',
+                add_date TEXT DEFAULT '',
                 status TEXT DEFAULT '',
                 note TEXT DEFAULT '',
                 user_id INTEGER REFERENCES users(id)
