@@ -320,6 +320,10 @@ def update_user(user_id):
         if updates:
             params.append(user_id)
             db.execute(f'UPDATE users SET {", ".join(updates)} WHERE id=?', params)
+            # 同步合伙人姓名
+            if 'real_name' in data:
+                db.execute('UPDATE partners SET name=? WHERE linked_user_id=?',
+                           (data['real_name'], user_id))
             db.commit()
 
     return jsonify({'status': 'ok'})
