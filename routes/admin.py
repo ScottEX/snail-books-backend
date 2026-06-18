@@ -356,6 +356,10 @@ def update_user(user_id):
             db.execute('UPDATE partners SET linked_user_id=NULL WHERE linked_user_id=?', (user_id,))
             pid = data['linked_partner_id']
             if pid is not None and pid != 0:
+                # 检查该合伙人是否已被其他用户关联
+                existing = db.execute('SELECT linked_user_id FROM partners WHERE id=?', (pid,)).fetchone()
+                if existing and existing['linked_user_id'] and str(existing['linked_user_id']) != str(user_id):
+                    return jsonify({'status': 'error', 'message': '该合伙人已被其他用户关联'}), 409
                 db.execute('UPDATE partners SET linked_user_id=? WHERE id=?', (user_id, pid))
                 # 同步合伙人姓名为用户真实姓名
                 rn = data.get('real_name')
