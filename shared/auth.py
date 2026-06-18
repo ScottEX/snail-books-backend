@@ -132,8 +132,8 @@ def login_required(f):
             try:
                 with get_db() as db:
                     db.execute(
-                        "UPDATE user_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE session_id=?",
-                        (validated_session_id,)
+                        "UPDATE user_sessions SET last_seen_at=? WHERE session_id=?",
+                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), validated_session_id)
                     )
                     db.commit()
             except:

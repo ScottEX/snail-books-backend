@@ -1,7 +1,7 @@
 """Profile routes — user info, avatar, cover, password, email, auth prefs."""
 
 import os, re, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, session, g, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -94,8 +94,8 @@ def auth_prefs():
                             cur_sid = row['session_id']
                 if cur_sid:
                     db.execute(
-                        'UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
-                        (g.user_id, cur_sid)
+                        'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
+                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid)
                     )
                     db.execute(
                         'DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id != ?)',
@@ -283,7 +283,7 @@ def change_password():
         db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
         # Revoke all other sessions — keep current one (user just verified old password)
         cur_sid = session.get('session_id', '')
-        db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (g.user_id, cur_sid))
+        db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
@@ -306,7 +306,7 @@ def profile_email_send_code():
             return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
         code = generate_code()
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
-                   (code, datetime.now() + timedelta(minutes=10), g.user_id))
+                   (code, datetime.now(timezone.utc) + timedelta(minutes=10), g.user_id))
         db.commit()
     send_email_change_code(new_email, code, g.lang)
     return jsonify({'status': 'ok', 'message': '验证码已发送'})
@@ -324,13 +324,13 @@ def profile_email_verify():
         user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user or user['verification_code'] != code:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
-        if user['code_expires'] and datetime.now() > datetime.fromisoformat(user['code_expires']):
+        if user['code_expires'] and datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
             return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
                    (new_email, g.user_id))
         # Revoke all other sessions — keep current one (user just verified code)
         cur_sid = session.get('session_id', '')
-        db.execute("UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (g.user_id, cur_sid))
+        db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
     return jsonify({'status': 'ok', 'message': '邮箱修改成功'})

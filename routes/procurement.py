@@ -90,8 +90,8 @@ def api_add_cart():
         if not product:
             return jsonify({'status': 'error', 'message': 'product not found'}), 404
         db.execute(
-            'INSERT OR REPLACE INTO procurement_cart (product_id, product_name, quantity, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)',
-            (product_id, product['name'], quantity)
+            'INSERT OR REPLACE INTO procurement_cart (product_id, product_name, quantity, updated_at) VALUES (?,?,?,?)',
+            (product_id, product['name'], quantity, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         )
         db.commit()
         return jsonify({'status': 'ok'})
@@ -163,8 +163,8 @@ def api_procurement_batches():
                 )
             # Sync an expense transaction (amount=0 until settled)
             cur = db.execute(
-                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id) VALUES ('expense',?,?,?,?,?,?,?,?)",
-                (0, data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id)
+                "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id,created_at) VALUES ('expense',?,?,?,?,?,?,?,?,?)",
+                (0, data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             db.commit()
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
@@ -375,8 +375,8 @@ def api_procurement_batch_settle(id):
         if row['settled_at']:
             return jsonify({'status': 'error', 'message': _t('err_already_settled', g.lang)}), 409
         db.execute(
-            'UPDATE procurement_batches SET settled_at=CURRENT_TIMESTAMP, settled_by=? WHERE id=?',
-            (g.user_id, id)
+            'UPDATE procurement_batches SET settled_at=?, settled_by=? WHERE id=?',
+            (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, id)
         )
         # Update the linked expense transaction — amount goes from 0 to batch total
         db.execute(

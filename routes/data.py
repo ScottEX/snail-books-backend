@@ -138,11 +138,12 @@ def create_reconciliation():
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by, user_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 channel_total, real_total, diff, reconciled_by, user_id, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (dt, bill_date, card_balance, cash_balance, balances['dine_in'], balances['meituan'],
                         balances['flash_sale'], balances['jd'], balances['tuan'],
-                        channel_total, real_total, diff, reconciled_by, g.user_id))
+                        channel_total, real_total, diff, reconciled_by, g.user_id,
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             db.commit()
             new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
             return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
