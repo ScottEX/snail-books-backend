@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 from shared.db import get_db
 from shared.auth import login_required
@@ -28,13 +29,14 @@ def transactions():
             if data['account'] not in ('payCash', 'payWechat', 'payAlipay'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
             db.execute(
-                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id) VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
                  data.get('note', ''),
                  json.dumps(data.get('images', [])),
                  json.dumps(data.get('thumb_images', [])),
                  data.get('date', ''),
-                 g.user_id)
+                 g.user_id,
+                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             db.commit()
         return jsonify({'status': 'ok'})

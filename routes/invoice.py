@@ -223,7 +223,8 @@ def api_invoice_record_update(rid):
                 vals.append(data[k])
         if not sets:
             return jsonify({'status': 'ok'})  # no-op
-        sets.append('updated_at=CURRENT_TIMESTAMP')
+        sets.append('updated_at=?')
+        vals.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         vals.append(rid)
         db.execute(f'UPDATE invoice_records SET {", ".join(sets)} WHERE id=?', vals)
     # Send email if transitioning from pending to done
@@ -310,8 +311,8 @@ def api_invoice_record_upload(rid):
             paths = []
         paths.append(rel_path)
         db.execute(
-            'UPDATE invoice_records SET file_path=?, file_type=?, file_size=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            (_json.dumps(paths), content_type, size, rid)
+            'UPDATE invoice_records SET file_path=?, file_type=?, file_size=?, updated_at=? WHERE id=?',
+            (_json.dumps(paths), content_type, size, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rid)
         )
     return jsonify({'status': 'ok', 'file_path': rel_path, 'file_type': content_type, 'file_size': size})
 
