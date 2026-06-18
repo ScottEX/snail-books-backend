@@ -348,26 +348,26 @@ def update_user(user_id):
                 if old_name and old_name != data['real_name']:
                     db.execute('UPDATE dividends SET partner=? WHERE partner=?',
                                (data['real_name'], old_name))
-            # 关联合伙人换绑/解绑
-            if 'linked_partner_id' in data:
-                # 先解除此用户旧的关联
-                db.execute('UPDATE partners SET linked_user_id=NULL WHERE linked_user_id=?', (user_id,))
-                pid = data['linked_partner_id']
-                if pid is not None and pid != 0:
-                    db.execute('UPDATE partners SET linked_user_id=? WHERE id=?', (user_id, pid))
-                    # 同步合伙人姓名为用户真实姓名
-                    rn = data.get('real_name')
-                    if not rn:
-                        rn = db.execute('SELECT real_name FROM users WHERE id=?', (user_id,)).fetchone()
-                        rn = (rn['real_name'] or '') if rn else ''
-                    if rn:
-                        old2 = db.execute('SELECT name FROM partners WHERE id=?', (pid,)).fetchone()
-                        old_name2 = old2['name'] if old2 else ''
-                        db.execute('UPDATE partners SET name=? WHERE id=?', (rn, pid))
-                        if old_name2 and old_name2 != rn:
-                            db.execute('UPDATE dividends SET partner=? WHERE partner=?',
-                                       (rn, old_name2))
-            db.commit()
+        # 关联合伙人换绑/解绑 — 独立于 updates，linked_partner_id 不写 users 表
+        if 'linked_partner_id' in data:
+            # 先解除此用户旧的关联
+            db.execute('UPDATE partners SET linked_user_id=NULL WHERE linked_user_id=?', (user_id,))
+            pid = data['linked_partner_id']
+            if pid is not None and pid != 0:
+                db.execute('UPDATE partners SET linked_user_id=? WHERE id=?', (user_id, pid))
+                # 同步合伙人姓名为用户真实姓名
+                rn = data.get('real_name')
+                if not rn:
+                    rn = db.execute('SELECT real_name FROM users WHERE id=?', (user_id,)).fetchone()
+                    rn = (rn['real_name'] or '') if rn else ''
+                if rn:
+                    old2 = db.execute('SELECT name FROM partners WHERE id=?', (pid,)).fetchone()
+                    old_name2 = old2['name'] if old2 else ''
+                    db.execute('UPDATE partners SET name=? WHERE id=?', (rn, pid))
+                    if old_name2 and old_name2 != rn:
+                        db.execute('UPDATE dividends SET partner=? WHERE partner=?',
+                                   (rn, old_name2))
+        db.commit()
 
     return jsonify({'status': 'ok'})
 
