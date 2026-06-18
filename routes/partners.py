@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
 # Expire store for share links
@@ -139,7 +140,7 @@ def dividends():
         with get_db() as db:
             for item in items:
                 db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
-                           (item['partner'], item['amount'], item.get('note', ''), item.get('date', ''), g.user_id))
+                           (item['partner'], item['amount'], item.get('note', ''), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
             db.commit()
         return jsonify({'status': 'ok'})
     with get_db() as db:
