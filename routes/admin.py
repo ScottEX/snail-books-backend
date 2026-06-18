@@ -301,6 +301,8 @@ def get_user_detail(user_id):
             'delete_by': row['delete_by'] or '',
             'linked_partner_id': linked['id'] if linked else None,
             'linked_partner_name': linked['name'] if linked else '',
+            'linked_partner_name_pinyin': _to_pinyin(linked['name']) if linked else '',
+            'linked_partner_name_tw': _to_traditional(linked['name']) if linked else '',
         }
     })
 
