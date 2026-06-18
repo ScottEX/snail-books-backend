@@ -25,6 +25,17 @@ def _to_pinyin(name: str) -> str:
         return name
 
 
+def _to_traditional(name: str) -> str:
+    """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
+    if not name:
+        return ''
+    try:
+        from opencc import OpenCC
+        return OpenCC('s2t').convert(name)
+    except ImportError:
+        return name
+
+
 def _require_admin():
     """Return (user_id, error_response) — error_response is None if admin."""
     uid = str(session.get('user_id', ''))
@@ -274,6 +285,7 @@ def get_user_detail(user_id):
             'remark': row['remark'] or '',
             'real_name': row['real_name'] or '',
             'real_name_pinyin': _to_pinyin(row['real_name'] or ''),
+            'real_name_tw': _to_traditional(row['real_name'] or ''),
             'is_disabled': bool(row['is_disabled']),
             'reviewed': bool(row['reviewed']),
             'created_at': row['created_at'] or '',

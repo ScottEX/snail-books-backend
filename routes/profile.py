@@ -37,6 +37,17 @@ def _to_pinyin(name: str) -> str:
         return name
 
 
+def _to_traditional(name: str) -> str:
+    """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
+    if not name:
+        return ''
+    try:
+        from opencc import OpenCC
+        return OpenCC('s2t').convert(name)
+    except ImportError:
+        return name
+
+
 # ── User info ──
 
 @profile_bp.route('/users/me')
@@ -57,6 +68,7 @@ def users_me():
     d = dict(user)
     if d.get('real_name'):
         d['real_name_pinyin'] = _to_pinyin(d['real_name'])
+        d['real_name_tw'] = _to_traditional(d['real_name'])
     if d.get('enforce_single_session') is None:
         d['enforce_single_session'] = 1
     if d.get('session_timeout_hours') is None:
