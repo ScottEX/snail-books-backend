@@ -93,7 +93,8 @@ def upload_expense_images():
 @login_required
 def list_partners():
     with get_db() as db:
-        rows = db.execute("""SELECT p.*, COALESCE(SUM(d.amount),0) as total_dividends
+        rows = db.execute("""SELECT p.*, COALESCE(SUM(d.amount),0) as total_dividends,
+                                    (p.investment - p.init_capital) as add_amount
                              FROM partners p
                              LEFT JOIN dividends d ON d.partner = p.name
                              GROUP BY p.id""").fetchall()
