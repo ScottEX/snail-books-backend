@@ -274,6 +274,11 @@ def get_user_detail(user_id):
 
         avatar = _build_avatar(user_id)
 
+        # 查关联合伙人
+        linked = db.execute(
+            'SELECT id, name FROM partners WHERE linked_user_id=?', (user_id,)
+        ).fetchone()
+
     return jsonify({
         'status': 'ok',
         'data': {
@@ -294,6 +299,8 @@ def get_user_detail(user_id):
             'signature': row['signature'] or '',
             'delete_scheduled': row['delete_scheduled'] or '',
             'delete_by': row['delete_by'] or '',
+            'linked_partner_id': linked['id'] if linked else None,
+            'linked_partner_name': linked['name'] if linked else '',
         }
     })
 
@@ -336,6 +343,20 @@ def update_user(user_id):
             if 'real_name' in data:
                 db.execute('UPDATE partners SET name=? WHERE linked_user_id=?',
                            (data['real_name'], user_id))
+            # 关联合伙人换绑/解绑
+            if 'linked_partner_id' in data:
+                # 先解除此用户旧的关联
+                db.execute('UPDATE partners SET linked_user_id=NULL WHERE linked_user_id=?', (user_id,))
+                pid = data['linked_partner_id']
+                if pid is not None and pid != 0:
+                    db.execute('UPDATE partners SET linked_user_id=? WHERE id=?', (user_id, pid))
+                    # 同步合伙人姓名为用户真实姓名
+                    rn = data.get('real_name')
+                    if not rn:
+                        rn = db.execute('SELECT real_name FROM users WHERE id=?', (user_id,)).fetchone()
+                        rn = (rn['real_name'] or '') if rn else ''
+                    if rn:
+                        db.execute('UPDATE partners SET name=? WHERE id=?', (rn, pid))
             db.commit()
 
     return jsonify({'status': 'ok'})
