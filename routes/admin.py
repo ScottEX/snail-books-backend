@@ -257,20 +257,21 @@ def get_user_detail(user_id):
     with get_db() as db:
         row = db.execute(
             '''SELECT id, username, email, phone, role, remark, real_name,
-                      is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by
+                      is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by, last_login_at
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
-        last_login = None
-        session_row = db.execute(
-            '''SELECT last_seen_at FROM user_sessions
-               WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1''',
-            (user_id,)
-        ).fetchone()
-        if session_row:
-            last_login = session_row['last_seen_at']
+        last_login = row['last_login_at'] or None
+        if not last_login:
+            session_row = db.execute(
+                '''SELECT last_seen_at FROM user_sessions
+                   WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1''',
+                (user_id,)
+            ).fetchone()
+            if session_row:
+                last_login = session_row['last_seen_at']
 
         avatar = _build_avatar(user_id)
 

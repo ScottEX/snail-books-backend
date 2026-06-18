@@ -79,6 +79,8 @@ def login():
                 'INSERT INTO user_sessions (user_id, session_id, device_info, expires_at) VALUES (?,?,?,?)',
                 (user['id'], new_session_id, device_info, expires_at)
             )
+            db.execute('UPDATE users SET last_login_at=? WHERE id=?',
+                       (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['session_id'] = new_session_id

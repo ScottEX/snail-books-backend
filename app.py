@@ -272,7 +272,8 @@ def init_db():
                 delete_by TEXT DEFAULT '',
                 delete_reminded INTEGER DEFAULT 0,
                 reviewed INTEGER DEFAULT 0,
-                is_disabled INTEGER DEFAULT 0
+                is_disabled INTEGER DEFAULT 0,
+                last_login_at TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
