@@ -10,7 +10,7 @@ from shared.db import get_db
 
 
 def _to_pinyin(name: str) -> str:
-    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan LiuFu'"""
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Liu-Fu Lan'"""
     if not name:
         return ''
     try:
@@ -18,12 +18,12 @@ def _to_pinyin(name: str) -> str:
         parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
         if len(parts) <= 1:
             return parts[0].capitalize() if parts else ''
+        # 名（连字符） + 空格 + 姓
         surname = parts[0].capitalize()
-        given = ''.join(p.capitalize() for p in parts[1:])
-        return f'{surname} {given}'
+        given = '-'.join(p.capitalize() for p in parts[1:])
+        return f'{given} {surname}'
     except ImportError:
         return name
-
 # Expire store for share links
 EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
 ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}

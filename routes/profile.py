@@ -21,7 +21,7 @@ MAX_BG_SIZE = 5 * 1024 * 1024
 
 
 def _to_pinyin(name: str) -> str:
-    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Lan LiuFu'"""
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Liu-Fu Lan'"""
     if not name:
         return ''
     try:
@@ -29,10 +29,10 @@ def _to_pinyin(name: str) -> str:
         parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
         if len(parts) <= 1:
             return parts[0].capitalize() if parts else ''
-        # 姓 + 空格 + 名连写（每个字首字母大写）
+        # 名（连字符） + 空格 + 姓
         surname = parts[0].capitalize()
-        given = ''.join(p.capitalize() for p in parts[1:])
-        return f'{surname} {given}'
+        given = '-'.join(p.capitalize() for p in parts[1:])
+        return f'{given} {surname}'
     except ImportError:
         return name
 
