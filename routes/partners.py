@@ -5,6 +5,36 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
+from shared.auth import login_required
+from shared.db import get_db
+
+
+def _to_pinyin(name: str) -> str:
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Liu-Fu Lan'"""
+    if not name:
+        return ''
+    try:
+        from pypinyin import pinyin, Style
+        parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
+        if len(parts) <= 1:
+            return parts[0].capitalize() if parts else ''
+        # 名（连字符） + 空格 + 姓
+        surname = parts[0].capitalize()
+        given = '-'.join(p.capitalize() for p in parts[1:])
+        return f'{given} {surname}'
+    except ImportError:
+        return name
+
+
+def _to_traditional(name: str) -> str:
+    """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
+    if not name:
+        return ''
+    try:
+        from opencc import OpenCC
+        return OpenCC('s2t').convert(name)
+    except ImportError:
+        return name
 # Expire store for share links
 EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
 ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
@@ -98,7 +128,11 @@ def list_partners():
                              FROM partners p
                              LEFT JOIN dividends d ON d.partner = p.name
                              GROUP BY p.id""").fetchall()
-    return jsonify([dict(r) for r in rows])
+    data = [dict(r) for r in rows]
+    for d in data:
+        d['name_pinyin'] = _to_pinyin(d.get('name', ''))
+        d['name_tw'] = _to_traditional(d.get('name', ''))
+    return jsonify(data)
 
 
 @bp.route('/partners/<int:id>', methods=['DELETE'])

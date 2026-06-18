@@ -263,6 +263,7 @@ def init_db():
                 reset_code TEXT,
                 reset_expires TIMESTAMP,
                 signature TEXT DEFAULT '',
+                real_name TEXT DEFAULT '',
                 enforce_single_session INTEGER DEFAULT 0,
                 session_timeout_hours INTEGER DEFAULT 24,
                 current_session_id TEXT DEFAULT '',
@@ -323,7 +324,8 @@ def init_db():
                 add_date TEXT DEFAULT '',
                 status TEXT DEFAULT '',
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id)
+                user_id INTEGER REFERENCES users(id),
+                linked_user_id INTEGER REFERENCES users(id)
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -557,6 +559,10 @@ def init_db():
         except sqlite3.OperationalError:
             pass
         try:
+            db.execute("ALTER TABLE users ADD COLUMN real_name TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
             db.execute("ALTER TABLE users ADD COLUMN delete_scheduled TIMESTAMP")
         except sqlite3.OperationalError:
             pass
@@ -582,6 +588,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE partners ADD COLUMN add_date TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE partners ADD COLUMN linked_user_id INTEGER REFERENCES users(id)")
         except sqlite3.OperationalError:
             pass
 

@@ -8,6 +8,34 @@ from shared.auth import login_required, schedule_delete, cancel_delete, ADMIN_US
 admin_bp = Blueprint('admin', __name__)
 
 
+def _to_pinyin(name: str) -> str:
+    """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Liu-Fu Lan'"""
+    if not name:
+        return ''
+    try:
+        from pypinyin import pinyin, Style
+        parts = [p[0] for p in pinyin(name, style=Style.NORMAL)]
+        if len(parts) <= 1:
+            return parts[0].capitalize() if parts else ''
+        # 名（连字符） + 空格 + 姓
+        surname = parts[0].capitalize()
+        given = '-'.join(p.capitalize() for p in parts[1:])
+        return f'{given} {surname}'
+    except ImportError:
+        return name
+
+
+def _to_traditional(name: str) -> str:
+    """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
+    if not name:
+        return ''
+    try:
+        from opencc import OpenCC
+        return OpenCC('s2t').convert(name)
+    except ImportError:
+        return name
+
+
 def _require_admin():
     """Return (user_id, error_response) — error_response is None if admin."""
     uid = str(session.get('user_id', ''))
@@ -228,7 +256,7 @@ def get_user_detail(user_id):
 
     with get_db() as db:
         row = db.execute(
-            '''SELECT id, username, email, phone, role, remark,
+            '''SELECT id, username, email, phone, role, remark, real_name,
                       is_disabled, reviewed, created_at, signature, delete_scheduled, delete_by
                FROM users WHERE id=?''', (user_id,)
         ).fetchone()
@@ -255,6 +283,9 @@ def get_user_detail(user_id):
             'phone': row['phone'] or '',
             'role': row['role'] or '',
             'remark': row['remark'] or '',
+            'real_name': row['real_name'] or '',
+            'real_name_pinyin': _to_pinyin(row['real_name'] or ''),
+            'real_name_tw': _to_traditional(row['real_name'] or ''),
             'is_disabled': bool(row['is_disabled']),
             'reviewed': bool(row['reviewed']),
             'created_at': row['created_at'] or '',
@@ -290,7 +321,7 @@ def update_user(user_id):
 
         updates = []
         params = []
-        for field in ['role', 'remark', 'phone', 'email']:
+        for field in ['role', 'remark', 'phone', 'email', 'real_name']:
             if field in data:
                 updates.append(f'{field}=?')
                 params.append(data[field])
@@ -301,6 +332,10 @@ def update_user(user_id):
         if updates:
             params.append(user_id)
             db.execute(f'UPDATE users SET {", ".join(updates)} WHERE id=?', params)
+            # 同步合伙人姓名
+            if 'real_name' in data:
+                db.execute('UPDATE partners SET name=? WHERE linked_user_id=?',
+                           (data['real_name'], user_id))
             db.commit()
 
     return jsonify({'status': 'ok'})
