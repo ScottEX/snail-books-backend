@@ -323,7 +323,8 @@ def init_db():
                 add_date TEXT DEFAULT '',
                 status TEXT DEFAULT '',
                 note TEXT DEFAULT '',
-                user_id INTEGER REFERENCES users(id)
+                user_id INTEGER REFERENCES users(id),
+                linked_user_id INTEGER REFERENCES users(id)
             );
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -582,6 +583,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE partners ADD COLUMN add_date TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE partners ADD COLUMN linked_user_id INTEGER REFERENCES users(id)")
         except sqlite3.OperationalError:
             pass
 
