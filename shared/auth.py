@@ -64,6 +64,11 @@ def login_required(f):
                         session['user_id'] = uid
                         if token_sid:
                             session['session_id'] = token_sid
+                        # Fetch username for request logging
+                        with get_db() as db:
+                            urow = db.execute('SELECT username FROM users WHERE id=?', (uid,)).fetchone()
+                        if urow:
+                            session['username'] = urow['username']
                     else:
                         with get_db() as db:
                             db.execute('DELETE FROM user_tokens WHERE token=?', (token,))
