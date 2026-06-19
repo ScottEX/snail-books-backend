@@ -149,21 +149,12 @@ def login_complete():
             expected_rp_id=RP_ID,
             expected_origin=ORIGIN,
             credential_public_key=stored_pk_pem,
-            credential_current_sign_count=stored_sign_count,
+            credential_current_sign_count=0,  # Apple platform authenticator always returns 0
             require_user_verification=True,
         )
     except Exception as e:
         # Don't expose internal details
         return jsonify({'status': 'error', 'message': f'Verification failed: {str(e)}'}), 400
-
-    # Update sign_count
-    new_sign_count = stored_sign_count + 1
-    with get_db() as db:
-        db.execute(
-            'UPDATE webauthn_credentials SET sign_count = ? WHERE credential_id = ?',
-            (new_sign_count, raw_id)
-        )
-        db.commit()
 
     # Log the user in (same session creation logic as password login)
     import secrets
