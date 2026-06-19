@@ -39,4 +39,4 @@ def audit(action, user_id=None, username=None, extra=None):
     parts = [f'[AUDIT] user_id={uid} username={name} action={action}']
     if extra:
         parts.append(extra)
-    log.info(' '.join(parts))
+    log.warning(' '.join(parts))
