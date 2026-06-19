@@ -40,11 +40,13 @@ def login_begin():
         AuthenticatorTransport,
     )
 
-    # If the frontend sends a credential_id hint, use it; otherwise list all
-    # credentials that exist in the DB (if any — first-time login has none).
+    # If the frontend sends a credential_id hint, use it; otherwise list
+    # credentials for the specified username. If no username either, list
+    # all credentials in the DB (discoverable flow — first-time login).
     allow_credentials = []
     data = request.get_json(silent=True) or {}
     credential_hint = data.get('credential_id', '')
+    username_hint = data.get('username', '').strip()
 
     if credential_hint:
         allow_credentials.append(
@@ -55,9 +57,17 @@ def login_begin():
         )
     else:
         with get_db() as db:
-            rows = db.execute(
-                'SELECT credential_id FROM webauthn_credentials'
-            ).fetchall()
+            if username_hint:
+                rows = db.execute(
+                    '''SELECT wc.credential_id FROM webauthn_credentials wc
+                       JOIN users u ON u.id = wc.user_id
+                       WHERE u.username = ? OR u.email = ?''',
+                    (username_hint, username_hint)
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    'SELECT credential_id FROM webauthn_credentials'
+                ).fetchall()
         for row in rows:
             allow_credentials.append(
                 PublicKeyCredentialDescriptor(
