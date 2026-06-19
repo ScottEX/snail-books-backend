@@ -81,7 +81,7 @@ def transactions():
             f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
             f'LEFT JOIN users su ON pb.settled_by = su.id '
             f'LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id '
-            f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?',
+            f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC, t.id DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
     return jsonify({
