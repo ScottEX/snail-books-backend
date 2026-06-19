@@ -385,13 +385,17 @@ def check_credential():
 @webauthn_bp.route('/webauthn/status', methods=['GET'])
 @login_required
 def status():
-    """Whether current user has a WebAuthn credential."""
+    """Whether current user has a WebAuthn credential, and its ID for client-side deletion signals."""
     with get_db() as db:
         row = db.execute(
-            'SELECT id FROM webauthn_credentials WHERE user_id = ?',
+            'SELECT id, credential_id FROM webauthn_credentials WHERE user_id = ?',
             (g.user_id,)
         ).fetchone()
-    return jsonify({'status': 'ok', 'has_credential': bool(row)})
+    return jsonify({
+        'status': 'ok',
+        'has_credential': bool(row),
+        'credential_id': row['credential_id'] if row else None,
+    })
 
 
 @webauthn_bp.route('/webauthn/credentials', methods=['DELETE'])
