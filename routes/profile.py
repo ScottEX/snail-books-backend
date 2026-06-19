@@ -345,7 +345,7 @@ def profile_email_send_code():
     with get_db() as db:
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
-            return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
+            return jsonify({'status': 'error', 'message': t('err_email_registered', g.lang)}), 400
         code = generate_code()
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
                    (code, datetime.now(timezone.utc) + timedelta(minutes=10), g.user_id))
@@ -363,6 +363,10 @@ def profile_email_verify():
     if not new_email or not code:
         return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
     with get_db() as db:
+        # Re-check for race condition: email may have been taken between send-code and verify
+        existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
+        if existing:
+            return jsonify({'status': 'error', 'message': t('err_email_registered', g.lang)}), 400
         user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user or user['verification_code'] != code:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
