@@ -237,7 +237,7 @@ def procurement_stats():
         ).fetchone()[0]
         batch_count = db.execute("SELECT COUNT(*) FROM procurement_batches").fetchone()[0]
         margin_pct = round(
-            (total_income - total_spent) / total_income * 100, 1
+            (total_income - total_spent) / total_income * 100, 2
         ) if total_income > 0 else 0
     return jsonify({
         'total_spent': round(total_spent, 2),
