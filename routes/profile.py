@@ -370,8 +370,12 @@ def profile_email_verify():
         user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user or user['verification_code'] != code:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
-        if user['code_expires'] and datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
-            return jsonify({'status': 'error', 'message': t('err_email_code_expired', g.lang)}), 400
+        if user['code_expires']:
+            expires_dt = datetime.fromisoformat(user['code_expires'])
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires_dt:
+                return jsonify({'status': 'error', 'message': t('err_email_code_expired', g.lang)}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
                    (new_email, g.user_id))
         # Revoke all other sessions — keep current one (user just verified code)
