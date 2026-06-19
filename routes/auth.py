@@ -84,6 +84,8 @@ def login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['session_id'] = new_session_id
+            g.user_id = user['id']
+            g.username = user['username']
 
             db.execute("DELETE FROM user_tokens WHERE created_at < ?", ((datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
             token = secrets.token_hex(32)
@@ -167,6 +169,8 @@ def verify_email():
             return jsonify({'status': 'error', 'message': t('err_code_expired', g.lang)}), 410
         db.execute('UPDATE users SET is_verified=1, verification_code=NULL, code_expires=NULL WHERE id=?', (user['id'],))
         db.commit()
+        g.user_id = user['id']
+        g.username = user['username']
         from shared.audit import audit
         audit('REGISTER', user_id=user['id'], username=user['username'])
     return jsonify({'status': 'ok', 'message': t('msg_verify_ok', g.lang)})
