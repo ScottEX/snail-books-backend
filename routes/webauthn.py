@@ -342,6 +342,43 @@ def register_complete():
 
 
 # ═══════════════════════════════════════════════
+#  Public check — does a user have WebAuthn?
+# ═══════════════════════════════════════════════
+
+@webauthn_bp.route('/webauthn/check', methods=['GET'])
+def check_credential():
+    """Public endpoint: check if a user (or any user) has a WebAuthn credential."""
+    username = request.args.get('username', '').strip()
+
+    with get_db() as db:
+        if username:
+            user = db.execute(
+                'SELECT id, username FROM users WHERE username = ? OR email = ?',
+                (username, username)
+            ).fetchone()
+            if not user:
+                return jsonify({'has_credential': False, 'username': username})
+
+            row = db.execute(
+                'SELECT id FROM webauthn_credentials WHERE user_id = ?',
+                (user['id'],)
+            ).fetchone()
+            return jsonify({
+                'has_credential': bool(row),
+                'username': user['username'],
+            })
+        else:
+            row = db.execute(
+                'SELECT u.username FROM webauthn_credentials wc '
+                'JOIN users u ON u.id = wc.user_id '
+                'ORDER BY wc.id LIMIT 1'
+            ).fetchone()
+            if row:
+                return jsonify({'has_credential': True, 'username': row['username']})
+            return jsonify({'has_credential': False, 'username': None})
+
+
+# ═══════════════════════════════════════════════
 #  Status / Delete
 # ═══════════════════════════════════════════════
 
