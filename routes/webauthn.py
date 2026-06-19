@@ -136,7 +136,7 @@ def login_complete():
     try:
         verify_authentication_response(
             credential=AuthenticationCredential(
-                id=credential_id_bytes,
+                id=raw_id,
                 raw_id=credential_id_bytes,
                 response={
                     'clientDataJSON': _b64url_decode(client_data_json),
@@ -315,7 +315,7 @@ def register_complete():
     try:
         verification = verify_registration_response(
             credential=RegistrationCredential(
-                id=credential_id_bytes,
+                id=raw_id,
                 raw_id=credential_id_bytes,
                 response={
                     'clientDataJSON': _b64url_decode(client_data_json),
