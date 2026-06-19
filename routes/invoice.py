@@ -336,15 +336,13 @@ def api_invoice_file_serve(user_id, filename):
 @login_required
 def api_procurement_batches_lite():
     """Lightweight procurement batch list (id, batch_number, date, total) for the
-    invoice-record drawer batch selector. Defaults to last 20, sorted by date desc.
+    invoice-record drawer batch selector. Returns all un-invoiced batches, sorted by date desc.
     """
-    limit = min(request.args.get('limit', 20, type=int), 100)
     with get_db() as db:
         rows = db.execute(
             'SELECT pb.id, pb.batch_number, pb.date, pb.total '
             'FROM procurement_batches pb '
             'WHERE pb.id NOT IN (SELECT procurement_batch_id FROM invoice_records WHERE procurement_batch_id IS NOT NULL) '
-            'ORDER BY pb.date DESC, pb.id DESC LIMIT ?',
-            (limit,)
+            'ORDER BY pb.date DESC, pb.id DESC'
         ).fetchall()
     return jsonify([dict(r) for r in rows])
