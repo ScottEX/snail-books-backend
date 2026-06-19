@@ -12,13 +12,11 @@ Usage:
 Log format:
     [AUDIT] user_id=<id> username=<name> action=<ACTION> [extra]
 
-All logs go to the 'app' logger (same as 500 error handler),
-which lands in gunicorn's error log.
+Output goes to stderr, which gunicorn captures into its error log.
 """
 
+import sys
 import logging
-
-log = logging.getLogger('app')
 
 
 def audit(action, user_id=None, username=None, extra=None):
@@ -27,11 +25,17 @@ def audit(action, user_id=None, username=None, extra=None):
     If user_id/username are omitted, reads from flask.g (set by @login_required).
     """
     if user_id is None:
-        from flask import g
-        user_id = getattr(g, 'user_id', None)
+        try:
+            from flask import g
+            user_id = getattr(g, 'user_id', None)
+        except Exception:
+            user_id = None
     if username is None:
-        from flask import g
-        username = getattr(g, 'username', None)
+        try:
+            from flask import g
+            username = getattr(g, 'username', None)
+        except Exception:
+            username = None
 
     uid = str(user_id) if user_id else '?'
     name = str(username) if username else '?'
@@ -39,4 +43,11 @@ def audit(action, user_id=None, username=None, extra=None):
     parts = [f'[AUDIT] user_id={uid} username={name} action={action}']
     if extra:
         parts.append(extra)
-    log.warning(' '.join(parts))
+    msg = ' '.join(parts)
+
+    # Write to stderr (captured by gunicorn) + also try standard logging
+    print(msg, file=sys.stderr, flush=True)
+    try:
+        logging.getLogger('app').warning(msg)
+    except Exception:
+        pass
