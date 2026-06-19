@@ -371,12 +371,13 @@ def business_summary():
         platform_fees_total = pf['total_pf']
         cumulative_revenue = actual_received - platform_fees_total
 
-        exp = db.execute("SELECT COALESCE(SUM(amount),0) as total_exp FROM transactions WHERE type='expense'").fetchone()
+        exp = db.execute("SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp FROM transactions WHERE type IN ('expense','income')").fetchone()
         cumulative_expense = exp['total_exp']
 
         # Category breakdown for glass card
         cat_rows = db.execute(
-            "SELECT category, COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' GROUP BY category"
+            "SELECT category, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total"
+            " FROM transactions WHERE type IN ('expense','income') GROUP BY category"
         ).fetchall()
         expense_by_category = {r['category']: r['total'] for r in cat_rows}
 
