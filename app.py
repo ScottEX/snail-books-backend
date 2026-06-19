@@ -28,6 +28,11 @@ AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 def _set_request_lang():
     g.lang = get_lang(request)
 
+# ── Request logging: capture + log every /api/* request ──
+from shared.request_log import _capture_request, _log_response
+app.before_request(_capture_request)
+app.after_request(_log_response)
+
 
 # ═══════════════════════════════════════════════════════════
 #  Static file serving (registered before Blueprints so API
