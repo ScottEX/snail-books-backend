@@ -343,6 +343,11 @@ def profile_email_send_code():
     if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
         return jsonify({'status': 'error', 'message': t('err_email_invalid', g.lang)}), 400
     with get_db() as db:
+        # Reject if same as current email
+        own = db.execute('SELECT id FROM users WHERE email=? AND id=?', (new_email, g.user_id)).fetchone()
+        if own:
+            return jsonify({'status': 'error', 'message': t('err_email_same', g.lang)}), 400
+        # Reject if already used by another account
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
             return jsonify({'status': 'error', 'message': t('err_email_registered', g.lang)}), 400
@@ -363,6 +368,10 @@ def profile_email_verify():
     if not new_email or not code:
         return jsonify({'status': 'error', 'message': t('err_fill_all_fields', g.lang)}), 400
     with get_db() as db:
+        # Reject if same as current email
+        own = db.execute('SELECT id FROM users WHERE email=? AND id=?', (new_email, g.user_id)).fetchone()
+        if own:
+            return jsonify({'status': 'error', 'message': t('err_email_same', g.lang)}), 400
         # Re-check for race condition: email may have been taken between send-code and verify
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
