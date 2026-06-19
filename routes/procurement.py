@@ -36,6 +36,8 @@ def api_products():
             db.execute('INSERT INTO products (name,spec,unit,price,supplier,note) VALUES (?,?,?,?,?,?)',
                        (data['name'], data.get('spec', ''), data.get('unit', ''), data.get('price', 0), data.get('supplier', ''), data.get('note', '')))
             db.commit()
+            from shared.audit import audit
+            audit('CREATE_PRODUCT', extra=f'{data["name"]} ¥{data.get("price",0)}')
         return jsonify({'status': 'ok'})
     if request.method == 'PUT':
         data = request.get_json()
@@ -55,12 +57,16 @@ def api_products():
                         'note' in data and data['note'] is not None and data['note'] != '' and data['note'] or old['note'],
                         data['id']))
             db.commit()
+            from shared.audit import audit
+            audit('UPDATE_PRODUCT', extra=f'id={data["id"]} {data["name"]}')
         return jsonify({'status': 'ok'})
     if request.method == 'DELETE':
         pid = request.args.get('id')
         with get_db() as db:
             db.execute('DELETE FROM products WHERE id=?', (pid,))
             db.commit()
+            from shared.audit import audit
+            audit('DELETE_PRODUCT', extra=f'id={pid}')
         return jsonify({'status': 'ok'})
     # GET
     with get_db() as db:
@@ -167,6 +173,8 @@ def api_procurement_batches():
                 (0, data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             db.commit()
+            from shared.audit import audit
+            audit('CREATE_PROCUREMENT', extra=f'batch#{batch_no} ¥{round(total,2)} {data.get("date","")}')
         return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
 
     # GET: paginated list
@@ -276,6 +284,8 @@ def api_procurement_batch_detail(id):
                             pass
 
             _delete_cached_pdf(id)
+            from shared.audit import audit
+            audit('DELETE_PROCUREMENT', extra=f'batch#{row["batch_number"]} ¥{row["total"]}')
             return jsonify({'status': 'ok'})
 
         if request.method == 'PUT':
@@ -348,6 +358,8 @@ def api_procurement_batch_detail(id):
                 )
             db.commit()
             _delete_cached_pdf(id)
+            from shared.audit import audit
+            audit('UPDATE_PROCUREMENT', extra=f'batch#{row["batch_number"]} ¥{round(total,2)}')
             return jsonify({'status': 'ok', 'batch_id': id, 'total': round(total, 2)})
 
         # GET: detail
@@ -384,6 +396,8 @@ def api_procurement_batch_settle(id):
             (row['total'], id)
         )
         db.commit()
+        from shared.audit import audit
+        audit('SETTLE_PROCUREMENT', extra=f'batch#{id} ¥{row["total"]}')
         # Return the updated batch with settled_by_username
         updated = db.execute(
             'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '

@@ -164,6 +164,8 @@ def update_signature():
     with get_db() as db:
         db.execute('UPDATE users SET signature=? WHERE id=?', (signature, g.user_id))
         db.commit()
+        from shared.audit import audit
+        audit('UPDATE_SIGNATURE')
     return jsonify({'status': 'ok', 'signature': signature})
 
 
@@ -185,6 +187,8 @@ def delete_user(uid):
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
     scheduled = schedule_delete(uid, 'self', 3)
+    from shared.audit import audit
+    audit('SELF_DELETE', extra=f'uid={uid}')
     return jsonify({
         'status': 'ok',
         'message': f'您的账户已进入 3 天冷静期，将于 {scheduled[:10]} 永久注销。在此期间登录即可自动恢复账户。',
@@ -322,6 +326,8 @@ def change_password():
         db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
+        from shared.audit import audit
+        audit('CHANGE_PASSWORD')
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
 
 

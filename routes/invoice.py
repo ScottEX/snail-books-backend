@@ -184,6 +184,8 @@ def api_invoice_record_create():
         data['company'].strip(),
         getattr(g, 'lang', 'zh-CN')
     )
+    from shared.audit import audit
+    audit('CREATE_INVOICE', extra=f'rid={rid} {data["company"]}')
     return jsonify({'status': 'ok', 'id': rid})
 
 
@@ -233,6 +235,8 @@ def api_invoice_record_update(rid):
         inv_no = (data.get('invoice_number') or rec.get('invoice_number') or '').strip()
         company = (data.get('company') or rec.get('company') or '').strip()
         _send_invoice_email(to_email, 'done', inv_no, company, getattr(g, 'lang', 'zh-CN'))
+    from shared.audit import audit
+    audit('UPDATE_INVOICE', extra=f'rid={rid}')
     return jsonify({'status': 'ok'})
 
 
@@ -259,6 +263,8 @@ def api_invoice_record_delete(rid):
             except OSError:
                 pass
         db.execute('DELETE FROM invoice_records WHERE id=?', (rid,))
+        from shared.audit import audit
+        audit('DELETE_INVOICE', extra=f'rid={rid}')
     return jsonify({'status': 'ok'})
 
 
@@ -314,6 +320,8 @@ def api_invoice_record_upload(rid):
             'UPDATE invoice_records SET file_path=?, file_type=?, file_size=?, updated_at=? WHERE id=?',
             (_json.dumps(paths), content_type, size, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rid)
         )
+        from shared.audit import audit
+        audit('INVOICE_UPLOAD', extra=f'rid={rid} size={size}')
     return jsonify({'status': 'ok', 'file_path': rel_path, 'file_type': content_type, 'file_size': size})
 
 

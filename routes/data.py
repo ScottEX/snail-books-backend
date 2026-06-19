@@ -79,6 +79,8 @@ def clear_reconciliations():
     with get_db() as db:
         db.execute('DELETE FROM reconciliations')
         db.commit()
+        from shared.audit import audit
+        audit('CLEAR_RECONCILIATIONS')
     return jsonify({'ok': True, 'message': t('msg_recon_cleared', g.lang)})
 
 
@@ -134,6 +136,8 @@ def create_reconciliation():
                         balances['flash_sale'], balances['jd'], balances['tuan'],
                         channel_total, real_total, diff, reconciled_by, existing['id']))
             db.commit()
+            from shared.audit import audit
+            audit('CREATE_RECONCILIATION', extra=f'date={bill_date} ¥{real_total}')
             return jsonify({'ok': True, 'action': 'updated', 'id': existing['id']}), 200
         else:
             db.execute('''INSERT INTO reconciliations
@@ -146,6 +150,8 @@ def create_reconciliation():
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             db.commit()
             new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            from shared.audit import audit
+            audit('CREATE_RECONCILIATION', extra=f'date={bill_date} ¥{real_total}')
             return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
 
 
@@ -254,6 +260,8 @@ def add_platform_fee_entry():
                       VALUES (?,?,?,?,?,?)''',
                    (fee_id, entry_date, mc, mw, sw, mt))
         updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
+        from shared.audit import audit
+        audit('CREATE_PLATFORM_FEE', extra=f'{year}/{month} entry={entry_date}')
         return jsonify({'status': 'ok', 'data': dict(updated)})
 
 
@@ -268,6 +276,8 @@ def update_platform_fee(id):
                       WHERE id=?''',
                    (data.get('meituan_cashier', 0), data.get('meituan_waimai', 0),
                     data.get('shangou_waimai', 0), data.get('meituan_tuan', 0), id))
+        from shared.audit import audit
+        audit('UPDATE_PLATFORM_FEE', extra=f'id={id}')
         return jsonify({'status': 'ok'})
 
 
@@ -416,6 +426,8 @@ def create_daily_revenue():
             )
             row = db.execute('''SELECT dr.*, u.username as recorded_by
                 FROM daily_revenue dr LEFT JOIN users u ON dr.user_id = u.id WHERE dr.date=?''', (dt,)).fetchone()
+            from shared.audit import audit
+            audit('CREATE_DLY_REV', extra=f'{dt} ¥{turnover}')
             return jsonify({'status': 'ok', 'data': dict(row)})
         except sqlite3.IntegrityError:
             return jsonify({'status': 'error', 'message': '该日期已有营收记录'}), 409
@@ -440,6 +452,8 @@ def update_daily_revenue(id):
         db.execute("UPDATE daily_revenue SET " + ', '.join(fields) + " WHERE id=?", params)
         updated = db.execute('''SELECT dr.*, u.username as recorded_by
             FROM daily_revenue dr LEFT JOIN users u ON dr.user_id = u.id WHERE dr.id=?''', (id,)).fetchone()
+        from shared.audit import audit
+        audit('UPDATE_DLY_REV', extra=f'id={id}')
         return jsonify({'status': 'ok', 'data': dict(updated)})
 
 
@@ -448,4 +462,6 @@ def update_daily_revenue(id):
 def delete_daily_revenue(id):
     with get_db() as db:
         db.execute('DELETE FROM daily_revenue WHERE id=?', (id,))
+        from shared.audit import audit
+        audit('DELETE_DLY_REV', extra=f'id={id}')
         return jsonify({'status': 'ok'})
