@@ -312,7 +312,7 @@ def change_password():
     old_pw = data.get('old_password', '') if data else ''
     new_pw = data.get('new_password', '') if data else ''
     if not old_pw or not new_pw:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+        return jsonify({'status': 'error', 'message': t('err_fill_all_fields', g.lang)}), 400
     ok, err = validate_password(new_pw, g.lang)
     if not ok:
         return jsonify({'status': 'error', 'message': err}), 400
@@ -339,7 +339,7 @@ def profile_email_send_code():
     data = request.get_json()
     new_email = data.get('email', '').strip() if data else ''
     if not new_email:
-        return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
+        return jsonify({'status': 'error', 'message': t('err_new_email_required', g.lang)}), 400
     if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
         return jsonify({'status': 'error', 'message': t('err_email_invalid', g.lang)}), 400
     with get_db() as db:
@@ -351,7 +351,7 @@ def profile_email_send_code():
                    (code, datetime.now(timezone.utc) + timedelta(minutes=10), g.user_id))
         db.commit()
     send_email_change_code(new_email, code, g.lang)
-    return jsonify({'status': 'ok', 'message': '验证码已发送'})
+    return jsonify({'status': 'ok', 'message': t('msg_email_code_sent', g.lang)})
 
 
 @profile_bp.route('/profile/email/verify', methods=['POST'])
@@ -361,7 +361,7 @@ def profile_email_verify():
     new_email = data.get('email', '').strip() if data else ''
     code = data.get('code', '').strip() if data else ''
     if not new_email or not code:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+        return jsonify({'status': 'error', 'message': t('err_fill_all_fields', g.lang)}), 400
     with get_db() as db:
         # Re-check for race condition: email may have been taken between send-code and verify
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
@@ -371,7 +371,7 @@ def profile_email_verify():
         if not user or user['verification_code'] != code:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
         if user['code_expires'] and datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
-            return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
+            return jsonify({'status': 'error', 'message': t('err_email_code_expired', g.lang)}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
                    (new_email, g.user_id))
         # Revoke all other sessions — keep current one (user just verified code)
@@ -379,4 +379,4 @@ def profile_email_verify():
         db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
-    return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
+    return jsonify({'status': 'ok', 'message': t('msg_email_changed', g.lang)})
