@@ -49,8 +49,8 @@ def _capture_request():
 
     path = request.path
 
-    # Only log /api/* requests
-    if not path.startswith('/api/'):
+    # Only log /api/* requests and auth endpoints
+    if not (path.startswith('/api/') or path in ('/login', '/register', '/verify', '/resend-code', '/forgot-password', '/reset-password', '/logout')):
         return
 
     g._req_skip = False
