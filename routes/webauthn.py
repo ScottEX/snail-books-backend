@@ -95,7 +95,7 @@ def login_begin():
 def login_complete():
     """Verify Face ID assertion and log the user in."""
     from webauthn import verify_authentication_response
-    from webauthn.helpers.structs import AuthenticationCredential
+    from webauthn.helpers.structs import AuthenticationCredential, AuthenticatorAssertionResponse
 
     data = request.get_json() or {}
     raw_id = data.get('id', '')
@@ -138,12 +138,12 @@ def login_complete():
             credential=AuthenticationCredential(
                 id=raw_id,
                 raw_id=credential_id_bytes,
-                response={
-                    'clientDataJSON': _b64url_decode(client_data_json),
-                    'authenticatorData': _b64url_decode(authenticator_data),
-                    'signature': _b64url_decode(signature),
-                    'userHandle': _b64url_decode(user_handle) if user_handle else b'',
-                },
+                response=AuthenticatorAssertionResponse(
+                    client_data_json=_b64url_decode(client_data_json),
+                    authenticator_data=_b64url_decode(authenticator_data),
+                    signature=_b64url_decode(signature),
+                    user_handle=_b64url_decode(user_handle) if user_handle else None,
+                ),
             ),
             expected_challenge=_b64url_decode(challenge_b64),
             expected_rp_id=RP_ID,
@@ -293,7 +293,7 @@ def register_begin():
 def register_complete():
     """Verify Face ID attestation and store credential."""
     from webauthn import verify_registration_response
-    from webauthn.helpers.structs import RegistrationCredential
+    from webauthn.helpers.structs import RegistrationCredential, AuthenticatorAttestationResponse
 
     data = request.get_json() or {}
     raw_id = data.get('id', '')
@@ -317,10 +317,10 @@ def register_complete():
             credential=RegistrationCredential(
                 id=raw_id,
                 raw_id=credential_id_bytes,
-                response={
-                    'clientDataJSON': _b64url_decode(client_data_json),
-                    'attestationObject': _b64url_decode(attestation_object),
-                },
+                response=AuthenticatorAttestationResponse(
+                    client_data_json=_b64url_decode(client_data_json),
+                    attestation_object=_b64url_decode(attestation_object),
+                ),
             ),
             expected_challenge=_b64url_decode(challenge_b64),
             expected_rp_id=RP_ID,
