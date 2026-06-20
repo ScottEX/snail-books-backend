@@ -21,6 +21,12 @@ ADMIN_USER_ID = {
     'production': '4',
 }.get(APP_ENV, '64')
 
+# ── WebAuthn ──
+WEBAUTHN_RP_ID = {
+    'staging': 'test.rowanlan.xyz',
+    'production': 'www.rowanlan.xyz',
+}.get(APP_ENV, 'test.rowanlan.xyz')
+
 # ── Paths (defaults project-relative; override via env var for custom deployments) ──
 DB = os.environ.get('DB', os.path.join(_PROJECT_ROOT, 'data', 'snail.db'))
 FRONTEND_DIR = os.environ.get('FRONTEND_DIR', os.path.join(_PROJECT_ROOT, 'static', 'web-build', 'dist'))

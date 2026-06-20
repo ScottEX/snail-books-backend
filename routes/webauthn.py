@@ -12,11 +12,11 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 
+from shared.config import WEBAUTHN_RP_ID
+
 webauthn_bp = Blueprint('webauthn', __name__)
 
-RP_ID = 'test.rowanlan.xyz'
 RP_NAME = '柳味探秘'
-ORIGIN = 'https://test.rowanlan.xyz'
 
 # Server-side challenge store.
 # Flask session cookies can be lost due to parallel Set-Cookie races
@@ -85,7 +85,7 @@ def login_begin():
 
     challenge_bytes = os.urandom(32)
     options = generate_authentication_options(
-        rp_id=RP_ID,
+        rp_id=WEBAUTHN_RP_ID,
         challenge=challenge_bytes,
         allow_credentials=allow_credentials if allow_credentials else None,
         user_verification='required',
@@ -102,7 +102,7 @@ def login_begin():
              'transports': [t.value for t in (c.transports or [])]}
             for c in (options.allow_credentials or [])
         ],
-        'rpId': RP_ID,
+        'rpId': WEBAUTHN_RP_ID,
         'timeout': options.timeout or 60000,
         'userVerification': 'required',
     })
@@ -163,8 +163,8 @@ def login_complete():
                 ),
             ),
             expected_challenge=_b64url_decode(challenge_b64),
-            expected_rp_id=RP_ID,
-            expected_origin=ORIGIN,
+            expected_rp_id=WEBAUTHN_RP_ID,
+            expected_origin=request.headers.get('Origin', ''),
             credential_public_key=stored_pk_pem,
             credential_current_sign_count=0,  # Apple platform authenticator always returns 0
             require_user_verification=True,
@@ -263,7 +263,7 @@ def register_begin():
     user_id_bytes = str(g.user_id).encode()
 
     options = generate_registration_options(
-        rp_id=RP_ID,
+        rp_id=WEBAUTHN_RP_ID,
         rp_name=RP_NAME,
         user_id=user_id_bytes,
         user_name=g.username,
@@ -289,7 +289,7 @@ def register_begin():
         'challenge': _b64url(options.challenge),
         'rp': {
             'name': RP_NAME,
-            'id': RP_ID,
+            'id': WEBAUTHN_RP_ID,
         },
         'user': {
             'id': _b64url(user_id_bytes),
@@ -353,8 +353,8 @@ def register_complete():
                 ),
             ),
             expected_challenge=_b64url_decode(challenge_b64),
-            expected_rp_id=RP_ID,
-            expected_origin=ORIGIN,
+            expected_rp_id=WEBAUTHN_RP_ID,
+            expected_origin=request.headers.get('Origin', ''),
             require_user_verification=True,
         )
     except Exception as e:
