@@ -171,7 +171,7 @@ def _log_response(response):
         except Exception:
             pass
 
-        if is_mutation or is_error:
+        if True:  # always capture response body (truncated)
             try:
                 raw = response.get_data(as_text=True)
                 # Mask sensitive fields in response too
