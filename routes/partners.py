@@ -144,6 +144,8 @@ def delete_partner(id):
     with get_db() as db:
         db.execute('DELETE FROM partners WHERE id=?', (id,))
         db.commit()
+        from shared.audit import audit
+        audit('DELETE_PARTNER', extra=f'id={id}')
     return jsonify({'status': 'ok'})
 
 
@@ -158,7 +160,9 @@ def update_partner(id):
         db.execute('UPDATE partners SET share=?, investment=?, status=?, note=? WHERE id=?',
                    (data['share'], data['investment'], data.get('status', '进行中'), data.get('note', ''), id))
         db.commit()
-    return jsonify({'status': 'ok'})
+        from shared.audit import audit
+        audit('UPDATE_PARTNER', extra=f'id={id}')
+        return jsonify({'status': 'ok'})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -180,6 +184,8 @@ def dividends():
                 db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
                            (item['partner'], item['amount'], item.get('note', ''), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
             db.commit()
+            from shared.audit import audit
+            audit('CREATE_DIVIDEND', extra=f'{len(items)} items')
         return jsonify({'status': 'ok'})
     with get_db() as db:
         rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()

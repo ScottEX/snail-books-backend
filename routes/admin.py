@@ -375,7 +375,8 @@ def update_user(user_id):
                         db.execute('UPDATE dividends SET partner=? WHERE partner=?',
                                    (rn, old_name2))
         db.commit()
-
+        from shared.audit import audit
+        audit('ADMIN_UPDATE_USER', extra=f'uid={user_id}')
     return jsonify({'status': 'ok'})
 
 
@@ -407,6 +408,8 @@ def delete_user(user_id):
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
     scheduled = schedule_delete(user_id, 'admin', 5)
+    from shared.audit import audit
+    audit('ADMIN_DELETE_USER', extra=f'uid={user_id}')
     return jsonify({
         'status': 'ok',
         'message': f'账户已进入 5 天冷静期，将于 {scheduled[:10]} 永久删除。您可以在用户详情页随时恢复。',
@@ -430,6 +433,8 @@ def restore_user(user_id):
             return jsonify({'status': 'error', 'message': '该用户未处于冷静期'}), 400
 
     cancel_delete(user_id)
+    from shared.audit import audit
+    audit('ADMIN_RESTORE_USER', extra=f'uid={user_id}')
     return jsonify({'status': 'ok', 'message': '账户已恢复'})
 
 

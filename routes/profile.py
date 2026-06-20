@@ -149,6 +149,15 @@ def auth_prefs():
         d['enforce_single_session'] = 1
     if d.get('session_timeout_hours') is None:
         d['session_timeout_hours'] = 1
+
+    from shared.audit import audit
+    parts = []
+    if enforce_sso is not None:
+        parts.append(f'sso={enforce_sso}')
+    if timeout_hours is not None:
+        parts.append(f'timeout={timeout_hours}h')
+    audit('UPDATE_AUTH_PREFS', extra=','.join(parts) if parts else None)
+
     return jsonify({'status': 'ok', **d})
 
 
@@ -164,6 +173,8 @@ def update_signature():
     with get_db() as db:
         db.execute('UPDATE users SET signature=? WHERE id=?', (signature, g.user_id))
         db.commit()
+        from shared.audit import audit
+        audit('UPDATE_SIGNATURE')
     return jsonify({'status': 'ok', 'signature': signature})
 
 
@@ -185,6 +196,8 @@ def delete_user(uid):
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
     scheduled = schedule_delete(uid, 'self', 3)
+    from shared.audit import audit
+    audit('SELF_DELETE', extra=f'uid={uid}')
     return jsonify({
         'status': 'ok',
         'message': f'您的账户已进入 3 天冷静期，将于 {scheduled[:10]} 永久注销。在此期间登录即可自动恢复账户。',
@@ -308,7 +321,7 @@ def change_password():
     old_pw = data.get('old_password', '') if data else ''
     new_pw = data.get('new_password', '') if data else ''
     if not old_pw or not new_pw:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+        return jsonify({'status': 'error', 'message': t('err_fill_all_fields', g.lang)}), 400
     ok, err = validate_password(new_pw, g.lang)
     if not ok:
         return jsonify({'status': 'error', 'message': err}), 400
@@ -322,6 +335,8 @@ def change_password():
         db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
+        from shared.audit import audit
+        audit('CHANGE_PASSWORD')
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
 
 
@@ -333,19 +348,24 @@ def profile_email_send_code():
     data = request.get_json()
     new_email = data.get('email', '').strip() if data else ''
     if not new_email:
-        return jsonify({'status': 'error', 'message': '请输入新邮箱'}), 400
+        return jsonify({'status': 'error', 'message': t('err_new_email_required', g.lang)}), 400
     if not re.match(r'^[^@]+@[^@]+\.[^@]+$', new_email):
         return jsonify({'status': 'error', 'message': t('err_email_invalid', g.lang)}), 400
     with get_db() as db:
+        # Reject if same as current email
+        own = db.execute('SELECT id FROM users WHERE email=? AND id=?', (new_email, g.user_id)).fetchone()
+        if own:
+            return jsonify({'status': 'error', 'message': t('err_email_same', g.lang)}), 400
+        # Reject if already used by another account
         existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
         if existing:
-            return jsonify({'status': 'error', 'message': '该邮箱已被其他账号使用'}), 400
+            return jsonify({'status': 'error', 'message': t('err_email_registered', g.lang)}), 400
         code = generate_code()
         db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?',
                    (code, datetime.now(timezone.utc) + timedelta(minutes=10), g.user_id))
         db.commit()
     send_email_change_code(new_email, code, g.lang)
-    return jsonify({'status': 'ok', 'message': '验证码已发送'})
+    return jsonify({'status': 'ok', 'message': t('msg_email_code_sent', g.lang)})
 
 
 @profile_bp.route('/profile/email/verify', methods=['POST'])
@@ -355,13 +375,25 @@ def profile_email_verify():
     new_email = data.get('email', '').strip() if data else ''
     code = data.get('code', '').strip() if data else ''
     if not new_email or not code:
-        return jsonify({'status': 'error', 'message': '请填写所有字段'}), 400
+        return jsonify({'status': 'error', 'message': t('err_fill_all_fields', g.lang)}), 400
     with get_db() as db:
+        # Reject if same as current email
+        own = db.execute('SELECT id FROM users WHERE email=? AND id=?', (new_email, g.user_id)).fetchone()
+        if own:
+            return jsonify({'status': 'error', 'message': t('err_email_same', g.lang)}), 400
+        # Re-check for race condition: email may have been taken between send-code and verify
+        existing = db.execute('SELECT id FROM users WHERE email=? AND id!=?', (new_email, g.user_id)).fetchone()
+        if existing:
+            return jsonify({'status': 'error', 'message': t('err_email_registered', g.lang)}), 400
         user = db.execute('SELECT verification_code, code_expires FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user or user['verification_code'] != code:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 400
-        if user['code_expires'] and datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
-            return jsonify({'status': 'error', 'message': '验证码已过期'}), 400
+        if user['code_expires']:
+            expires_dt = datetime.fromisoformat(user['code_expires'])
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires_dt:
+                return jsonify({'status': 'error', 'message': t('err_email_code_expired', g.lang)}), 400
         db.execute('UPDATE users SET email=?, verification_code=NULL, code_expires=NULL WHERE id=?',
                    (new_email, g.user_id))
         # Revoke all other sessions — keep current one (user just verified code)
@@ -369,4 +401,6 @@ def profile_email_verify():
         db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
-    return jsonify({'status': 'ok', 'message': '邮箱修改成功'})
+    from shared.audit import audit
+    audit('CHANGE_EMAIL')
+    return jsonify({'status': 'ok', 'message': t('msg_email_changed', g.lang)})

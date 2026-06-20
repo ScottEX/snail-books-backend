@@ -7,3 +7,4 @@ weasyprint>=68.0
 requests>=2.34
 opencc-python-reimplemented>=0.1.7
 pypinyin>=0.55.0
+webauthn>=2.0

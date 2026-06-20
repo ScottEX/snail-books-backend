@@ -28,6 +28,11 @@ AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 def _set_request_lang():
     g.lang = get_lang(request)
 
+# ── Request logging: capture + log every /api/* request ──
+from shared.request_log import _capture_request, _log_response
+app.before_request(_capture_request)
+app.after_request(_log_response)
+
 
 # ═══════════════════════════════════════════════════════════
 #  Static file serving (registered before Blueprints so API
@@ -464,6 +469,14 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS webauthn_credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                credential_id TEXT NOT NULL UNIQUE,
+                public_key TEXT NOT NULL,
+                sign_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         ''')
         # Migrations (safe to re-run)
         for col, col_type in [
@@ -621,6 +634,7 @@ from routes.procurement import procurement_bp
 from routes.profile import profile_bp
 from routes.settings import settings_bp
 from routes.transactions import tx_bp
+from routes.webauthn import webauthn_bp
 
 # Auth routes at root level (login, register, verify, etc.)
 app.register_blueprint(auth_bp)
@@ -633,6 +647,7 @@ app.register_blueprint(procurement_bp, url_prefix='/api')
 app.register_blueprint(profile_bp, url_prefix='/api')
 app.register_blueprint(settings_bp, url_prefix='/api')
 app.register_blueprint(tx_bp, url_prefix='/api')
+app.register_blueprint(webauthn_bp, url_prefix='/api')
 
 
 # ── Global error handlers -- return JSON for API routes ──

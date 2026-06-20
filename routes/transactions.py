@@ -39,6 +39,8 @@ def transactions():
                  datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             db.commit()
+            from shared.audit import audit
+            audit('CREATE_TRANSACTION', extra=f'{data["type"]} ¥{data["amount"]} {data["category"]} {data.get("date","")}')
         return jsonify({'status': 'ok'})
 
     # GET with pagination
@@ -214,6 +216,8 @@ def transaction_by_id(id):
                             pass
 
             updated = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
+            from shared.audit import audit
+            audit('UPDATE_TRANSACTION', extra=f'id={id} amount={updated["amount"]} {updated["category"]} {updated.get("date","")}')
         return jsonify({'status': 'ok', 'transaction': dict(updated)})
 
     # DELETE
@@ -257,4 +261,6 @@ def transaction_by_id(id):
                         pass
         db.execute('DELETE FROM transactions WHERE id=?', (id,))
         db.commit()
+        from shared.audit import audit
+        audit('DELETE_TRANSACTION', extra=f'id={id}')
     return jsonify({'status': 'ok'})
