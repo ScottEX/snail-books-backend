@@ -676,6 +676,14 @@ def cleanup_expired_command():
     print('cleanup-expired done')
 
 
+@app.cli.command('send-deletion-reminders')
+def send_deletion_reminders_command():
+    """给距删除不到8小时的用户发提醒邮件"""
+    from shared.auth import send_deletion_reminders
+    send_deletion_reminders()
+    print('send-deletion-reminders done')
+
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=8600, debug=False)
