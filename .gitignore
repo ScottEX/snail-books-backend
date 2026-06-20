@@ -9,4 +9,6 @@ venv/
 *.db-wal
 expense-imgs/
 invoice-files/
+user-images/
 data/.flask_secret
+static/web-build/
