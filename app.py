@@ -668,6 +668,14 @@ def handle_404(e):
     return e.get_response()
 
 
+@app.cli.command('cleanup-expired')
+def cleanup_expired_command():
+    """删除已过冷静期的标记删除用户"""
+    from shared.auth import cleanup_expired_deletions
+    cleanup_expired_deletions()
+    print('cleanup-expired done')
+
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=8600, debug=False)
