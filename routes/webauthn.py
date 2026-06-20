@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import time
 
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, session, g
@@ -16,6 +17,12 @@ webauthn_bp = Blueprint('webauthn', __name__)
 RP_ID = 'test.rowanlan.xyz'
 RP_NAME = '柳味探秘'
 ORIGIN = 'https://test.rowanlan.xyz'
+
+# Server-side challenge store.
+# Flask session cookies can be lost due to parallel Set-Cookie races
+# when the profile page fires multiple API calls simultaneously.
+# Keyed by user_id, with 120s TTL.
+_challenges = {}  # {user_id: (challenge_b64, expires_at)}
 
 
 def _b64url(data: bytes) -> str:
@@ -244,6 +251,14 @@ def register_begin():
 
     challenge_bytes = os.urandom(32)
 
+    # Lightweight sweep: clean up expired challenges (every 50th call to avoid
+    # iterating the dict on every request).
+    if len(_challenges) > 0 and len(_challenges) % 50 == 0:
+        now = time.time()
+        for uid in list(_challenges):
+            if _challenges[uid][1] < now:
+                del _challenges[uid]
+
     # user_id in WebAuthn must be ≤ 64 bytes
     user_id_bytes = str(g.user_id).encode()
 
@@ -262,6 +277,12 @@ def register_begin():
 
     session['webauthn_register_challenge'] = _b64url(challenge_bytes)
     session.modified = True
+
+    # Fallback: server-side store. Flask's session cookie can be lost when
+    # the profile page fires parallel API calls (loadFaceIDStatus, loadUserInfo,
+    # loadAvatar, etc.) — each response carries a Set-Cookie that can overwrite
+    # the one from register_begin before the browser sends register_complete.
+    _challenges[g.user_id] = (_b64url(challenge_bytes), time.time() + 120)
 
     return jsonify({
         'status': 'ok',
@@ -306,6 +327,14 @@ def register_complete():
 
     challenge_b64 = session.get('webauthn_register_challenge', '')
     if not challenge_b64:
+        # Session cookie lost (parallel Set-Cookie race on profile page) —
+        # fall back to server-side store.
+        entry = _challenges.get(g.user_id)
+        if entry:
+            stored, expires = entry
+            if time.time() < expires:
+                challenge_b64 = stored
+    if not challenge_b64:
         return jsonify({'status': 'error', 'message': 'No challenge in session'}), 400
 
     try:
@@ -347,6 +376,7 @@ def register_complete():
         db.commit()
 
     session.pop('webauthn_register_challenge', None)
+    _challenges.pop(g.user_id, None)
 
     return jsonify({'status': 'ok', 'message': t('msg_webauthn_bound', g.lang)})
 
