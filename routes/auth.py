@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from shared.db import get_db
 from shared.i18n import t
-from shared.auth import login_required, cancel_delete, cleanup_expired_deletions
+from shared.auth import login_required, cancel_delete
 from shared.email import DEV_MODE, generate_code, send_verification_email, send_reset_email
 from shared.rate_limit import check_rate_limit, record_failed_attempt, check_forgot_limit, record_forgot_attempt
 from shared.validation import validate_password, validate_username, validate_required, validate_email
