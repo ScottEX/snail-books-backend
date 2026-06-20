@@ -668,6 +668,22 @@ def handle_404(e):
     return e.get_response()
 
 
+@app.cli.command('cleanup-expired')
+def cleanup_expired_command():
+    """删除已过冷静期的标记删除用户"""
+    from shared.auth import cleanup_expired_deletions
+    cleanup_expired_deletions()
+    print('cleanup-expired done')
+
+
+@app.cli.command('send-deletion-reminders')
+def send_deletion_reminders_command():
+    """给距删除不到8小时的用户发提醒邮件"""
+    from shared.auth import send_deletion_reminders
+    send_deletion_reminders()
+    print('send-deletion-reminders done')
+
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=8600, debug=False)

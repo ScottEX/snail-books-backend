@@ -108,9 +108,6 @@ def login_required(f):
         g.user_id = session['user_id']
         g.username = session.get('username', '')
 
-        # Clean up any expired scheduled deletions (lightweight, rare)
-        # Moved to cron job (P1-YY/ZZ) — see cron job "清理过期删除用户"
-
         with get_db() as db:
             user = db.execute('SELECT id, is_disabled FROM users WHERE id=?', (g.user_id,)).fetchone()
         if not user:
