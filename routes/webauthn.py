@@ -378,6 +378,9 @@ def register_complete():
     session.pop('webauthn_register_challenge', None)
     _challenges.pop(g.user_id, None)
 
+    from shared.audit import audit
+    audit('REGISTER_WEBAUTHN')
+
     return jsonify({'status': 'ok', 'message': t('msg_webauthn_bound', g.lang)})
 
 
@@ -445,4 +448,6 @@ def delete_credential():
     with get_db() as db:
         db.execute('DELETE FROM webauthn_credentials WHERE user_id = ?', (g.user_id,))
         db.commit()
+    from shared.audit import audit
+    audit('UNREGISTER_WEBAUTHN')
     return jsonify({'status': 'ok', 'message': t('msg_webauthn_unbound', g.lang)})

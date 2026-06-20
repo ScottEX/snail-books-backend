@@ -149,6 +149,15 @@ def auth_prefs():
         d['enforce_single_session'] = 1
     if d.get('session_timeout_hours') is None:
         d['session_timeout_hours'] = 1
+
+    from shared.audit import audit
+    parts = []
+    if enforce_sso is not None:
+        parts.append(f'sso={enforce_sso}')
+    if timeout_hours is not None:
+        parts.append(f'timeout={timeout_hours}h')
+    audit('UPDATE_AUTH_PREFS', extra=','.join(parts) if parts else None)
+
     return jsonify({'status': 'ok', **d})
 
 
@@ -392,4 +401,6 @@ def profile_email_verify():
         db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
+    from shared.audit import audit
+    audit('CHANGE_EMAIL')
     return jsonify({'status': 'ok', 'message': t('msg_email_changed', g.lang)})
