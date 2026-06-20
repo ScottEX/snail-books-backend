@@ -391,6 +391,19 @@ def business_summary():
         ).fetchall()
         expense_by_category = {r['category']: r['total'] for r in cat_rows}
 
+        # Today / this-month expense for frontend cards (avoid full-scan on frontend)
+        from datetime import date, datetime
+        today_str = date.today().isoformat()
+        month_prefix = today_str[:7] + '%'
+        today_exp = db.execute(
+            "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date=?",
+            (today_str,)
+        ).fetchone()
+        month_exp = db.execute(
+            "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
+            (month_prefix,)
+        ).fetchone()
+
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
         total_investment = pinv['total_inv']
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
@@ -402,6 +415,8 @@ def business_summary():
             'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
             'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
             'expense_by_category': expense_by_category,
+            'today_expense_amount': today_exp['total'],
+            'month_expense_amount': month_exp['total'],
         })
 
 
