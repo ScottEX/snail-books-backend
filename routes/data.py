@@ -392,17 +392,36 @@ def business_summary():
         expense_by_category = {r['category']: r['total'] for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
-        from datetime import date, datetime
         today_str = date.today().isoformat()
         month_prefix = today_str[:7] + '%'
         today_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date=?",
             (today_str,)
         ).fetchone()
+        today_income_row = db.execute(
+            "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
+            (today_str,)
+        ).fetchone()
+        today_income = today_income_row['total']
+        today_profit = today_income - today_exp['total']
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
         ).fetchone()
+
+        # Yesterday stats — income from daily_revenue, expense from transactions
+        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+        yesterday_income_row = db.execute(
+            "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
+            (yesterday_str,)
+        ).fetchone()
+        yesterday_income = yesterday_income_row['total']
+        yesterday_expense_row = db.execute(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense' AND date=?",
+            (yesterday_str,)
+        ).fetchone()
+        yesterday_expense = yesterday_expense_row['total']
+        yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
         total_investment = pinv['total_inv']
@@ -415,8 +434,13 @@ def business_summary():
             'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
             'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
             'expense_by_category': expense_by_category,
-            'today_expense_amount': today_exp['total'],
+            'today_expense': today_exp['total'],
+            'today_income': today_income,
+            'today_profit': today_profit,
             'month_expense_amount': month_exp['total'],
+            'yesterday_income': yesterday_income,
+            'yesterday_expense': yesterday_expense,
+            'yesterday_profit': yesterday_profit,
         })
 
 
