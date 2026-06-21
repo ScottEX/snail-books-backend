@@ -398,6 +398,12 @@ def business_summary():
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date=?",
             (today_str,)
         ).fetchone()
+        today_income_row = db.execute(
+            "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
+            (today_str,)
+        ).fetchone()
+        today_income = today_income_row['total']
+        today_profit = today_income - today_exp['total']
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
@@ -428,7 +434,9 @@ def business_summary():
             'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
             'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
             'expense_by_category': expense_by_category,
-            'today_expense_amount': today_exp['total'],
+            'today_expense': today_exp['total'],
+            'today_income': today_income,
+            'today_profit': today_profit,
             'month_expense_amount': month_exp['total'],
             'yesterday_income': yesterday_income,
             'yesterday_expense': yesterday_expense,
