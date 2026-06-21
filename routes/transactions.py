@@ -217,7 +217,7 @@ def transaction_by_id(id):
 
             updated = db.execute('SELECT * FROM transactions WHERE id=?', (id,)).fetchone()
             from shared.audit import audit
-            audit('UPDATE_TRANSACTION', extra=f'id={id} amount={updated["amount"]} {updated["category"]} {updated.get("date","")}')
+            audit('UPDATE_TRANSACTION', extra=f'id={id} amount={updated["amount"]} {updated["category"]} {updated["date"]}')
         return jsonify({'status': 'ok', 'transaction': dict(updated)})
 
     # DELETE
