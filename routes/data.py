@@ -2,6 +2,7 @@
 
 import json, os, time, re
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, session, g
 import sqlite3
 
@@ -9,6 +10,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
+from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
 
 data_bp = Blueprint('data', __name__)
@@ -121,9 +123,9 @@ def create_reconciliation():
 
     card_balance = balances['card_balance']
     cash_balance = balances['cash_balance']
-    channel_total = round(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']), 2)
-    real_total = round(card_balance + cash_balance, 2)
-    diff = round(real_total - channel_total, 2)
+    channel_total = fmt_money(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']))
+    real_total = fmt_money(card_balance + cash_balance)
+    diff = fmt_money(real_total - channel_total)
 
     with get_db() as db:
         existing = db.execute('SELECT id FROM reconciliations WHERE bill_date=?', (bill_date,)).fetchone()
@@ -198,7 +200,7 @@ def get_reconciliations():
                 params + [per_page, offset]
             ).fetchall()
             return jsonify({
-                'records': [dict(r) for r in rows],
+                'records': [_fmt_recon_row(dict(r)) for r in rows],
                 'page': page, 'pages': pages, 'total': count, 'per_page': per_page,
                 'total_all': total_all,
             })
@@ -212,12 +214,38 @@ def get_reconciliations():
                     f'SELECT * FROM reconciliations {where} ORDER BY date DESC, bill_date DESC LIMIT ?',
                     params + [limit]
                 ).fetchall()
-            return jsonify([dict(r) for r in rows])
+            return jsonify([_fmt_recon_row(dict(r)) for r in rows])
 
 
 # ═══════════════════════════════════════════
 # Platform Fees
 # ═══════════════════════════════════════════
+
+def _fmt_recon_row(r: dict) -> dict:
+    """Round monetary fields in a reconciliation row to 2 decimal places."""
+    money_fields = ('card_balance', 'cash_balance', 'dine_in', 'meituan', 'flash_sale',
+                    'jd', 'tuan', 'channel_total', 'real_total', 'diff')
+    for k in money_fields:
+        if k in r:
+            r[k] = fmt_money(r[k])
+    return r
+
+
+def _fmt_rev_row(r: dict) -> dict:
+    """Round monetary fields in a daily_revenue row to 2 decimal places."""
+    for k in ('revenue', 'turnover', 'jd_revenue'):
+        if k in r:
+            r[k] = fmt_money(r[k])
+    return r
+
+
+def _fmt_fee_row(r: dict) -> dict:
+    """Round monetary fields in a platform_fee row to 2 decimal places."""
+    for k in ('meituan_cashier', 'meituan_waimai', 'shangou_waimai', 'meituan_tuan'):
+        if k in r:
+            r[k] = fmt_money(r[k])
+    return r
+
 
 @data_bp.route('/platform-fees', methods=['GET'])
 @login_required
@@ -227,9 +255,9 @@ def get_platform_fees():
     with get_db() as db:
         if year and month:
             row = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
-            return jsonify(dict(row) if row else {})
+            return jsonify(_fmt_fee_row(dict(row)) if row else {})
         rows = db.execute('SELECT * FROM platform_fees ORDER BY year DESC, month DESC').fetchall()
-        return jsonify([dict(r) for r in rows])
+        return jsonify([_fmt_fee_row(dict(r)) for r in rows])
 
 
 @data_bp.route('/platform-fees/entry', methods=['POST'])
@@ -262,7 +290,7 @@ def add_platform_fee_entry():
         updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
         from shared.audit import audit
         audit('CREATE_PLATFORM_FEE', extra=f'{year}/{month} entry={entry_date}')
-        return jsonify({'status': 'ok', 'data': dict(updated)})
+        return jsonify({'status': 'ok', 'data': _fmt_fee_row(dict(updated))})
 
 
 @data_bp.route('/platform-fees/<int:id>', methods=['PUT'])
@@ -327,7 +355,7 @@ def get_daily_revenue():
         total_pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(base + ' ORDER BY dr.date DESC LIMIT ? OFFSET ?', params + [per_page, offset]).fetchall()
-        return jsonify({'records': [dict(r) for r in rows], 'total': count, 'pages': total_pages, 'page': page,
+        return jsonify({'records': [_fmt_rev_row(dict(r)) for r in rows], 'total': count, 'pages': total_pages, 'page': page,
                         'per_page': per_page, 'total_all': total_all})
 
 
@@ -340,7 +368,7 @@ def last_7_days():
         rows = db.execute('''SELECT dr.*, u.username as recorded_by
             FROM daily_revenue dr LEFT JOIN users u ON dr.user_id = u.id
             WHERE dr.date IN (''' + ','.join('?' * len(dates)) + ')', dates).fetchall()
-        by_date = {r['date']: dict(r) for r in rows}
+        by_date = {r['date']: _fmt_rev_row(dict(r)) for r in rows}
         result = []
         for d in dates:
             if d in by_date:
@@ -359,7 +387,7 @@ def daily_revenue_total():
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as total_turnover,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
         ).fetchone()
-        return jsonify(dict(row))
+        return jsonify(_fmt_rev_row(dict(row)))
 
 
 @data_bp.route('/business-summary')
@@ -370,26 +398,26 @@ def business_summary():
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
         ).fetchone()
-        actual_received = rev['total_revenue'] + rev['total_jd']
-        receivable = rev['receivable']
+        actual_received = to_decimal(rev['total_revenue']) + to_decimal(rev['total_jd'])
+        receivable = to_decimal(rev['receivable'])
         discount = receivable - actual_received
 
         pf = db.execute(
             'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
             ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf FROM platform_fees'
         ).fetchone()
-        platform_fees_total = pf['total_pf']
+        platform_fees_total = to_decimal(pf['total_pf'])
         cumulative_revenue = actual_received - platform_fees_total
 
         exp = db.execute("SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp FROM transactions WHERE type IN ('expense','income')").fetchone()
-        cumulative_expense = exp['total_exp']
+        cumulative_expense = to_decimal(exp['total_exp'])
 
         # Category breakdown for glass card
         cat_rows = db.execute(
             "SELECT category, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total"
             " FROM transactions WHERE type IN ('expense','income') GROUP BY category"
         ).fetchall()
-        expense_by_category = {r['category']: r['total'] for r in cat_rows}
+        expense_by_category = {r['category']: fmt_money(r['total']) for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
         today_str = date.today().isoformat()
@@ -402,8 +430,8 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (today_str,)
         ).fetchone()
-        today_income = today_income_row['total']
-        today_profit = today_income - today_exp['total']
+        today_income = to_decimal(today_income_row['total'])
+        today_profit = today_income - to_decimal(today_exp['total'])
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
@@ -415,32 +443,37 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_income = yesterday_income_row['total']
+        yesterday_income = to_decimal(yesterday_income_row['total'])
         yesterday_expense_row = db.execute(
             "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense' AND date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_expense = yesterday_expense_row['total']
+        yesterday_expense = to_decimal(yesterday_expense_row['total'])
         yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-        total_investment = pinv['total_inv']
+        total_investment = to_decimal(pinv['total_inv'])
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-        total_dividends = pdiv['total_div']
+        total_dividends = to_decimal(pdiv['total_div'])
         cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
 
         return jsonify({
-            'actual_received': actual_received, 'receivable': receivable, 'discount': discount,
-            'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
-            'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
+            'actual_received': fmt_money(actual_received),
+            'receivable': fmt_money(receivable),
+            'discount': fmt_money(discount),
+            'cumulative_revenue': fmt_money(cumulative_revenue),
+            'cumulative_expense': fmt_money(cumulative_expense),
+            'cash_on_hand': fmt_money(cash_on_hand),
+            'total_investment': fmt_money(total_investment),
+            'total_dividends': fmt_money(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': today_exp['total'],
-            'today_income': today_income,
-            'today_profit': today_profit,
-            'month_expense_amount': month_exp['total'],
-            'yesterday_income': yesterday_income,
-            'yesterday_expense': yesterday_expense,
-            'yesterday_profit': yesterday_profit,
+            'today_expense': fmt_money(to_decimal(today_exp['total'])),
+            'today_income': fmt_money(today_income),
+            'today_profit': fmt_money(today_profit),
+            'month_expense_amount': fmt_money(to_decimal(month_exp['total'])),
+            'yesterday_income': fmt_money(yesterday_income),
+            'yesterday_expense': fmt_money(yesterday_expense),
+            'yesterday_profit': fmt_money(yesterday_profit),
         })
 
 
@@ -467,7 +500,7 @@ def create_daily_revenue():
                 FROM daily_revenue dr LEFT JOIN users u ON dr.user_id = u.id WHERE dr.date=?''', (dt,)).fetchone()
             from shared.audit import audit
             audit('CREATE_DLY_REV', extra=f'{dt} ¥{turnover}')
-            return jsonify({'status': 'ok', 'data': dict(row)})
+            return jsonify({'status': 'ok', 'data': _fmt_rev_row(dict(row))})
         except sqlite3.IntegrityError:
             return jsonify({'status': 'error', 'message': '该日期已有营收记录'}), 409
 
@@ -493,7 +526,7 @@ def update_daily_revenue(id):
             FROM daily_revenue dr LEFT JOIN users u ON dr.user_id = u.id WHERE dr.id=?''', (id,)).fetchone()
         from shared.audit import audit
         audit('UPDATE_DLY_REV', extra=f'id={id}')
-        return jsonify({'status': 'ok', 'data': dict(updated)})
+        return jsonify({'status': 'ok', 'data': _fmt_rev_row(dict(updated))})
 
 
 @data_bp.route('/daily-revenue/<int:id>', methods=['DELETE'])

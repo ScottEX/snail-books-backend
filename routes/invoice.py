@@ -15,6 +15,7 @@ from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import INVOICE_FILE_DIR
 from shared.email import _send_email
+from shared.money import fmt_money
 
 invoice_bp = Blueprint('invoice', __name__)
 
@@ -33,8 +34,12 @@ def _ensure_user_dir(user_id):
 
 
 def _row_to_dict(row):
-    """Convert sqlite row to dict, decoding nothing fancy (no JSON columns here)."""
-    return dict(row)
+    """Convert sqlite row to dict, round monetary fields."""
+    r = dict(row)
+    for k in ('amount', 'total'):
+        if k in r and r[k] is not None:
+            r[k] = fmt_money(r[k])
+    return r
 
 
 def _validate_date(date_str, lang):
@@ -353,4 +358,4 @@ def api_procurement_batches_lite():
             'WHERE pb.id NOT IN (SELECT procurement_batch_id FROM invoice_records WHERE procurement_batch_id IS NOT NULL) '
             'ORDER BY pb.date DESC, pb.id DESC'
         ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([_row_to_dict(r) for r in rows])

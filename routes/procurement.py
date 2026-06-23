@@ -11,6 +11,7 @@ from shared.auth import login_required
 from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import EXPENSE_IMG_DIR
+from shared.money import fmt_money, to_decimal
 
 procurement_bp = Blueprint('procurement', __name__)
 
@@ -138,7 +139,7 @@ def api_procurement_batches():
             db.execute('BEGIN IMMEDIATE')
             cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
             batch_no = cur[0] + 1
-            total = 0.0
+            total = to_decimal(0)
             item_rows = []
             for item in items:
                 pid = item.get('product_id')
@@ -148,7 +149,7 @@ def api_procurement_batches():
                 product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
                 if not product:
                     continue
-                unit_price = product['price']
+                unit_price = to_decimal(product['price'])
                 subtotal = unit_price * qty
                 total += subtotal
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
@@ -158,14 +159,14 @@ def api_procurement_batches():
             thumbs_json = json.dumps(data.get('thumb_images', []))
             cur = db.execute(
                 'INSERT INTO procurement_batches (batch_number,date,payment_method,category,total,images,thumb_images,note) VALUES (?,?,?,?,?,?,?,?)',
-                (batch_no, data['date'], data['payment_method'], data.get('category', '采购'), round(total, 2),
+                (batch_no, data['date'], data['payment_method'], data.get('category', '采购'), fmt_money(total),
                  images_json, thumbs_json, data.get('note', ''))
             )
             batch_id = cur.lastrowid
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (batch_id, pid, name, spec, up, qty, round(sub, 2))
+                    (batch_id, pid, name, spec, up, qty, fmt_money(sub))
                 )
             # Sync an expense transaction (amount=0 until settled)
             cur = db.execute(
@@ -174,8 +175,8 @@ def api_procurement_batches():
             )
             db.commit()
             from shared.audit import audit
-            audit('CREATE_PROCUREMENT', extra=f'batch#{batch_no} ¥{round(total,2)} {data.get("date","")}')
-        return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': round(total, 2)})
+            audit('CREATE_PROCUREMENT', extra=f'batch#{batch_no} ¥{fmt_money(total)} {data.get("date","")}')
+        return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': fmt_money(total)})
 
     # GET: paginated list
     page = request.args.get('page', 1, type=int)
@@ -309,7 +310,7 @@ def api_procurement_batch_detail(id):
                     (id,),
                 ).fetchall()
                 historical_prices = {it['product_id']: it['unit_price'] for it in existing_items}
-            total = 0.0
+            total = to_decimal(0)
             item_rows = []
             for item in items:
                 pid = item.get('product_id')
@@ -322,7 +323,7 @@ def api_procurement_batch_detail(id):
                 # Settled: keep historical price. Unsettled: use current product price.
                 # If a NEW product is added to a settled batch (shouldn't happen via UI,
                 # but the API doesn't enforce it), use the current product price for the new row.
-                unit_price = historical_prices.get(pid, product['price'])
+                unit_price = to_decimal(historical_prices.get(pid, product['price']))
                 subtotal = unit_price * qty
                 total += subtotal
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
@@ -335,14 +336,14 @@ def api_procurement_batch_detail(id):
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (id, pid, name, spec, up, qty, round(sub, 2))
+                    (id, pid, name, spec, up, qty, fmt_money(sub))
                 )
             db.execute(
                 "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
                 (data['date'], data['payment_method'], data.get('category', '采购'),
-                 round(total, 2), images_json, thumbs_json, data.get('note', ''), id)
+                 fmt_money(total), images_json, thumbs_json, data.get('note', ''), id)
             )
-            expense_amount = round(total, 2) if is_settled else 0
+            expense_amount = fmt_money(total) if is_settled else 0
             cur = db.execute(
                 "UPDATE transactions SET amount=?, category=?, account=?, note=?, date=?, images=?, thumb_images=?, procurement_batch_id=? WHERE type='expense' AND procurement_batch_id=? AND category=? AND date=? AND amount=? AND account=?",
                 (expense_amount, data.get('category', '采购'), data['payment_method'],
@@ -359,8 +360,8 @@ def api_procurement_batch_detail(id):
             db.commit()
             _delete_cached_pdf(id)
             from shared.audit import audit
-            audit('UPDATE_PROCUREMENT', extra=f'batch#{row["batch_number"]} ¥{round(total,2)}')
-            return jsonify({'status': 'ok', 'batch_id': id, 'total': round(total, 2)})
+            audit('UPDATE_PROCUREMENT', extra=f'batch#{row["batch_number"]} ¥{fmt_money(total)}')
+            return jsonify({'status': 'ok', 'batch_id': id, 'total': fmt_money(total)})
 
         # GET: detail
         b = dict(row)
