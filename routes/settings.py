@@ -4,7 +4,7 @@ import os
 import time
 import io
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 
 from flask import Blueprint, request, jsonify, g, send_file
 
@@ -302,15 +302,31 @@ def chart_monthly():
         """, (month_str,)).fetchall()
 
         # Daily profit (last 12 days)
-        daily_rows = db.execute("""
+        today_str = date.today().strftime('%Y-%m-%d')
+        daily_income_rows = db.execute("""
             SELECT d.date,
-                   COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income,
-                   COALESCE((SELECT SUM(t.amount) FROM transactions t
-                             WHERE t.type='expense' AND t.date = d.date), 0) as expense
+                   COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income
             FROM daily_revenue d
             WHERE d.date >= date('now', '-11 days')
-            GROUP BY d.date ORDER BY d.date
+            GROUP BY d.date
         """).fetchall()
+        daily_expense_rows = db.execute("""
+            SELECT t.date,
+                   COALESCE(SUM(t.amount), 0) as expense
+            FROM transactions t
+            WHERE t.type='expense' AND t.date >= date('now', '-11 days')
+            GROUP BY t.date
+        """).fetchall()
+
+    # Build 12-day date list
+    daily_dates: list[str] = []
+    for i in range(11, -1, -1):
+        d = date.today() - timedelta(days=i)
+        daily_dates.append(d.strftime('%Y-%m-%d'))
+
+    income_dict = {r['date']: round(r['income'], 2) for r in daily_income_rows}
+    expense_dict = {r['date']: round(r['expense'], 2) for r in daily_expense_rows}
+    daily_profit = [round(income_dict.get(d, 0) - expense_dict.get(d, 0), 2) for d in daily_dates]
 
     # Build 12-month label list (oldest first)
     today = date.today()
@@ -330,12 +346,6 @@ def chart_monthly():
     income_list = [income_dict.get(m, 0) for m in months]
     expense_list = [expense_dict.get(m, 0) for m in months]
     profit_list = [round(income_list[i] - expense_list[i], 2) for i in range(len(months))]
-
-    daily_dates = []
-    daily_profit = []
-    for r in daily_rows:
-        daily_dates.append(r['date'])
-        daily_profit.append(round(r['income'] - r['expense'], 2))
 
     return jsonify({
         'months': months,
