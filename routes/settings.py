@@ -320,12 +320,31 @@ def chart_monthly():
     expense_list = [expense_dict.get(m, 0) for m in months]
     profit_list = [round(income_list[i] - expense_list[i], 2) for i in range(len(months))]
 
+    # Daily profit (last 12 days)
+    daily_rows = db.execute("""
+        SELECT d.date,
+               COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income,
+               COALESCE((SELECT SUM(t.amount) FROM transactions t
+                         WHERE t.type='expense' AND t.date = d.date), 0) as expense
+        FROM daily_revenue d
+        WHERE d.date >= date('now', '-11 days')
+        GROUP BY d.date ORDER BY d.date
+    """).fetchall()
+
+    daily_dates = []
+    daily_profit = []
+    for r in daily_rows:
+        daily_dates.append(r['date'])
+        daily_profit.append(round(r['income'] - r['expense'], 2))
+
     return jsonify({
         'months': months,
         'income': income_list,
         'expense': expense_list,
         'profit': profit_list,
         'categories': {r['category']: round(r['total'], 2) for r in cat_rows},
+        'daily_dates': daily_dates,
+        'daily_profit': daily_profit,
     })
 
 
