@@ -393,6 +393,7 @@ def daily_revenue_total():
 @login_required
 def business_summary():
     D = lambda v: Decimal(str(v or 0))
+    F = lambda d: round(float(d), 2)
     with get_db() as db:
         rev = db.execute(
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
@@ -458,22 +459,22 @@ def business_summary():
         cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
 
         return jsonify({
-            'actual_received': float(actual_received),
-            'receivable': float(receivable),
-            'discount': float(discount),
-            'cumulative_revenue': float(cumulative_revenue),
-            'cumulative_expense': float(cumulative_expense),
-            'cash_on_hand': float(cash_on_hand),
-            'total_investment': float(total_investment),
-            'total_dividends': float(total_dividends),
+            'actual_received': F(actual_received),
+            'receivable': F(receivable),
+            'discount': F(discount),
+            'cumulative_revenue': F(cumulative_revenue),
+            'cumulative_expense': F(cumulative_expense),
+            'cash_on_hand': F(cash_on_hand),
+            'total_investment': F(total_investment),
+            'total_dividends': F(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': float(D(today_exp['total'])),
-            'today_income': float(today_income),
-            'today_profit': float(today_profit),
-            'month_expense_amount': float(D(month_exp['total'])),
-            'yesterday_income': float(yesterday_income),
-            'yesterday_expense': float(yesterday_expense),
-            'yesterday_profit': float(yesterday_profit),
+            'today_expense': F(D(today_exp['total'])),
+            'today_income': F(today_income),
+            'today_profit': F(today_profit),
+            'month_expense_amount': F(D(month_exp['total'])),
+            'yesterday_income': F(yesterday_income),
+            'yesterday_expense': F(yesterday_expense),
+            'yesterday_profit': F(yesterday_profit),
         })
 
 
