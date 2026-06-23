@@ -2,6 +2,7 @@
 
 import json, os, time, re
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, session, g
 import sqlite3
 
@@ -365,31 +366,32 @@ def daily_revenue_total():
 @data_bp.route('/business-summary')
 @login_required
 def business_summary():
+    D = lambda v: Decimal(str(v or 0))
     with get_db() as db:
         rev = db.execute(
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
         ).fetchone()
-        actual_received = round(rev['total_revenue'] + rev['total_jd'], 2)
-        receivable = round(rev['receivable'], 2)
-        discount = round(receivable - actual_received, 2)
+        actual_received = D(rev['total_revenue']) + D(rev['total_jd'])
+        receivable = D(rev['receivable'])
+        discount = receivable - actual_received
 
         pf = db.execute(
             'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
             ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf FROM platform_fees'
         ).fetchone()
-        platform_fees_total = round(pf['total_pf'], 2)
-        cumulative_revenue = round(actual_received - platform_fees_total, 2)
+        platform_fees_total = D(pf['total_pf'])
+        cumulative_revenue = actual_received - platform_fees_total
 
         exp = db.execute("SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp FROM transactions WHERE type IN ('expense','income')").fetchone()
-        cumulative_expense = round(exp['total_exp'], 2)
+        cumulative_expense = D(exp['total_exp'])
 
         # Category breakdown for glass card
         cat_rows = db.execute(
             "SELECT category, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total"
             " FROM transactions WHERE type IN ('expense','income') GROUP BY category"
         ).fetchall()
-        expense_by_category = {r['category']: r['total'] for r in cat_rows}
+        expense_by_category = {r['category']: float(round(r['total'], 2)) for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
         today_str = date.today().isoformat()
@@ -402,8 +404,8 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (today_str,)
         ).fetchone()
-        today_income = today_income_row['total']
-        today_profit = today_income - today_exp['total']
+        today_income = D(today_income_row['total'])
+        today_profit = today_income - D(today_exp['total'])
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
@@ -415,32 +417,37 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_income = yesterday_income_row['total']
+        yesterday_income = D(yesterday_income_row['total'])
         yesterday_expense_row = db.execute(
             "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense' AND date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_expense = yesterday_expense_row['total']
+        yesterday_expense = D(yesterday_expense_row['total'])
         yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-        total_investment = round(pinv['total_inv'], 2)
+        total_investment = D(pinv['total_inv'])
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-        total_dividends = round(pdiv['total_div'], 2)
-        cash_on_hand = round((total_investment + cumulative_revenue) - (cumulative_expense + total_dividends), 2)
+        total_dividends = D(pdiv['total_div'])
+        cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
 
         return jsonify({
-            'actual_received': actual_received, 'receivable': receivable, 'discount': discount,
-            'cumulative_revenue': cumulative_revenue, 'cumulative_expense': cumulative_expense,
-            'cash_on_hand': cash_on_hand, 'total_investment': total_investment, 'total_dividends': total_dividends,
+            'actual_received': float(actual_received),
+            'receivable': float(receivable),
+            'discount': float(discount),
+            'cumulative_revenue': float(cumulative_revenue),
+            'cumulative_expense': float(cumulative_expense),
+            'cash_on_hand': float(cash_on_hand),
+            'total_investment': float(total_investment),
+            'total_dividends': float(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': today_exp['total'],
-            'today_income': today_income,
-            'today_profit': today_profit,
-            'month_expense_amount': month_exp['total'],
-            'yesterday_income': yesterday_income,
-            'yesterday_expense': yesterday_expense,
-            'yesterday_profit': yesterday_profit,
+            'today_expense': float(D(today_exp['total'])),
+            'today_income': float(today_income),
+            'today_profit': float(today_profit),
+            'month_expense_amount': float(D(month_exp['total'])),
+            'yesterday_income': float(yesterday_income),
+            'yesterday_expense': float(yesterday_expense),
+            'yesterday_profit': float(yesterday_profit),
         })
 
 
