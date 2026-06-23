@@ -370,19 +370,19 @@ def business_summary():
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
         ).fetchone()
-        actual_received = rev['total_revenue'] + rev['total_jd']
-        receivable = rev['receivable']
-        discount = receivable - actual_received
+        actual_received = round(rev['total_revenue'] + rev['total_jd'], 2)
+        receivable = round(rev['receivable'], 2)
+        discount = round(receivable - actual_received, 2)
 
         pf = db.execute(
             'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
             ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf FROM platform_fees'
         ).fetchone()
-        platform_fees_total = pf['total_pf']
-        cumulative_revenue = actual_received - platform_fees_total
+        platform_fees_total = round(pf['total_pf'], 2)
+        cumulative_revenue = round(actual_received - platform_fees_total, 2)
 
         exp = db.execute("SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp FROM transactions WHERE type IN ('expense','income')").fetchone()
-        cumulative_expense = exp['total_exp']
+        cumulative_expense = round(exp['total_exp'], 2)
 
         # Category breakdown for glass card
         cat_rows = db.execute(
@@ -424,10 +424,10 @@ def business_summary():
         yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-        total_investment = pinv['total_inv']
+        total_investment = round(pinv['total_inv'], 2)
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-        total_dividends = pdiv['total_div']
-        cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
+        total_dividends = round(pdiv['total_div'], 2)
+        cash_on_hand = round((total_investment + cumulative_revenue) - (cumulative_expense + total_dividends), 2)
 
         return jsonify({
             'actual_received': actual_received, 'receivable': receivable, 'discount': discount,
