@@ -263,7 +263,7 @@ def chart():
             WHERE date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
         """).fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([{'month': r['month'], 'income': round(r['income'], 2), 'expense': round(r['expense'], 2)} for r in rows])
 
 
 # ═══════════════════════════════════════════════════════════════════════
