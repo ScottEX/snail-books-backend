@@ -13,7 +13,7 @@ from shared.auth import login_required
 from shared.i18n import t
 from shared.config import BG_DIR
 from shared.version import get_frontend_version
-from shared.money import fmt_money
+from shared.money import fmt_money, to_decimal
 
 settings_bp = Blueprint('settings', __name__)
 
@@ -186,27 +186,27 @@ def summary():
     month_str = date.today().strftime('%Y-%m')
     with get_db() as db:
         # Today — use business date, not created_at (P1-TTT)
-        today_income = db.execute(
+        today_income = to_decimal(db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND date=?",
             (today_str,),
-        ).fetchone()[0]
-        today_expense = db.execute(
+        ).fetchone()[0])
+        today_expense = to_decimal(db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND date=?",
             (today_str,),
-        ).fetchone()[0]
+        ).fetchone()[0])
         # Month — use business date, not created_at (P1-TTT)
-        month_income = db.execute(
+        month_income = to_decimal(db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='income' AND strftime('%Y-%m', date)=?",
             (month_str,),
-        ).fetchone()[0]
-        month_expense = db.execute(
+        ).fetchone()[0])
+        month_expense = to_decimal(db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE type='expense' AND strftime('%Y-%m', date)=?",
             (month_str,),
-        ).fetchone()[0]
-        month_procurement = db.execute(
+        ).fetchone()[0])
+        month_procurement = to_decimal(db.execute(
             "SELECT COALESCE(SUM(total),0) FROM procurement_batches WHERE strftime('%Y-%m', date)=?",
             (month_str,),
-        ).fetchone()[0]
+        ).fetchone()[0])
     return jsonify({
         'today': {
             'income': fmt_money(today_income),
@@ -230,16 +230,14 @@ def summary():
 @login_required
 def procurement_stats():
     with get_db() as db:
-        total_spent = db.execute(
+        total_spent = to_decimal(db.execute(
             "SELECT COALESCE(SUM(total),0) FROM procurement_batches"
-        ).fetchone()[0]
-        total_income = db.execute(
+        ).fetchone()[0])
+        total_income = to_decimal(db.execute(
             "SELECT COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) FROM daily_revenue"
-        ).fetchone()[0]
+        ).fetchone()[0])
         batch_count = db.execute("SELECT COUNT(*) FROM procurement_batches").fetchone()[0]
-        margin_pct = round(
-            (total_income - total_spent) / total_income * 100, 2
-        ) if total_income > 0 else 0
+        margin_pct = float((total_income - total_spent) / total_income * 100) if total_income > 0 else 0.0
     return jsonify({
         'total_spent': fmt_money(total_spent),
         'total_income': fmt_money(total_income),

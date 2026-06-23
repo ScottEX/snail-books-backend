@@ -10,7 +10,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
-from shared.money import fmt_money
+from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
 
 data_bp = Blueprint('data', __name__)
@@ -393,25 +393,24 @@ def daily_revenue_total():
 @data_bp.route('/business-summary')
 @login_required
 def business_summary():
-    D = lambda v: Decimal(str(v or 0))
     with get_db() as db:
         rev = db.execute(
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
         ).fetchone()
-        actual_received = D(rev['total_revenue']) + D(rev['total_jd'])
-        receivable = D(rev['receivable'])
+        actual_received = to_decimal(rev['total_revenue']) + to_decimal(rev['total_jd'])
+        receivable = to_decimal(rev['receivable'])
         discount = receivable - actual_received
 
         pf = db.execute(
             'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
             ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf FROM platform_fees'
         ).fetchone()
-        platform_fees_total = D(pf['total_pf'])
+        platform_fees_total = to_decimal(pf['total_pf'])
         cumulative_revenue = actual_received - platform_fees_total
 
         exp = db.execute("SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp FROM transactions WHERE type IN ('expense','income')").fetchone()
-        cumulative_expense = D(exp['total_exp'])
+        cumulative_expense = to_decimal(exp['total_exp'])
 
         # Category breakdown for glass card
         cat_rows = db.execute(
@@ -431,8 +430,8 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (today_str,)
         ).fetchone()
-        today_income = D(today_income_row['total'])
-        today_profit = today_income - D(today_exp['total'])
+        today_income = to_decimal(today_income_row['total'])
+        today_profit = today_income - to_decimal(today_exp['total'])
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
@@ -444,18 +443,18 @@ def business_summary():
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_income = D(yesterday_income_row['total'])
+        yesterday_income = to_decimal(yesterday_income_row['total'])
         yesterday_expense_row = db.execute(
             "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense' AND date=?",
             (yesterday_str,)
         ).fetchone()
-        yesterday_expense = D(yesterday_expense_row['total'])
+        yesterday_expense = to_decimal(yesterday_expense_row['total'])
         yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-        total_investment = D(pinv['total_inv'])
+        total_investment = to_decimal(pinv['total_inv'])
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-        total_dividends = D(pdiv['total_div'])
+        total_dividends = to_decimal(pdiv['total_div'])
         cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
 
         return jsonify({
@@ -468,10 +467,10 @@ def business_summary():
             'total_investment': fmt_money(total_investment),
             'total_dividends': fmt_money(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': fmt_money(D(today_exp['total'])),
+            'today_expense': fmt_money(to_decimal(today_exp['total'])),
             'today_income': fmt_money(today_income),
             'today_profit': fmt_money(today_profit),
-            'month_expense_amount': fmt_money(D(month_exp['total'])),
+            'month_expense_amount': fmt_money(to_decimal(month_exp['total'])),
             'yesterday_income': fmt_money(yesterday_income),
             'yesterday_expense': fmt_money(yesterday_expense),
             'yesterday_profit': fmt_money(yesterday_profit),

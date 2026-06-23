@@ -11,7 +11,7 @@ from shared.auth import login_required
 from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import EXPENSE_IMG_DIR
-from shared.money import fmt_money
+from shared.money import fmt_money, to_decimal
 
 procurement_bp = Blueprint('procurement', __name__)
 
@@ -139,7 +139,7 @@ def api_procurement_batches():
             db.execute('BEGIN IMMEDIATE')
             cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
             batch_no = cur[0] + 1
-            total = 0.0
+            total = to_decimal(0)
             item_rows = []
             for item in items:
                 pid = item.get('product_id')
@@ -149,7 +149,7 @@ def api_procurement_batches():
                 product = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
                 if not product:
                     continue
-                unit_price = product['price']
+                unit_price = to_decimal(product['price'])
                 subtotal = unit_price * qty
                 total += subtotal
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
@@ -310,7 +310,7 @@ def api_procurement_batch_detail(id):
                     (id,),
                 ).fetchall()
                 historical_prices = {it['product_id']: it['unit_price'] for it in existing_items}
-            total = 0.0
+            total = to_decimal(0)
             item_rows = []
             for item in items:
                 pid = item.get('product_id')
@@ -323,7 +323,7 @@ def api_procurement_batch_detail(id):
                 # Settled: keep historical price. Unsettled: use current product price.
                 # If a NEW product is added to a settled batch (shouldn't happen via UI,
                 # but the API doesn't enforce it), use the current product price for the new row.
-                unit_price = historical_prices.get(pid, product['price'])
+                unit_price = to_decimal(historical_prices.get(pid, product['price']))
                 subtotal = unit_price * qty
                 total += subtotal
                 item_rows.append((product['name'], product['spec'] or '', unit_price, qty, subtotal, pid))
