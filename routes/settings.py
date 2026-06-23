@@ -13,6 +13,7 @@ from shared.auth import login_required
 from shared.i18n import t
 from shared.config import BG_DIR
 from shared.version import get_frontend_version
+from shared.money import fmt_money
 
 settings_bp = Blueprint('settings', __name__)
 
@@ -171,7 +172,7 @@ def stats():
             "       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,"
             "       COUNT(*) AS count FROM transactions"
         ).fetchone()
-    return jsonify({'income': round(row['income'], 2), 'expense': round(row['expense'], 2), 'count': row['count']})
+    return jsonify({'income': fmt_money(row['income']), 'expense': fmt_money(row['expense']), 'count': row['count']})
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -208,15 +209,15 @@ def summary():
         ).fetchone()[0]
     return jsonify({
         'today': {
-            'income': round(today_income, 2),
-            'expense': round(today_expense, 2),
-            'profit': round(today_income - today_expense, 2),
+            'income': fmt_money(today_income),
+            'expense': fmt_money(today_expense),
+            'profit': fmt_money(today_income - today_expense),
         },
         'month': {
-            'income': round(month_income, 2),
-            'expense': round(month_expense, 2),
-            'profit': round(month_income - month_expense, 2),
-            'procurement': round(month_procurement, 2),
+            'income': fmt_money(month_income),
+            'expense': fmt_money(month_expense),
+            'profit': fmt_money(month_income - month_expense),
+            'procurement': fmt_money(month_procurement),
         },
     })
 
@@ -240,8 +241,8 @@ def procurement_stats():
             (total_income - total_spent) / total_income * 100, 2
         ) if total_income > 0 else 0
     return jsonify({
-        'total_spent': round(total_spent, 2),
-        'total_income': round(total_income, 2),
+        'total_spent': fmt_money(total_spent),
+        'total_income': fmt_money(total_income),
         'batch_count': batch_count,
         'margin_pct': margin_pct,
     })
@@ -263,7 +264,7 @@ def chart():
             WHERE date >= date('now', '-12 months')
             GROUP BY month ORDER BY month
         """).fetchall()
-    return jsonify([{'month': r['month'], 'income': round(r['income'], 2), 'expense': round(r['expense'], 2)} for r in rows])
+    return jsonify([{'month': r['month'], 'income': fmt_money(r['income']), 'expense': fmt_money(r['expense'])} for r in rows])
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -324,9 +325,9 @@ def chart_monthly():
         d = date.today() - timedelta(days=i)
         daily_dates.append(d.strftime('%Y-%m-%d'))
 
-    income_dict = {r['date']: round(r['income'], 2) for r in daily_income_rows}
-    expense_dict = {r['date']: round(r['expense'], 2) for r in daily_expense_rows}
-    daily_profit = [round(income_dict.get(d, 0) - expense_dict.get(d, 0), 2) for d in daily_dates]
+    income_dict = {r['date']: fmt_money(r['income']) for r in daily_income_rows}
+    expense_dict = {r['date']: fmt_money(r['expense']) for r in daily_expense_rows}
+    daily_profit = [fmt_money(income_dict.get(d, 0) - expense_dict.get(d, 0)) for d in daily_dates]
     daily_income_list = [income_dict.get(d, 0) for d in daily_dates]
     daily_expense_list = [expense_dict.get(d, 0) for d in daily_dates]
 
@@ -342,19 +343,19 @@ def chart_monthly():
             yy -= 1
         months.append(f'{yy}-{mm:02d}')
 
-    income_dict = {r['month']: round(r['income'], 2) for r in income_rows}
-    expense_dict = {r['month']: round(r['expense'], 2) for r in expense_rows}
+    income_dict = {r['month']: fmt_money(r['income']) for r in income_rows}
+    expense_dict = {r['month']: fmt_money(r['expense']) for r in expense_rows}
 
     income_list = [income_dict.get(m, 0) for m in months]
     expense_list = [expense_dict.get(m, 0) for m in months]
-    profit_list = [round(income_list[i] - expense_list[i], 2) for i in range(len(months))]
+    profit_list = [fmt_money(income_list[i] - expense_list[i]) for i in range(len(months))]
 
     return jsonify({
         'months': months,
         'income': income_list,
         'expense': expense_list,
         'profit': profit_list,
-        'categories': {r['category']: round(r['total'], 2) for r in cat_rows},
+        'categories': {r['category']: fmt_money(r['total']) for r in cat_rows},
         'daily_dates': daily_dates,
         'daily_profit': daily_profit,
         'daily_income': daily_income_list,

@@ -10,6 +10,7 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
+from shared.money import fmt_money
 from shared.config import ADMIN_USER_ID
 
 data_bp = Blueprint('data', __name__)
@@ -122,9 +123,9 @@ def create_reconciliation():
 
     card_balance = balances['card_balance']
     cash_balance = balances['cash_balance']
-    channel_total = round(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']), 2)
-    real_total = round(card_balance + cash_balance, 2)
-    diff = round(real_total - channel_total, 2)
+    channel_total = fmt_money(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']))
+    real_total = fmt_money(card_balance + cash_balance)
+    diff = fmt_money(real_total - channel_total)
 
     with get_db() as db:
         existing = db.execute('SELECT id FROM reconciliations WHERE bill_date=?', (bill_date,)).fetchone()
@@ -226,7 +227,7 @@ def _fmt_recon_row(r: dict) -> dict:
                     'jd', 'tuan', 'channel_total', 'real_total', 'diff')
     for k in money_fields:
         if k in r:
-            r[k] = round(r[k], 2)
+            r[k] = fmt_money(r[k])
     return r
 
 
@@ -234,7 +235,7 @@ def _fmt_rev_row(r: dict) -> dict:
     """Round monetary fields in a daily_revenue row to 2 decimal places."""
     for k in ('revenue', 'turnover', 'jd_revenue'):
         if k in r:
-            r[k] = round(r[k], 2)
+            r[k] = fmt_money(r[k])
     return r
 
 
@@ -242,7 +243,7 @@ def _fmt_fee_row(r: dict) -> dict:
     """Round monetary fields in a platform_fee row to 2 decimal places."""
     for k in ('meituan_cashier', 'meituan_waimai', 'shangou_waimai', 'meituan_tuan'):
         if k in r:
-            r[k] = round(r[k], 2)
+            r[k] = fmt_money(r[k])
     return r
 
 
@@ -393,7 +394,6 @@ def daily_revenue_total():
 @login_required
 def business_summary():
     D = lambda v: Decimal(str(v or 0))
-    F = lambda d: round(float(d), 2)
     with get_db() as db:
         rev = db.execute(
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
@@ -418,7 +418,7 @@ def business_summary():
             "SELECT category, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total"
             " FROM transactions WHERE type IN ('expense','income') GROUP BY category"
         ).fetchall()
-        expense_by_category = {r['category']: float(round(r['total'], 2)) for r in cat_rows}
+        expense_by_category = {r['category']: fmt_money(r['total']) for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
         today_str = date.today().isoformat()
@@ -459,22 +459,22 @@ def business_summary():
         cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
 
         return jsonify({
-            'actual_received': F(actual_received),
-            'receivable': F(receivable),
-            'discount': F(discount),
-            'cumulative_revenue': F(cumulative_revenue),
-            'cumulative_expense': F(cumulative_expense),
-            'cash_on_hand': F(cash_on_hand),
-            'total_investment': F(total_investment),
-            'total_dividends': F(total_dividends),
+            'actual_received': fmt_money(actual_received),
+            'receivable': fmt_money(receivable),
+            'discount': fmt_money(discount),
+            'cumulative_revenue': fmt_money(cumulative_revenue),
+            'cumulative_expense': fmt_money(cumulative_expense),
+            'cash_on_hand': fmt_money(cash_on_hand),
+            'total_investment': fmt_money(total_investment),
+            'total_dividends': fmt_money(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': F(D(today_exp['total'])),
-            'today_income': F(today_income),
-            'today_profit': F(today_profit),
-            'month_expense_amount': F(D(month_exp['total'])),
-            'yesterday_income': F(yesterday_income),
-            'yesterday_expense': F(yesterday_expense),
-            'yesterday_profit': F(yesterday_profit),
+            'today_expense': fmt_money(D(today_exp['total'])),
+            'today_income': fmt_money(today_income),
+            'today_profit': fmt_money(today_profit),
+            'month_expense_amount': fmt_money(D(month_exp['total'])),
+            'yesterday_income': fmt_money(yesterday_income),
+            'yesterday_expense': fmt_money(yesterday_expense),
+            'yesterday_profit': fmt_money(yesterday_profit),
         })
 
 

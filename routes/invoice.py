@@ -15,6 +15,7 @@ from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import INVOICE_FILE_DIR
 from shared.email import _send_email
+from shared.money import fmt_money
 
 invoice_bp = Blueprint('invoice', __name__)
 
@@ -37,7 +38,7 @@ def _row_to_dict(row):
     r = dict(row)
     for k in ('amount', 'total'):
         if k in r and r[k] is not None:
-            r[k] = round(r[k], 2)
+            r[k] = fmt_money(r[k])
     return r
 
 
