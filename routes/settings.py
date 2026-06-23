@@ -301,6 +301,17 @@ def chart_monthly():
             GROUP BY category ORDER BY total DESC
         """, (month_str,)).fetchall()
 
+        # Daily profit (last 12 days)
+        daily_rows = db.execute("""
+            SELECT d.date,
+                   COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income,
+                   COALESCE((SELECT SUM(t.amount) FROM transactions t
+                             WHERE t.type='expense' AND t.date = d.date), 0) as expense
+            FROM daily_revenue d
+            WHERE d.date >= date('now', '-11 days')
+            GROUP BY d.date ORDER BY d.date
+        """).fetchall()
+
     # Build 12-month label list (oldest first)
     today = date.today()
     months = []
@@ -319,17 +330,6 @@ def chart_monthly():
     income_list = [income_dict.get(m, 0) for m in months]
     expense_list = [expense_dict.get(m, 0) for m in months]
     profit_list = [round(income_list[i] - expense_list[i], 2) for i in range(len(months))]
-
-    # Daily profit (last 12 days)
-    daily_rows = db.execute("""
-        SELECT d.date,
-               COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income,
-               COALESCE((SELECT SUM(t.amount) FROM transactions t
-                         WHERE t.type='expense' AND t.date = d.date), 0) as expense
-        FROM daily_revenue d
-        WHERE d.date >= date('now', '-11 days')
-        GROUP BY d.date ORDER BY d.date
-    """).fetchall()
 
     daily_dates = []
     daily_profit = []
