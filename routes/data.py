@@ -386,8 +386,8 @@ def business_summary():
 
         # Category breakdown for glass card
         cat_rows = db.execute(
-            "SELECT category, COALESCE(SUM(amount),0) as total"
-            " FROM transactions WHERE type='expense' GROUP BY category"
+            "SELECT category, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total"
+            " FROM transactions WHERE type IN ('expense','income') GROUP BY category"
         ).fetchall()
         expense_by_category = {r['category']: r['total'] for r in cat_rows}
 
