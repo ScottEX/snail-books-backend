@@ -327,6 +327,8 @@ def chart_monthly():
     income_dict = {r['date']: round(r['income'], 2) for r in daily_income_rows}
     expense_dict = {r['date']: round(r['expense'], 2) for r in daily_expense_rows}
     daily_profit = [round(income_dict.get(d, 0) - expense_dict.get(d, 0), 2) for d in daily_dates]
+    daily_income_list = [income_dict.get(d, 0) for d in daily_dates]
+    daily_expense_list = [expense_dict.get(d, 0) for d in daily_dates]
 
     # Build 12-month label list (oldest first)
     today = date.today()
@@ -355,6 +357,8 @@ def chart_monthly():
         'categories': {r['category']: round(r['total'], 2) for r in cat_rows},
         'daily_dates': daily_dates,
         'daily_profit': daily_profit,
+        'daily_income': daily_income_list,
+        'daily_expense': daily_expense_list,
     })
 
 
