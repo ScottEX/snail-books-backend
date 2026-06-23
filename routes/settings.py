@@ -171,7 +171,7 @@ def stats():
             "       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,"
             "       COUNT(*) AS count FROM transactions"
         ).fetchone()
-    return jsonify({'income': row['income'], 'expense': row['expense'], 'count': row['count']})
+    return jsonify({'income': round(row['income'], 2), 'expense': round(row['expense'], 2), 'count': row['count']})
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -208,15 +208,15 @@ def summary():
         ).fetchone()[0]
     return jsonify({
         'today': {
-            'income': today_income,
-            'expense': today_expense,
-            'profit': today_income - today_expense,
+            'income': round(today_income, 2),
+            'expense': round(today_expense, 2),
+            'profit': round(today_income - today_expense, 2),
         },
         'month': {
-            'income': month_income,
-            'expense': month_expense,
-            'profit': month_income - month_expense,
-            'procurement': month_procurement,
+            'income': round(month_income, 2),
+            'expense': round(month_expense, 2),
+            'profit': round(month_income - month_expense, 2),
+            'procurement': round(month_procurement, 2),
         },
     })
 
