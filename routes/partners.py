@@ -3,12 +3,29 @@
 import os
 import uuid
 from datetime import datetime
+from functools import lru_cache
 from flask import Blueprint, request, jsonify, g
 
 from shared.auth import login_required
 from shared.db import get_db
 
+# ── Lazy-loaded heavy libraries (init once, reuse across requests) ──
+_opencc = None
 
+
+def _get_opencc():
+    """Return cached OpenCC s2t instance. Falls back to None if not installed."""
+    global _opencc
+    if _opencc is None:
+        try:
+            from opencc import OpenCC
+            _opencc = OpenCC('s2t')
+        except ImportError:
+            pass
+    return _opencc
+
+
+@lru_cache(maxsize=32)
 def _to_pinyin(name: str) -> str:
     """Convert Chinese name to pinyin. e.g. '蓝柳富' → 'Liu-Fu Lan'"""
     if not name:
@@ -26,15 +43,15 @@ def _to_pinyin(name: str) -> str:
         return name
 
 
+@lru_cache(maxsize=32)
 def _to_traditional(name: str) -> str:
     """Convert Simplified Chinese name to Traditional. e.g. '蓝柳富' → '藍柳富'"""
     if not name:
         return ''
-    try:
-        from opencc import OpenCC
-        return OpenCC('s2t').convert(name)
-    except ImportError:
-        return name
+    cc = _get_opencc()
+    if cc:
+        return cc.convert(name)
+    return name
 # Expire store for share links
 EXPENSE_IMG_DIR = os.path.join(os.path.dirname(__file__), '..', 'expense_imgs')
 ALLOWED_IMG_EXT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
