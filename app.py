@@ -280,6 +280,15 @@ def init_db():
                 is_disabled INTEGER DEFAULT 0,
                 last_login_at TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS pending_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                email TEXT NOT NULL,
+                verification_code TEXT,
+                code_expires TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES users(id),
@@ -479,6 +488,18 @@ def init_db():
             );
         ''')
         # Migrations (safe to re-run)
+        # pending_users table — added 2026-06-24 (email verification before user creation)
+        db.executescript('''
+            CREATE TABLE IF NOT EXISTS pending_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                email TEXT NOT NULL,
+                verification_code TEXT,
+                code_expires TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
         for col, col_type in [
             ('email','TEXT'),('verification_code','TEXT'),('code_expires','TIMESTAMP'),
             ('is_verified','INTEGER DEFAULT 0'),('reset_code','TEXT'),('reset_expires','TIMESTAMP')
