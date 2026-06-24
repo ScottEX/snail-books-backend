@@ -126,21 +126,34 @@ def register():
         return jsonify({'status': 'error', 'message': msg}), 400
 
     with get_db() as db:
-        exists = db.execute('SELECT id, is_verified FROM users WHERE username=? OR email=?', (username, email)).fetchone()
-        if exists:
-            if exists['is_verified']:
-                return jsonify({'status': 'error', 'message': t('err_username_exists', g.lang)}), 409
-            db.execute('DELETE FROM user_tokens WHERE user_id=?', (exists['id'],))
-            db.execute('DELETE FROM user_sessions WHERE user_id=?', (exists['id'],))
-            db.execute('DELETE FROM user_settings WHERE user_id=?', (exists['id'],))
-            db.execute('DELETE FROM users WHERE id=?', (exists['id'],))
+        # Check verified users — block if already registered
+        verified = db.execute(
+            'SELECT id FROM users WHERE (username=? OR email=?) AND is_verified=1',
+            (username, email)
+        ).fetchone()
+        if verified:
+            return jsonify({'status': 'error', 'message': t('err_username_exists', g.lang)}), 409
 
+        # Clean up stale unverified users in users table (legacy)
+        db.execute('DELETE FROM users WHERE (username=? OR email=?) AND is_verified=0', (username, email))
+
+        # Upsert into pending_users — overwrite if same email or username
+        pending = db.execute(
+            'SELECT id FROM pending_users WHERE username=? OR email=?',
+            (username, email)
+        ).fetchone()
         code = generate_code()
         expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
-        db.execute(
-            'INSERT INTO users (username,password,email,verification_code,code_expires,is_verified,is_disabled,created_at) VALUES (?,?,?,?,?,0,1,?)',
-            (username, generate_password_hash(password), email, code, expires, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        )
+        if pending:
+            db.execute(
+                'UPDATE pending_users SET username=?, password=?, email=?, verification_code=?, code_expires=?, created_at=? WHERE id=?',
+                (username, generate_password_hash(password), email, code, expires, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pending['id'])
+            )
+        else:
+            db.execute(
+                'INSERT INTO pending_users (username, password, email, verification_code, code_expires, created_at) VALUES (?,?,?,?,?,?)',
+                (username, generate_password_hash(password), email, code, expires, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
         db.commit()
         if not send_verification_email(email, code, g.lang):
             return jsonify({'status': 'error', 'message': t('err_code_send_failed', g.lang)}), 500
@@ -159,16 +172,33 @@ def verify_email():
     if not email or not code:
         return jsonify({'status': 'error', 'message': t('err_empty_email_code', g.lang)}), 400
     with get_db() as db:
-        user = db.execute(
-            'SELECT * FROM users WHERE email=? AND verification_code=? AND is_verified=0',
+        pending = db.execute(
+            'SELECT * FROM pending_users WHERE email=? AND verification_code=?',
             (email, code)
         ).fetchone()
-        if not user:
+        if not pending:
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 401
-        if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['code_expires']):
+        if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(pending['code_expires']):
             return jsonify({'status': 'error', 'message': t('err_code_expired', g.lang)}), 410
-        db.execute('UPDATE users SET is_verified=1, verification_code=NULL, code_expires=NULL WHERE id=?', (user['id'],))
+
+        # Check final uniqueness against verified users
+        conflict = db.execute(
+            'SELECT id FROM users WHERE (username=? OR email=?) AND is_verified=1',
+            (pending['username'], pending['email'])
+        ).fetchone()
+        if conflict:
+            db.execute('DELETE FROM pending_users WHERE id=?', (pending['id'],))
+            db.commit()
+            return jsonify({'status': 'error', 'message': t('err_username_exists', g.lang)}), 409
+
+        # Move to users table
+        db.execute(
+            'INSERT INTO users (username, password, email, is_verified, is_disabled, created_at) VALUES (?,?,?,1,0,?)',
+            (pending['username'], pending['password'], pending['email'], pending['created_at'])
+        )
+        db.execute('DELETE FROM pending_users WHERE id=?', (pending['id'],))
         db.commit()
+        user = db.execute('SELECT id, username FROM users WHERE email=?', (email,)).fetchone()
         g.user_id = user['id']
         g.username = user['username']
         from shared.audit import audit
@@ -183,12 +213,12 @@ def resend_code():
     if not email:
         return jsonify({'status': 'error', 'message': t('err_email_required', g.lang)}), 400
     with get_db() as db:
-        user = db.execute('SELECT * FROM users WHERE email=? AND is_verified=0', (email,)).fetchone()
+        user = db.execute('SELECT * FROM pending_users WHERE email=?', (email,)).fetchone()
         if not user:
             return jsonify({'status': 'ok', 'message': t('msg_code_resent', g.lang)})
         code = generate_code()
         expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
-        db.execute('UPDATE users SET verification_code=?, code_expires=? WHERE id=?', (code, expires, user['id']))
+        db.execute('UPDATE pending_users SET verification_code=?, code_expires=? WHERE id=?', (code, expires, user['id']))
         db.commit()
         if not send_verification_email(email, code, g.lang):
             return jsonify({'status': 'error', 'message': t('err_resend_failed', g.lang)}), 500
