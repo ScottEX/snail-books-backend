@@ -193,7 +193,7 @@ def verify_email():
 
         # Move to users table
         db.execute(
-            'INSERT INTO users (username, password, email, is_verified, is_disabled, created_at) VALUES (?,?,?,1,0,?)',
+            'INSERT INTO users (username, password, email, is_verified, is_disabled, created_at) VALUES (?,?,?,1,1,?)',
             (pending['username'], pending['password'], pending['email'], pending['created_at'])
         )
         db.execute('DELETE FROM pending_users WHERE id=?', (pending['id'],))
