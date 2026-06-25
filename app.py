@@ -412,6 +412,7 @@ def init_db():
                 diff REAL NOT NULL DEFAULT 0,
                 bill_date TEXT DEFAULT '',
                 reconciled_by TEXT DEFAULT '',
+                cash_on_hand REAL NOT NULL DEFAULT 0,
                 user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -539,6 +540,10 @@ def init_db():
             pass  # column already exists
         try:
             db.execute('ALTER TABLE reconciliations ADD COLUMN reconciled_by TEXT')
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute('ALTER TABLE reconciliations ADD COLUMN cash_on_hand REAL NOT NULL DEFAULT 0')
         except sqlite3.OperationalError:
             pass  # column already exists
         try:
