@@ -128,11 +128,14 @@ def create_reconciliation():
         cash_on_hand = float(raw_cash_on_hand) if raw_cash_on_hand is not None else 0.0
     except (TypeError, ValueError):
         return jsonify({'error': t('err_field_not_number', g.lang, field='cash_on_hand')}), 400
+    raw_diff = data.get('diff')
+    try:
+        diff = float(raw_diff) if raw_diff is not None else 0.0
+    except (TypeError, ValueError):
+        return jsonify({'error': t('err_field_not_number', g.lang, field='diff')}), 400
     channel_total = fmt_money(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']))
     real_total = fmt_money(card_balance + cash_balance + channel_total)
-    cash_on_hand_d = to_decimal(cash_on_hand)
-    real_total_d = to_decimal(real_total)
-    diff = fmt_money(cash_on_hand_d - real_total_d)
+    diff = fmt_money(to_decimal(diff))
 
     with get_db() as db:
         existing = db.execute('SELECT id FROM reconciliations WHERE bill_date=?', (bill_date,)).fetchone()
