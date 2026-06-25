@@ -123,20 +123,30 @@ def create_reconciliation():
 
     card_balance = balances['card_balance']
     cash_balance = balances['cash_balance']
+    raw_cash_on_hand = data.get('cash_on_hand')
+    try:
+        cash_on_hand = float(raw_cash_on_hand) if raw_cash_on_hand is not None else 0.0
+    except (TypeError, ValueError):
+        return jsonify({'error': t('err_field_not_number', g.lang, field='cash_on_hand')}), 400
+    raw_diff = data.get('diff')
+    try:
+        diff = float(raw_diff) if raw_diff is not None else 0.0
+    except (TypeError, ValueError):
+        return jsonify({'error': t('err_field_not_number', g.lang, field='diff')}), 400
     channel_total = fmt_money(sum(balances[k] for k in ['dine_in', 'meituan', 'flash_sale', 'jd', 'tuan']))
-    real_total = fmt_money(card_balance + cash_balance)
-    diff = fmt_money(real_total - channel_total)
+    real_total = fmt_money(card_balance + cash_balance + channel_total)
+    diff = fmt_money(to_decimal(diff))
 
     with get_db() as db:
         existing = db.execute('SELECT id FROM reconciliations WHERE bill_date=?', (bill_date,)).fetchone()
         if existing:
             db.execute('''UPDATE reconciliations SET
                 date=?, card_balance=?, cash_balance=?, dine_in=?, meituan=?, flash_sale=?,
-                jd=?, tuan=?, channel_total=?, real_total=?, diff=?, reconciled_by=?
+                jd=?, tuan=?, channel_total=?, real_total=?, diff=?, reconciled_by=?, cash_on_hand=?
                 WHERE id=?''',
                        (dt, card_balance, cash_balance, balances['dine_in'], balances['meituan'],
                         balances['flash_sale'], balances['jd'], balances['tuan'],
-                        channel_total, real_total, diff, reconciled_by, existing['id']))
+                        channel_total, real_total, diff, reconciled_by, cash_on_hand, existing['id']))
             db.commit()
             from shared.audit import audit
             audit('CREATE_RECONCILIATION', extra=f'date={bill_date} ¥{real_total}')
@@ -144,11 +154,11 @@ def create_reconciliation():
         else:
             db.execute('''INSERT INTO reconciliations
                 (date, bill_date, card_balance, cash_balance, dine_in, meituan, flash_sale, jd, tuan,
-                 channel_total, real_total, diff, reconciled_by, user_id, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 channel_total, real_total, diff, reconciled_by, cash_on_hand, user_id, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (dt, bill_date, card_balance, cash_balance, balances['dine_in'], balances['meituan'],
                         balances['flash_sale'], balances['jd'], balances['tuan'],
-                        channel_total, real_total, diff, reconciled_by, g.user_id,
+                        channel_total, real_total, diff, reconciled_by, cash_on_hand, g.user_id,
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             db.commit()
             new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
