@@ -142,6 +142,18 @@ def auth_prefs():
                 db.execute('UPDATE users SET enforce_single_session=?, current_session_id=NULL WHERE id=?', (0, g.user_id))
         if timeout_hours is not None:
             db.execute('UPDATE users SET session_timeout_hours=? WHERE id=?', (int(timeout_hours), g.user_id))
+            # Also extend the current session so the new timeout takes effect immediately
+            cur_sid = session.get('session_id')
+            if not cur_sid:
+                auth = request.headers.get('Authorization', '')
+                if auth.startswith('Bearer '):
+                    tk = auth[7:]
+                    row = db.execute('SELECT session_id FROM user_tokens WHERE token=?', (tk,)).fetchone()
+                    if row and row['session_id']:
+                        cur_sid = row['session_id']
+            if cur_sid:
+                new_expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=int(timeout_hours))).strftime('%Y-%m-%d %H:%M:%S')
+                db.execute('UPDATE user_sessions SET expires_at=? WHERE session_id=?', (new_expires, cur_sid))
         db.commit()
         row = db.execute('SELECT enforce_single_session, session_timeout_hours, current_session_id FROM users WHERE id=?', (g.user_id,)).fetchone()
     d = dict(row)
