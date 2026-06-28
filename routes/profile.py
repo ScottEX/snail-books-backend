@@ -247,17 +247,14 @@ def get_avatar():
 
 @profile_bp.route('/users/background', methods=['GET'])
 def get_background():
-    """Public: get user background image by username, email, or user_id."""
+    """Public: get user background image by username or user_id."""
     username = request.args.get('username', '')
-    email = request.args.get('email', '')
     user_id = request.args.get('user_id', '')
-    if not username and not email and not user_id:
+    if not username and not user_id:
         return '', 404
     with get_db() as db:
         if user_id:
             user = db.execute('SELECT id FROM users WHERE id=?', (int(user_id),)).fetchone()
-        elif email:
-            user = db.execute('SELECT id FROM users WHERE email=LOWER(?)', (email,)).fetchone()
         else:
             user = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
     if not user:
