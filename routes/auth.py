@@ -277,6 +277,8 @@ def reset_password():
             return jsonify({'status': 'error', 'message': t('err_wrong_code', g.lang)}), 401
         if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.fromisoformat(user['reset_expires']):
             return jsonify({'status': 'error', 'message': t('err_reset_code_expired', g.lang)}), 410
+        if check_password_hash(user['password'], new_password):
+            return jsonify({'status': 'error', 'message': t('err_reset_same_password', g.lang)}), 400
         db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
                    (generate_password_hash(new_password), user['id']))
         # Revoke all existing sessions & tokens — force re-login everywhere
