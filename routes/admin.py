@@ -4,6 +4,7 @@ import re
 from flask import Blueprint, request, jsonify, session, g
 from shared.db import get_db
 from shared.auth import login_required, schedule_delete, cancel_delete, ADMIN_USER_ID
+from shared.i18n import t
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -407,7 +408,7 @@ def delete_user(user_id):
         if not row:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
         if row['linked_partner_id']:
-            return jsonify({'status': 'error', 'message': '该用户已关联合伙人，请先解绑后再删除'}), 400
+            return jsonify({'status': 'error', 'message': t('err_user_linked_partner', g.lang)}), 400
 
     scheduled = schedule_delete(user_id, 'admin', 5)
     from shared.audit import audit
