@@ -35,7 +35,7 @@ def background():
         save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         if os.path.exists(save_path):
             url = f'/user-images/home-bg-{g.user_id}.jpg?t={int(os.path.getmtime(save_path))}'
-        opacity = 0.55
+        opacity = 1  # default 100%
         with get_db() as db:
             row = db.execute(
                 "SELECT value FROM user_settings WHERE user_id=? AND key='background_opacity'",
@@ -82,12 +82,17 @@ def background():
         return jsonify({'status': 'ok'})
 
     if request.method == 'DELETE':
-        # Reset to default — delete the user's custom background file.
-        # The frontend then reverts to /img/bg.jpg and dispatches a
-        # 'bg-changed' event so HomeScreen refreshes immediately.
+        # Reset to default — delete the user's custom background file
+        # and clear saved opacity so GET returns default (100%).
         save_path = os.path.join(BG_DIR, f'home-bg-{g.user_id}.jpg')
         if os.path.exists(save_path):
             os.remove(save_path)
+        with get_db() as db:
+            db.execute(
+                "DELETE FROM user_settings WHERE user_id=? AND key='background_opacity'",
+                (g.user_id,),
+            )
+            db.commit()
         return jsonify({'status': 'ok'})
 
 
