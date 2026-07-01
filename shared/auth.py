@@ -96,7 +96,7 @@ def login_required(f):
         if kicked:
             session.clear()
             if request.path.startswith('/api/'):
-                msg_key = 'err_password_changed' if kicked in ('password_change', 'email_change') else 'err_session_kicked'
+                msg_key = 'err_password_changed' if kicked == 'password_change' else ('err_email_changed' if kicked == 'email_change' else 'err_session_kicked')
                 return jsonify({'status': 'error', 'message': t(msg_key, g.lang) or 'Please login again', 'code': 'session_kicked'}), 401
             return redirect('/login')
 
