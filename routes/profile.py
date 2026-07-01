@@ -207,6 +207,11 @@ def delete_user(uid):
         if not user:
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
 
+        # Check if user is linked as a partner
+        partner = db.execute('SELECT id FROM partners WHERE linked_user_id=?', (uid,)).fetchone()
+        if partner:
+            return jsonify({'status': 'error', 'message': t('err_partner_cannot_delete', g.lang)}), 400
+
     scheduled = schedule_delete(uid, 'self', 3)
     from shared.audit import audit
     audit('SELF_DELETE', extra=f'uid={uid}')

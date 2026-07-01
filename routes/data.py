@@ -267,7 +267,12 @@ def get_platform_fees():
             row = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
             return jsonify(_fmt_fee_row(dict(row)) if row else {})
         rows = db.execute('SELECT * FROM platform_fees ORDER BY year DESC, month DESC').fetchall()
-        return jsonify([_fmt_fee_row(dict(r)) for r in rows])
+        result = [_fmt_fee_row(dict(r)) for r in rows]
+        today = date.today()
+        if not any(r.get('year') == today.year and r.get('month') == today.month for r in result):
+            result.insert(0, {'year': today.year, 'month': today.month,
+                'meituan_cashier': 0, 'meituan_waimai': 0, 'shangou_waimai': 0, 'meituan_tuan': 0})
+        return jsonify(result)
 
 
 @data_bp.route('/platform-fees/entry', methods=['POST'])
