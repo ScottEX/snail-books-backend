@@ -166,7 +166,7 @@ def api_procurement_batches():
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (batch_id, pid, name, spec, up, qty, fmt_money(sub))
+                    (batch_id, pid, name, spec, float(up), qty, fmt_money(sub))
                 )
             # Sync an expense transaction (amount=0 until settled)
             cur = db.execute(
@@ -336,7 +336,7 @@ def api_procurement_batch_detail(id):
             for name, spec, up, qty, sub, pid in item_rows:
                 db.execute(
                     'INSERT INTO procurement_items (batch_id,product_id,product_name,spec,unit_price,quantity,subtotal) VALUES (?,?,?,?,?,?,?)',
-                    (id, pid, name, spec, up, qty, fmt_money(sub))
+                    (id, pid, name, spec, float(up), qty, fmt_money(sub))
                 )
             db.execute(
                 "UPDATE procurement_batches SET date=?, payment_method=?, category=?, total=?, images=?, thumb_images=?, note=? WHERE id=?",
