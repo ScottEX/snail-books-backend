@@ -130,7 +130,7 @@ def auth_prefs():
                             cur_sid = row['session_id']
                 if cur_sid:
                     db.execute(
-                        'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
+                        'UPDATE user_sessions SET revoked_at=?, revoke_reason="login" WHERE user_id=? AND revoked_at IS NULL AND session_id != ?',
                         (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid)
                     )
                     db.execute(
@@ -349,7 +349,7 @@ def change_password():
         db.execute('UPDATE users SET password=? WHERE id=?', (generate_password_hash(new_pw), g.user_id))
         # Revoke all other sessions — keep current one (user just verified old password)
         cur_sid = session.get('session_id', '')
-        db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
+        db.execute("UPDATE user_sessions SET revoked_at=?, revoke_reason='password_change' WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
         from shared.audit import audit
@@ -415,7 +415,7 @@ def profile_email_verify():
                    (new_email, g.user_id))
         # Revoke all other sessions — keep current one (user just verified code)
         cur_sid = session.get('session_id', '')
-        db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
+        db.execute("UPDATE user_sessions SET revoked_at=?, revoke_reason='email_change' WHERE user_id=? AND revoked_at IS NULL AND session_id!=?", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id, cur_sid))
         db.execute("DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id!=?)", (g.user_id, cur_sid))
         db.commit()
     from shared.audit import audit

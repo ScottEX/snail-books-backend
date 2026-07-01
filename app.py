@@ -303,6 +303,7 @@ def init_db():
                 device_info TEXT DEFAULT '',
                 expires_at TIMESTAMP,
                 revoked_at TIMESTAMP,
+                revoke_reason TEXT DEFAULT '',
                 last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -640,6 +641,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE partners ADD COLUMN linked_user_id INTEGER REFERENCES users(id)")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE user_sessions ADD COLUMN revoke_reason TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
 

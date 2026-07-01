@@ -199,7 +199,7 @@ def login_complete():
 
         if enforce_sso:
             db.execute(
-                "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                "UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL",
                 (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id)
             )
             db.execute(

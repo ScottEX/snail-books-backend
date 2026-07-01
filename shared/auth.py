@@ -52,11 +52,11 @@ def login_required(f):
                         if token_sid:
                             with get_db() as db:
                                 srow = db.execute(
-                                    'SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?',
+                                    'SELECT revoked_at, expires_at, revoke_reason FROM user_sessions WHERE session_id=?',
                                     (token_sid,)
                                 ).fetchone()
                             if srow and srow['revoked_at']:
-                                kicked = True
+                                kicked = srow['revoke_reason'] or 'login'
                             elif srow and _session_expired(srow['expires_at']):
                                 expired = True
                             elif srow:
@@ -78,11 +78,11 @@ def login_required(f):
             if cookie_sid:
                 with get_db() as db:
                     srow = db.execute(
-                        'SELECT revoked_at, expires_at FROM user_sessions WHERE session_id=?',
+                        'SELECT revoked_at, expires_at, revoke_reason FROM user_sessions WHERE session_id=?',
                         (cookie_sid,)
                     ).fetchone()
                 if srow and srow['revoked_at']:
-                    kicked = True
+                    kicked = srow['revoke_reason'] or 'login'
                 elif srow and _session_expired(srow['expires_at']):
                     expired = True
                 elif srow:
@@ -96,7 +96,8 @@ def login_required(f):
         if kicked:
             session.clear()
             if request.path.startswith('/api/'):
-                return jsonify({'status': 'error', 'message': t('err_session_kicked', g.lang) or 'Account logged in elsewhere', 'code': 'session_kicked'}), 401
+                msg_key = 'err_password_changed' if kicked in ('password_change', 'email_change') else 'err_session_kicked'
+                return jsonify({'status': 'error', 'message': t(msg_key, g.lang) or 'Please login again', 'code': 'session_kicked'}), 401
             return redirect('/login')
 
         if expired:
@@ -128,7 +129,7 @@ def login_required(f):
         if cur and cur['current_session_id']:
             request_sid = session.get('session_id')
             if request_sid != cur['current_session_id']:
-                kicked = True
+                kicked = 'login'
 
         if validated_session_id:
             try:
