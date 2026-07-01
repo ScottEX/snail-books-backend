@@ -66,7 +66,7 @@ def login():
 
             if enforce_sso:
                 db.execute(
-                    "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                    "UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL",
                     (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id'])
                 )
                 db.execute(
@@ -282,7 +282,7 @@ def reset_password():
         db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
                    (generate_password_hash(new_password), user['id']))
         # Revoke all existing sessions & tokens — force re-login everywhere
-        db.execute("UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id'],))
+        db.execute("UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id'],))
         db.execute("DELETE FROM user_tokens WHERE user_id=?", (user['id'],))
         db.commit()
     return jsonify({'status': 'ok', 'message': t('msg_reset_ok', g.lang)})
