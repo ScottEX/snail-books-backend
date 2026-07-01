@@ -516,8 +516,8 @@ def _cleanup_orphaned_cache():
 def api_procurement_batch_pdf(id):
     supplier = request.args.get('supplier', '').strip()
     refresh = request.args.get('refresh', '0') == '1'
-    # Skip cache when filtering by supplier (cache key doesn't include supplier)
-    cached = None if (refresh or supplier) else _get_cached_pdf(id, g.lang)
+    cache_lang = f'__sup__{supplier}__{g.lang}' if supplier else g.lang
+    cached = None if refresh else _get_cached_pdf(id, cache_lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
@@ -624,7 +624,7 @@ def api_procurement_batch_pdf(id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(id, pdf_bytes, g.lang)
+    _save_cached_pdf(id, pdf_bytes, cache_lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
