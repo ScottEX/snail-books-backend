@@ -195,7 +195,10 @@ def api_procurement_batches():
             b = dict(row)
             b['images'] = json.loads(b['images']) if b['images'] else []
             b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
-            items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (b['id'],)).fetchall()
+            items = db.execute(
+                'SELECT pi.*, p.supplier FROM procurement_items pi LEFT JOIN products p ON pi.product_id = p.id WHERE pi.batch_id=? ORDER BY pi.id',
+                (b['id'],),
+            ).fetchall()
             b['items'] = [dict(it) for it in items]
             batches.append(b)
     return jsonify({'records': batches, 'total': total, 'pages': max(1, (total + per_page - 1) // per_page), 'page': page, 'per_page': per_page})
@@ -367,7 +370,10 @@ def api_procurement_batch_detail(id):
         b = dict(row)
         b['images'] = json.loads(b['images']) if b['images'] else []
         b['thumb_images'] = json.loads(b['thumb_images']) if b['thumb_images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
+        items = db.execute(
+            'SELECT pi.*, p.supplier FROM procurement_items pi LEFT JOIN products p ON pi.product_id = p.id WHERE pi.batch_id=? ORDER BY pi.id',
+            (id,),
+        ).fetchall()
         b['items'] = [dict(it) for it in items]
         # Include operator username
         if b.get('user_id'):
@@ -508,8 +514,10 @@ def _cleanup_orphaned_cache():
 @procurement_bp.route('/procurement-batches/<int:id>/pdf' , methods=['GET'])
 @login_required
 def api_procurement_batch_pdf(id):
+    supplier = request.args.get('supplier', '').strip()
     refresh = request.args.get('refresh', '0') == '1'
-    cached = None if refresh else _get_cached_pdf(id, g.lang)
+    cache_lang = f'__sup__{supplier}__{g.lang}' if supplier else g.lang
+    cached = None if refresh else _get_cached_pdf(id, cache_lang)
     if cached:
         with get_db() as db:
             row = db.execute('SELECT batch_number FROM procurement_batches WHERE id=?', (id,)).fetchone()
@@ -526,7 +534,12 @@ def api_procurement_batch_pdf(id):
             return jsonify({'status': 'error', 'message': 'Not found'}), 404
         b = dict(row)
         b['images'] = json.loads(b['images']) if b['images'] else []
-        items = db.execute('SELECT * FROM procurement_items WHERE batch_id=? ORDER BY id', (id,)).fetchall()
+        items = db.execute(
+            'SELECT pi.*, p.supplier FROM procurement_items pi LEFT JOIN products p ON pi.product_id = p.id WHERE pi.batch_id=? ORDER BY pi.id',
+            (id,),
+        ).fetchall()
+        if supplier:
+            items = [it for it in items if (it['supplier'] or '') == supplier]
         b['items'] = [dict(it) for it in items]
 
     # Items HTML
@@ -611,7 +624,7 @@ def api_procurement_batch_pdf(id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
     filename = f"procurement_{b['batch_number']:04d}.pdf"
-    _save_cached_pdf(id, pdf_bytes, g.lang)
+    _save_cached_pdf(id, pdf_bytes, cache_lang)
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
