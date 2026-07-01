@@ -539,7 +539,7 @@ def api_procurement_batch_pdf(id):
             (id,),
         ).fetchall()
         if supplier:
-            items = [it for it in items if (it.get('supplier') or '') == supplier]
+            items = [it for it in items if (it['supplier'] or '') == supplier]
         b['items'] = [dict(it) for it in items]
 
     # Items HTML
