@@ -359,3 +359,44 @@ def api_procurement_batches_lite():
             'ORDER BY pb.date DESC, pb.id DESC'
         ).fetchall()
     return jsonify([_row_to_dict(r) for r in rows])
+
+
+# ── Per-user invoice email ──
+@invoice_bp.route('/invoice-email', methods=['GET'])
+@login_required
+def api_invoice_email_get():
+    """Return per-user invoice email. Falls back to registered email."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT value FROM user_settings WHERE user_id=? AND key='invoice_email'",
+            (g.user_id,),
+        ).fetchone()
+        if row and row['value']:
+            return jsonify({'email': row['value']})
+        # fallback: registered email
+        user = db.execute(
+            "SELECT email FROM users WHERE id=?", (g.user_id,)
+        ).fetchone()
+        email = user['email'] if user else ''
+        return jsonify({'email': email})
+
+
+@invoice_bp.route('/invoice-email', methods=['PUT'])
+@login_required
+def api_invoice_email_put():
+    """Save per-user invoice email. Empty string clears the override."""
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email', '')).strip()
+    with get_db() as db:
+        if email:
+            db.execute(
+                "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, 'invoice_email', ?)",
+                (g.user_id, email),
+            )
+        else:
+            db.execute(
+                "DELETE FROM user_settings WHERE user_id=? AND key='invoice_email'",
+                (g.user_id,),
+            )
+        db.commit()
+    return jsonify({'status': 'ok', 'email': email})
