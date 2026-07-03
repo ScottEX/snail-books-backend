@@ -400,3 +400,19 @@ def api_invoice_email_put():
             )
         db.commit()
     return jsonify({'status': 'ok', 'email': email})
+
+
+# ── Bank BIN lookup ──
+@invoice_bp.route('/bank-lookup', methods=['GET'])
+@login_required
+def api_bank_lookup():
+    """Look up bank name by card number prefix (first 6 digits)."""
+    prefix = request.args.get('prefix', '').strip()
+    if not prefix or len(prefix) < 6 or not prefix.isdigit():
+        return jsonify({'status': 'error', 'message': '无效的卡号'}), 400
+
+    from shared.bank_bins import lookup
+    info = lookup(prefix[:6])
+    if info:
+        return jsonify({'status': 'ok', 'data': info})
+    return jsonify({'status': 'error', 'message': '未识别到发卡行'}), 404
