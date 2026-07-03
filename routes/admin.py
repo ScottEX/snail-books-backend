@@ -474,6 +474,11 @@ def update_invoice():
     allowed = ['company_name', 'tax_id', 'bank_name', 'bank_account', 'address', 'phone']
     invoice = {k: str(data.get(k, '')).strip() for k in allowed}
 
+    # phone validation
+    phone = invoice.get('phone', '')
+    if phone and not re.match(r'^\+?\d{7,20}$', phone):
+        return jsonify({'status': 'error', 'message': '手机号格式不正确'}), 400
+
     with get_db() as db:
         db.execute(
             "INSERT INTO system_config (key, value) VALUES ('invoice_info', ?) "
