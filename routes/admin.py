@@ -334,8 +334,12 @@ def update_user(user_id):
         params = []
         for field in ['role', 'remark', 'phone', 'email', 'real_name']:
             if field in data:
+                val = data[field]
+                # phone validation: must be empty or 7-20 digit string (allows + prefix)
+                if field == 'phone' and val and not re.match(r'^\+?\d{7,20}$', str(val)):
+                    return jsonify({'status': 'error', 'message': '手机号格式不正确'}), 400
                 updates.append(f'{field}=?')
-                params.append(data[field])
+                params.append(val)
         if 'is_disabled' in data:
             updates.append('is_disabled=?')
             params.append(1 if data['is_disabled'] else 0)
