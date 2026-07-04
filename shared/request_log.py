@@ -171,18 +171,17 @@ def _log_response(response):
         except Exception:
             pass
 
-        if True:  # always capture response body (truncated)
+        try:
+            raw = response.get_data(as_text=True)
+            # Mask sensitive fields in response too
             try:
-                raw = response.get_data(as_text=True)
-                # Mask sensitive fields in response too
-                try:
-                    parsed = json.loads(raw)
-                    masked = _mask_sensitive(parsed)
-                    resp_body_str = _truncate(json.dumps(masked, ensure_ascii=False), MAX_RESP_BODY)
-                except (json.JSONDecodeError, TypeError):
-                    resp_body_str = _truncate(raw, MAX_RESP_BODY)
-            except Exception:
-                pass
+                parsed = json.loads(raw)
+                masked = _mask_sensitive(parsed)
+                resp_body_str = _truncate(json.dumps(masked, ensure_ascii=False), MAX_RESP_BODY)
+            except (json.JSONDecodeError, TypeError):
+                resp_body_str = _truncate(raw, MAX_RESP_BODY)
+        except Exception:
+            pass
 
     # Assemble line
     parts = [

@@ -7,7 +7,6 @@
 """
 
 import re, sys, os
-from collections import defaultdict
 
 def extract_create_table_columns(content):
     """从 app.py 中提取所有 CREATE TABLE IF NOT EXISTS 的列名。

@@ -334,8 +334,12 @@ def update_user(user_id):
         params = []
         for field in ['role', 'remark', 'phone', 'email', 'real_name']:
             if field in data:
+                val = data[field]
+                # phone validation: must be empty or exactly 11-digit Chinese mainland mobile (1[3-9]xxxxxxxx)
+                if field == 'phone' and val and not re.match(r'^1[3-9]\d{9}$', str(val)):
+                    return jsonify({'status': 'error', 'message': '手机号格式不正确'}), 400
                 updates.append(f'{field}=?')
-                params.append(data[field])
+                params.append(val)
         if 'is_disabled' in data:
             updates.append('is_disabled=?')
             params.append(1 if data['is_disabled'] else 0)
@@ -469,6 +473,11 @@ def update_invoice():
     data = request.get_json(silent=True) or {}
     allowed = ['company_name', 'tax_id', 'bank_name', 'bank_account', 'address', 'phone']
     invoice = {k: str(data.get(k, '')).strip() for k in allowed}
+
+    # phone validation: exactly 11-digit Chinese mainland mobile (1[3-9]xxxxxxxx)
+    phone = invoice.get('phone', '')
+    if phone and not re.match(r'^1[3-9]\d{9}$', phone):
+        return jsonify({'status': 'error', 'message': '手机号格式不正确'}), 400
 
     with get_db() as db:
         db.execute(
