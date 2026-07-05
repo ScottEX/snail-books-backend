@@ -628,6 +628,10 @@ def init_db():
         except sqlite3.OperationalError:
             pass
         try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN file_thumb_paths TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
             db.execute("ALTER TABLE partners ADD COLUMN init_capital REAL NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass
