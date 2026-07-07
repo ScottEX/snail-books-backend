@@ -1,7 +1,7 @@
 """Data routes — reconciliations, platform fees, daily revenue, business summary."""
 
 import json, os, time, re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, session, g
 import sqlite3
@@ -20,7 +20,7 @@ data_bp = Blueprint('data', __name__)
 @data_bp.route('/server-date', methods=['GET'])
 def server_date():
     """Return current Beijing date. No login required."""
-    today = date.today()
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
     return jsonify({'date': today.isoformat()})
 
 
@@ -290,15 +290,16 @@ def add_platform_fee_entry():
     sw = data.get('shangou_waimai', 0)
     mt = data.get('meituan_tuan', 0)
     with get_db() as db:
-        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
-                      VALUES (?,?,?,?,?,?)
+        beijing_now = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan, updated_at)
+                      VALUES (?,?,?,?,?,?,?)
                       ON CONFLICT(year, month) DO UPDATE SET
                       meituan_cashier=meituan_cashier+excluded.meituan_cashier,
                       meituan_waimai=meituan_waimai+excluded.meituan_waimai,
                       shangou_waimai=shangou_waimai+excluded.shangou_waimai,
                       meituan_tuan=meituan_tuan+excluded.meituan_tuan,
-                      updated_at=datetime('now', 'localtime')''',
-                   (year, month, mc, mw, sw, mt))
+                      updated_at=?''',
+                   (year, month, mc, mw, sw, mt, beijing_now, beijing_now))
         fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
         db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
                       VALUES (?,?,?,?,?,?)''',
