@@ -296,7 +296,8 @@ def add_platform_fee_entry():
                       meituan_cashier=meituan_cashier+excluded.meituan_cashier,
                       meituan_waimai=meituan_waimai+excluded.meituan_waimai,
                       shangou_waimai=shangou_waimai+excluded.shangou_waimai,
-                      meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
+                      meituan_tuan=meituan_tuan+excluded.meituan_tuan,
+                      updated_at=datetime('now', 'localtime')''',
                    (year, month, mc, mw, sw, mt))
         fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
         db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
