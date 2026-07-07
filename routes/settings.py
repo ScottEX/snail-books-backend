@@ -4,7 +4,7 @@ import os
 import time
 import io
 import zipfile
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 
 from flask import Blueprint, request, jsonify, g, send_file
 
@@ -187,8 +187,8 @@ def stats():
 @settings_bp.route('/summary')
 @login_required
 def summary():
-    today_str = date.today().isoformat()
-    month_str = date.today().strftime('%Y-%m')
+    today_str = (datetime.now(timezone.utc) + timedelta(hours=8)).date().isoformat()
+    month_str = (datetime.now(timezone.utc) + timedelta(hours=8)).date().strftime('%Y-%m')
     with get_db() as db:
         # Today — use business date, not created_at (P1-TTT)
         today_income = to_decimal(db.execute(
@@ -258,15 +258,17 @@ def procurement_stats():
 @settings_bp.route('/chart')
 @login_required
 def chart():
+    beijing = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+    year_ago = beijing.replace(year=beijing.year - 1).isoformat()
     with get_db() as db:
         rows = db.execute("""
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
             FROM transactions
-            WHERE date >= date('now', '-12 months')
+            WHERE date >= ?
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (year_ago,)).fetchall()
     return jsonify([{'month': r['month'], 'income': fmt_money(r['income']), 'expense': fmt_money(r['expense'])} for r in rows])
 
 
@@ -277,27 +279,31 @@ def chart():
 @settings_bp.route('/chart/monthly')
 @login_required
 def chart_monthly():
+    beijing = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+    year_ago = beijing.replace(year=beijing.year - 1).isoformat()
+    days_11_ago = (beijing - timedelta(days=11)).isoformat()
+    today_str = beijing.isoformat()
+    month_str = beijing.strftime('%Y-%m')
     with get_db() as db:
         # Monthly income from daily_revenue (revenue + jd_revenue)
         income_rows = db.execute("""
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(revenue), 0) + COALESCE(SUM(jd_revenue), 0) as income
             FROM daily_revenue
-            WHERE date >= date('now', '-12 months')
+            WHERE date >= ?
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (year_ago,)).fetchall()
 
         # Monthly expense from transactions (by expense date, not creation time)
         expense_rows = db.execute("""
             SELECT strftime('%Y-%m', date) as month,
                    COALESCE(SUM(amount), 0) as expense
             FROM transactions
-            WHERE type='expense' AND date >= date('now', '-12 months')
+            WHERE type='expense' AND date >= ?
             GROUP BY month ORDER BY month
-        """).fetchall()
+        """, (year_ago,)).fetchall()
 
         # Current month expense category breakdown (by expense date)
-        month_str = date.today().strftime('%Y-%m')
         cat_rows = db.execute("""
             SELECT category, COALESCE(SUM(amount), 0) as total
             FROM transactions
@@ -306,26 +312,25 @@ def chart_monthly():
         """, (month_str,)).fetchall()
 
         # Daily profit (last 12 days)
-        today_str = date.today().strftime('%Y-%m-%d')
         daily_income_rows = db.execute("""
             SELECT d.date,
                    COALESCE(SUM(d.revenue), 0) + COALESCE(SUM(d.jd_revenue), 0) as income
             FROM daily_revenue d
-            WHERE d.date >= date('now', '-11 days')
+            WHERE d.date >= ?
             GROUP BY d.date
-        """).fetchall()
+        """, (days_11_ago,)).fetchall()
         daily_expense_rows = db.execute("""
             SELECT t.date,
                    COALESCE(SUM(t.amount), 0) as expense
             FROM transactions t
-            WHERE t.type='expense' AND t.date >= date('now', '-11 days')
+            WHERE t.type='expense' AND t.date >= ?
             GROUP BY t.date
-        """).fetchall()
+        """, (days_11_ago,)).fetchall()
 
     # Build 12-day date list
     daily_dates: list[str] = []
     for i in range(11, -1, -1):
-        d = date.today() - timedelta(days=i)
+        d = beijing - timedelta(days=i)
         daily_dates.append(d.strftime('%Y-%m-%d'))
 
     income_dict = {r['date']: fmt_money(r['income']) for r in daily_income_rows}
@@ -335,7 +340,7 @@ def chart_monthly():
     daily_expense_list = [expense_dict.get(d, 0) for d in daily_dates]
 
     # Build 12-month label list (oldest first)
-    today = date.today()
+    today = beijing
     months = []
     y, m = today.year, today.month
     for i in range(11, -1, -1):
