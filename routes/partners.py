@@ -3,7 +3,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from flask import Blueprint, request, jsonify, g
 
@@ -279,7 +279,7 @@ def dividends():
         with get_db() as db:
             for item in items:
                 db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
-                           (item['partner'], item['amount'], item.get('note', ''), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
+                           (item['partner'], item['amount'], item.get('note', ''), (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
             db.commit()
             from shared.audit import audit
             audit('CREATE_DIVIDEND', extra=f'{len(items)} items')

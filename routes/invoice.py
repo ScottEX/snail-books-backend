@@ -5,7 +5,7 @@ File upload: pdf/jpg/png, max 10MB, stored under uploads/invoice/<user_id>/<uuid
 """
 
 import os, json, uuid, mimetypes, re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, g, make_response, send_file
 from werkzeug.utils import secure_filename
 
@@ -232,7 +232,7 @@ def api_invoice_record_update(rid):
         if not sets:
             return jsonify({'status': 'ok'})  # no-op
         sets.append('updated_at=?')
-        vals.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        vals.append((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
         vals.append(rid)
         db.execute(f'UPDATE invoice_records SET {", ".join(sets)} WHERE id=?', vals)
     # Send email if transitioning from pending to done
@@ -353,7 +353,7 @@ def api_invoice_record_upload(rid):
             thumb_paths.append(rel_path)  # fallback: use original if thumbnail gen failed
         db.execute(
             'UPDATE invoice_records SET file_path=?, file_thumb_paths=?, file_type=?, file_size=?, updated_at=? WHERE id=?',
-            (_json.dumps(paths), _json.dumps(thumb_paths), content_type, size, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rid)
+            (_json.dumps(paths), _json.dumps(thumb_paths), content_type, size, (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), rid)
         )
         from shared.audit import audit
         audit('INVOICE_UPLOAD', extra=f'rid={rid} size={size}')

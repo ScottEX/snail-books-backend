@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, session, g
 
 from shared.db import get_db
@@ -200,7 +200,7 @@ def login_complete():
         if enforce_sso:
             db.execute(
                 "UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL",
-                (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id)
+                ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), user_id)
             )
             db.execute(
                 "DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))",
@@ -213,7 +213,7 @@ def login_complete():
             (user_id, new_session_id, device_info, expires_at)
         )
         db.execute('UPDATE users SET last_login_at=? WHERE id=?',
-                   (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
+                   ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), user_id))
         session['user_id'] = user_id
         session['username'] = username
         session['session_id'] = new_session_id

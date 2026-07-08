@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, g
 from shared.db import get_db
 from shared.auth import login_required
@@ -36,7 +36,7 @@ def transactions():
                  json.dumps(data.get('thumb_images', [])),
                  data.get('date', ''),
                  g.user_id,
-                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                 (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
             )
             db.commit()
             from shared.audit import audit
