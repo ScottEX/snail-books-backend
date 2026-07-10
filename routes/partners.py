@@ -1,8 +1,9 @@
 """Partner & dividend routes with expense image upload."""
 
+import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from flask import Blueprint, request, jsonify, g
 
@@ -61,13 +62,16 @@ from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
 from shared.config import EXPENSE_IMG_DIR
+from shared.thumbnail import generate_thumbnail, thumb_name, compress_original
 
 # ── Pillow availability (for image thumbnail generation) ──
 try:
     from PIL import Image as _PILImage  # type: ignore[import-not-found]
+    from PIL import ImageOps
     HAS_PIL = True
 except ImportError:
     _PILImage = None  # type: ignore
+    ImageOps = None  # type: ignore
     HAS_PIL = False
 
 
@@ -96,40 +100,116 @@ def upload_expense_images():
     for f in files:
         if f.filename == '':
             continue
-        # Keep original extension, generate unique name
         ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
         if ext.lower() not in ALLOWED_IMG_EXT:
             continue
-        safe_name = f"{uuid.uuid4().hex}{ext}"
+        safe_name = f"{uuid.uuid4().hex}.jpg"
         save_path = os.path.join(user_dir, safe_name)
-        f.save(save_path)
+
+        # Compress original server-side (max 1920px, JPEG quality 80)
+        try:
+            compress_original(f.stream, save_path)
+        except Exception:
+            f.seek(0)
+            f.save(save_path)
+
         urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-        # Generate 128×128 thumbnail for list rendering (faster load, less bandwidth)
-        # Graceful degradation: if Pillow fails, fall back to original image URL
-        if HAS_PIL:
-            try:
-                thumb_name = f"{os.path.splitext(safe_name)[0]}_thumb.jpg"
-                thumb_path = os.path.join(user_dir, thumb_name)
-                with _PILImage.open(save_path) as img:  # type: ignore[union-attr]
-                    img.thumbnail((128, 128), _PILImage.LANCZOS)  # type: ignore[union-attr]
-                    # Convert to RGB if needed (PNG with alpha, etc.)
-                    if img.mode in ('RGBA', 'P', 'LA'):
-                        bg = _PILImage.new('RGB', img.size, (255, 255, 255))  # type: ignore[union-attr]
-                        if img.mode in ('RGBA', 'LA'):
-                            bg.paste(img, mask=img.split()[-1])
-                        else:
-                            bg.paste(img.convert('RGBA'))
-                        img = bg
-                    img.save(thumb_path, 'JPEG', quality=85, optimize=True)
-                thumb_urls.append(f'/expense-imgs/{user_id}/{thumb_name}')
-            except Exception:
-                # Thumbnail generation failed (corrupt image, unsupported format, etc.)
-                # Fall back to original so frontend still has something to display
-                thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
-        else:
-            # Pillow not installed: fall back to original
-            thumb_urls.append(f'/expense-imgs/{user_id}/{safe_name}')
+
+        # Generate 128×128 thumbnail using shared function
+        thumb_path_on_disk = os.path.join(user_dir, thumb_name(safe_name))
+        thumb_rel = generate_thumbnail(save_path, thumb_path_on_disk)
+        thumb_urls.append(
+            f'/expense-imgs/{user_id}/{thumb_name(safe_name)}' if thumb_rel
+            else f'/expense-imgs/{user_id}/{safe_name}'
+        )
     return jsonify({'status': 'ok', 'images': urls, 'thumb_images': thumb_urls, 'has_thumbs': HAS_PIL})
+
+
+# ═══════════════════════════════════════════════════════════
+#  Delete a single expense image
+# ═══════════════════════════════════════════════════════════
+
+@bp.route('/expenses/images', methods=['DELETE'])
+@login_required
+def delete_expense_image():
+    """Delete an image file and remove its URL from the owning transaction.
+    Body: { url: '/expense-imgs/123/abc.jpg', transaction_id: 456 }
+    """
+    data = request.get_json() or {}
+    url = data.get('url', '').strip()
+    tx_id = data.get('transaction_id')
+
+    if not url or not tx_id:
+        return jsonify({'status': 'error', 'message': 'url and transaction_id required'}), 400
+
+    user_id = str(g.user_id)
+    prefix = f'/expense-imgs/{user_id}/'
+    if not url.startswith(prefix):
+        return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
+
+    # Validate the file path stays under EXPENSE_IMG_DIR
+    rel = url[len('/expense-imgs/'):]
+    fp = os.path.normpath(os.path.join(EXPENSE_IMG_DIR, rel))
+    if not fp.startswith(EXPENSE_IMG_DIR):
+        return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
+
+    # Delete the original file
+    deleted = False
+    if os.path.isfile(fp):
+        try:
+            os.remove(fp)
+            deleted = True
+        except OSError:
+            pass
+
+    # Also delete the thumbnail if it exists
+    from shared.thumbnail import thumb_name
+    thumb_fp = os.path.join(os.path.dirname(fp), thumb_name(os.path.basename(fp)))
+    if os.path.isfile(thumb_fp):
+        try:
+            os.remove(thumb_fp)
+        except OSError:
+            pass
+
+    # Remove URL from transaction's images and thumb_images arrays
+    with get_db() as db:
+        row = db.execute(
+            'SELECT images, thumb_images, procurement_batch_id FROM transactions WHERE id=? AND user_id=?',
+            (tx_id, g.user_id)).fetchone()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Transaction not found'}), 404
+
+        updated_images = []
+        updated_thumbs = []
+        for col, target in [(row['images'], updated_images), (row['thumb_images'], updated_thumbs)]:
+            if col:
+                try:
+                    arr = json.loads(col) if isinstance(col, str) else col
+                    if isinstance(arr, list):
+                        target.extend([u for u in arr if u != url])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        db.execute('UPDATE transactions SET images=?, thumb_images=? WHERE id=?',
+                   (json.dumps(updated_images), json.dumps(updated_thumbs), tx_id))
+
+        # Sync to linked procurement batch if exists
+        pb_id = row['procurement_batch_id']
+        if pb_id:
+            db.execute('UPDATE procurement_batches SET images=?, thumb_images=? WHERE id=?',
+                       (json.dumps(updated_images), json.dumps(updated_thumbs), pb_id))
+
+        db.commit()
+
+        from shared.audit import audit
+        audit('DELETE_EXPENSE_IMAGE', extra=f'tx={tx_id} url={url}')
+
+    return jsonify({
+        'status': 'ok',
+        'deleted': deleted,
+        'images': updated_images,
+        'thumb_images': updated_thumbs,
+    })
 
 
 # ═══════════════════════════════════════════════════════════
@@ -199,7 +279,7 @@ def dividends():
         with get_db() as db:
             for item in items:
                 db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
-                           (item['partner'], item['amount'], item.get('note', ''), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
+                           (item['partner'], item['amount'], item.get('note', ''), (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
             db.commit()
             from shared.audit import audit
             audit('CREATE_DIVIDEND', extra=f'{len(items)} items')

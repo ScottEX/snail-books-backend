@@ -1,7 +1,7 @@
 """Data routes — reconciliations, platform fees, daily revenue, business summary."""
 
 import json, os, time, re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, session, g
 import sqlite3
@@ -20,7 +20,7 @@ data_bp = Blueprint('data', __name__)
 @data_bp.route('/server-date', methods=['GET'])
 def server_date():
     """Return current Beijing date. No login required."""
-    today = date.today()
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
     return jsonify({'date': today.isoformat()})
 
 
@@ -91,7 +91,7 @@ def clear_reconciliations():
 def create_reconciliation():
     data = request.get_json() or {}
     # date is now server-submission time, not user-provided
-    dt = date.today().isoformat()
+    dt = (datetime.now(timezone.utc) + timedelta(hours=8)).date().isoformat()
 
     bill_date = data.get('bill_date', dt)
     if bill_date:
@@ -159,7 +159,7 @@ def create_reconciliation():
                        (dt, bill_date, card_balance, cash_balance, balances['dine_in'], balances['meituan'],
                         balances['flash_sale'], balances['jd'], balances['tuan'],
                         channel_total, real_total, diff, reconciled_by, cash_on_hand, g.user_id,
-                        datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                        (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')))
             db.commit()
             new_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
             from shared.audit import audit
@@ -268,7 +268,7 @@ def get_platform_fees():
             return jsonify(_fmt_fee_row(dict(row)) if row else {})
         rows = db.execute('SELECT * FROM platform_fees ORDER BY year DESC, month DESC').fetchall()
         result = [_fmt_fee_row(dict(r)) for r in rows]
-        today = date.today()
+        today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
         if not any(r.get('year') == today.year and r.get('month') == today.month for r in result):
             result.insert(0, {'year': today.year, 'month': today.month,
                 'meituan_cashier': 0, 'meituan_waimai': 0, 'shangou_waimai': 0, 'meituan_tuan': 0})
@@ -290,14 +290,16 @@ def add_platform_fee_entry():
     sw = data.get('shangou_waimai', 0)
     mt = data.get('meituan_tuan', 0)
     with get_db() as db:
-        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
-                      VALUES (?,?,?,?,?,?)
+        beijing_now = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan, updated_at)
+                      VALUES (?,?,?,?,?,?,?)
                       ON CONFLICT(year, month) DO UPDATE SET
                       meituan_cashier=meituan_cashier+excluded.meituan_cashier,
                       meituan_waimai=meituan_waimai+excluded.meituan_waimai,
                       shangou_waimai=shangou_waimai+excluded.shangou_waimai,
-                      meituan_tuan=meituan_tuan+excluded.meituan_tuan''',
-                   (year, month, mc, mw, sw, mt))
+                      meituan_tuan=meituan_tuan+excluded.meituan_tuan,
+                      updated_at=?''',
+                   (year, month, mc, mw, sw, mt, beijing_now, beijing_now))
         fee_id = db.execute('SELECT id FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()['id']
         db.execute('''INSERT INTO platform_fee_entries (fee_id, entry_date, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan)
                       VALUES (?,?,?,?,?,?)''',
@@ -342,9 +344,11 @@ def get_daily_revenue():
 
     with get_db() as db:
         if days:
+            beijing_date = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+            from_date = (beijing_date - timedelta(days=days)).isoformat()
             rows = db.execute('''SELECT date, revenue, turnover, jd_revenue
-                FROM daily_revenue WHERE date >= date('now', ?) ORDER BY date DESC''',
-                              (f'-{days} days',)).fetchall()
+                FROM daily_revenue WHERE date >= ? ORDER BY date DESC''',
+                              (from_date,)).fetchall()
             totals = {'revenue': sum(r['revenue'] or 0 for r in rows),
                       'turnover': sum(r['turnover'] or 0 for r in rows),
                       'jd_revenue': sum(r['jd_revenue'] or 0 for r in rows)}
@@ -377,7 +381,7 @@ def get_daily_revenue():
 @data_bp.route('/daily-revenue/last-7')
 @login_required
 def last_7_days():
-    today = datetime.now().date()
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
     dates = [(today - timedelta(days=i)).isoformat() for i in range(7)]
     with get_db() as db:
         rows = db.execute('''SELECT dr.*, u.username as recorded_by
@@ -435,7 +439,7 @@ def business_summary():
         expense_by_category = {r['category']: fmt_money(r['total']) for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
-        today_str = date.today().isoformat()
+        today_str = (datetime.now(timezone.utc) + timedelta(hours=8)).date().isoformat()
         month_prefix = today_str[:7] + '%'
         today_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date=?",
@@ -453,7 +457,7 @@ def business_summary():
         ).fetchone()
 
         # Yesterday stats — income from daily_revenue, expense from transactions
-        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+        yesterday_str = ((datetime.now(timezone.utc) + timedelta(hours=8)).date() - timedelta(days=1)).isoformat()
         yesterday_income_row = db.execute(
             "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
             (yesterday_str,)

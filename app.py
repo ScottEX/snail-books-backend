@@ -425,8 +425,8 @@ def init_db():
                 meituan_waimai REAL DEFAULT 0,
                 shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
-                created_at TEXT DEFAULT (datetime('now', 'localtime')),
-                updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+                created_at TEXT,
+                updated_at TEXT,
                 UNIQUE(year, month)
             );
             CREATE TABLE IF NOT EXISTS platform_fee_entries (
@@ -437,7 +437,7 @@ def init_db():
                 meituan_waimai REAL DEFAULT 0,
                 shangou_waimai REAL DEFAULT 0,
                 meituan_tuan REAL DEFAULT 0,
-                created_at TEXT DEFAULT (datetime('now', 'localtime'))
+                created_at TEXT
             );
             CREATE TABLE IF NOT EXISTS user_settings (
                 user_id INTEGER NOT NULL,
@@ -627,6 +627,10 @@ def init_db():
             db.execute("ALTER TABLE invoice_records ADD COLUMN note TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN file_thumb_paths TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         try:
             db.execute("ALTER TABLE partners ADD COLUMN init_capital REAL NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:

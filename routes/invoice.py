@@ -5,7 +5,7 @@ File upload: pdf/jpg/png, max 10MB, stored under uploads/invoice/<user_id>/<uuid
 """
 
 import os, json, uuid, mimetypes, re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, g, make_response, send_file
 from werkzeug.utils import secure_filename
 
@@ -16,6 +16,7 @@ from shared.validation import validate_required
 from shared.config import INVOICE_FILE_DIR
 from shared.email import _send_email
 from shared.money import fmt_money
+from shared.thumbnail import generate_thumbnail, thumb_name, compress_original
 
 invoice_bp = Blueprint('invoice', __name__)
 
@@ -222,7 +223,7 @@ def api_invoice_record_update(rid):
             return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
         # Apply update — only known fields
         updatable = ['procurement_batch_id', 'type', 'company', 'tax_id', 'amount', 'date',
-                     'invoice_number', 'email', 'status', 'note', 'file_path', 'file_type', 'file_size']
+                     'invoice_number', 'email', 'status', 'note', 'file_path', 'file_thumb_paths', 'file_type', 'file_size']
         sets, vals = [], []
         for k in updatable:
             if k in data:
@@ -231,7 +232,7 @@ def api_invoice_record_update(rid):
         if not sets:
             return jsonify({'status': 'ok'})  # no-op
         sets.append('updated_at=?')
-        vals.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        vals.append((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
         vals.append(rid)
         db.execute(f'UPDATE invoice_records SET {", ".join(sets)} WHERE id=?', vals)
     # Send email if transitioning from pending to done
@@ -253,14 +254,21 @@ def api_invoice_record_delete(rid):
         row = db.execute('SELECT * FROM invoice_records WHERE id=?', (rid,)).fetchone()
         if not row:
             return jsonify({'status': 'error', 'message': _t('err_invoice_not_found', g.lang)}), 404
-        # Parse file paths (always JSON array)
+        # Parse file paths and thumb paths (always JSON arrays)
         import json as _json
         existing = row['file_path'] or ''
         try:
             paths = _json.loads(existing) if existing else []
         except:
             paths = []
-        for p in paths:
+        # Also collect thumb paths for cleanup
+        thumb_raw = row['file_thumb_paths'] or ''
+        try:
+            thumb_paths = _json.loads(thumb_raw) if thumb_raw else []
+        except:
+            thumb_paths = []
+        all_cleanup = set(paths + thumb_paths)
+        for p in all_cleanup:
             try:
                 full = os.path.join(INVOICE_FILE_DIR, p)
                 if os.path.isfile(full):
@@ -289,26 +297,38 @@ def api_invoice_record_upload(rid):
         return jsonify({'status': 'error', 'message': _t('err_invoice_file_type', g.lang)}), 400
     # Validate size (seek to end)
     f.seek(0, os.SEEK_END)
-    size = f.tell()
+    raw_size = f.tell()
     f.seek(0)
-    if size > MAX_FILE_SIZE:
+    if raw_size > MAX_FILE_SIZE:
         return jsonify({'status': 'error', 'message': _t('err_invoice_file_too_large', g.lang)}), 400
-    if size == 0:
+    if raw_size == 0:
         return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='file')}), 400
-    # Detect content_type (fallback to mime by ext)
-    mime, _ = mimetypes.guess_type(safe_name)
-    content_type = mime or 'application/octet-stream'
     # Resolve user dir
     user_id = g.user_id if hasattr(g, 'user_id') and g.user_id else None
     if not user_id:
         return jsonify({'status': 'error', 'message': _t('err_need_verify', g.lang)}), 401
     user_dir = _ensure_user_dir(user_id)
-    new_name = f'{uuid.uuid4().hex}{ext}'
+    new_name = f'{uuid.uuid4().hex}.jpg'
     full_path = os.path.join(user_dir, new_name)
-    f.save(full_path)
     rel_path = f'{user_id}/{new_name}'
+
+    # Compress original image server-side (max 1920px, JPEG quality 80)
+    try:
+        size = compress_original(f.stream, full_path)
+        content_type = 'image/jpeg'
+    except Exception:
+        # PIL unavailable or image corrupt — fall back to raw save
+        f.seek(0)
+        f.save(full_path)
+        size = os.path.getsize(full_path)
+        content_type = 'image/jpeg'
+
+    # Generate 128×128 thumbnail for faster list rendering
+    thumb_path_on_disk = os.path.join(user_dir, thumb_name(new_name))
+    thumb_rel = generate_thumbnail(full_path, thumb_path_on_disk)
+    thumb_rel_path = f'{user_id}/{thumb_name(new_name)}' if thumb_rel else ''
     with get_db() as db:
-        row = db.execute('SELECT id, file_path FROM invoice_records WHERE id=?', (rid,)).fetchone()
+        row = db.execute('SELECT id, file_path, file_thumb_paths FROM invoice_records WHERE id=?', (rid,)).fetchone()
         if not row:
             try: os.remove(full_path)
             except OSError: pass
@@ -321,13 +341,23 @@ def api_invoice_record_upload(rid):
         except:
             paths = []
         paths.append(rel_path)
+        # Parse existing thumb paths and append new one
+        existing_thumbs = row['file_thumb_paths'] or ''
+        try:
+            thumb_paths = _json.loads(existing_thumbs) if existing_thumbs else []
+        except:
+            thumb_paths = []
+        if thumb_rel_path:
+            thumb_paths.append(thumb_rel_path)
+        else:
+            thumb_paths.append(rel_path)  # fallback: use original if thumbnail gen failed
         db.execute(
-            'UPDATE invoice_records SET file_path=?, file_type=?, file_size=?, updated_at=? WHERE id=?',
-            (_json.dumps(paths), content_type, size, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rid)
+            'UPDATE invoice_records SET file_path=?, file_thumb_paths=?, file_type=?, file_size=?, updated_at=? WHERE id=?',
+            (_json.dumps(paths), _json.dumps(thumb_paths), content_type, size, (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), rid)
         )
         from shared.audit import audit
         audit('INVOICE_UPLOAD', extra=f'rid={rid} size={size}')
-    return jsonify({'status': 'ok', 'file_path': rel_path, 'file_type': content_type, 'file_size': size})
+    return jsonify({'status': 'ok', 'file_path': rel_path, 'thumb_path': thumb_rel_path, 'file_type': content_type, 'file_size': size})
 
 
 # ── Serve invoice file (for download / share preview) ──
