@@ -587,7 +587,7 @@ def api_procurement_batch_pdf(id):
     _note_raw = (b.get('note') or '').strip()
     note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
-    now = datetime.now()
+    now = (datetime.now(timezone.utc) + timedelta(hours=8))
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
@@ -725,7 +725,7 @@ def api_share_pdf(token):
     _note_raw = (b.get('note') or '').strip()
     note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
-    now = datetime.now()
+    now = (datetime.now(timezone.utc) + timedelta(hours=8))
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,
@@ -828,7 +828,7 @@ def _render_procurement_png(batch_id):
     _note_raw = (b.get('note') or '').strip()
     note_html = f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>' if _note_raw else ''
 
-    now = datetime.now()
+    now = (datetime.now(timezone.utc) + timedelta(hours=8))
     html = html.format(
         batch_number=f"2026-{b['batch_number']:04d}",
         date=date_str,

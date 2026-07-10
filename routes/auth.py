@@ -67,7 +67,7 @@ def login():
             if enforce_sso:
                 db.execute(
                     "UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL",
-                    (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id'])
+                    ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), user['id'])
                 )
                 db.execute(
                     "DELETE FROM user_tokens WHERE user_id=? AND (session_id IS NULL OR session_id IN (SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NOT NULL))",
@@ -80,14 +80,14 @@ def login():
                 (user['id'], new_session_id, device_info, expires_at)
             )
             db.execute('UPDATE users SET last_login_at=? WHERE id=?',
-                       (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
+                       ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['session_id'] = new_session_id
             g.user_id = user['id']
             g.username = user['username']
 
-            db.execute("DELETE FROM user_tokens WHERE created_at < ?", ((datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
+            db.execute("DELETE FROM user_tokens WHERE created_at < ?", (((datetime.now(timezone.utc) + timedelta(hours=8)) - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
             token = secrets.token_hex(32)
             db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user['id'], token, new_session_id))
             db.commit()
@@ -147,12 +147,12 @@ def register():
         if pending:
             db.execute(
                 'UPDATE pending_users SET username=?, password=?, email=?, verification_code=?, code_expires=?, created_at=? WHERE id=?',
-                (username, generate_password_hash(password), email, code, expires, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), pending['id'])
+                (username, generate_password_hash(password), email, code, expires, (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), pending['id'])
             )
         else:
             db.execute(
                 'INSERT INTO pending_users (username, password, email, verification_code, code_expires, created_at) VALUES (?,?,?,?,?,?)',
-                (username, generate_password_hash(password), email, code, expires, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                (username, generate_password_hash(password), email, code, expires, (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
             )
         db.commit()
         if not send_verification_email(email, code, g.lang):
@@ -282,7 +282,7 @@ def reset_password():
         db.execute('UPDATE users SET password=?, reset_code=NULL, reset_expires=NULL WHERE id=?',
                    (generate_password_hash(new_password), user['id']))
         # Revoke all existing sessions & tokens — force re-login everywhere
-        db.execute("UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL", (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id'],))
+        db.execute("UPDATE user_sessions SET revoked_at=?, revoke_reason='login' WHERE user_id=? AND revoked_at IS NULL", ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), user['id'],))
         db.execute("DELETE FROM user_tokens WHERE user_id=?", (user['id'],))
         db.commit()
     return jsonify({'status': 'ok', 'message': t('msg_reset_ok', g.lang)})
