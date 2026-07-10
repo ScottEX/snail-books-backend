@@ -472,6 +472,10 @@ def init_db():
                 date TEXT NOT NULL,
                 invoice_number TEXT DEFAULT '',
                 email TEXT DEFAULT '',
+                address TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                bank_name TEXT DEFAULT '',
+                bank_account TEXT DEFAULT '',
                 status TEXT NOT NULL CHECK(status IN ('pending','done')) DEFAULT 'pending',
                 file_path TEXT DEFAULT '',
                 file_type TEXT DEFAULT '',
@@ -649,6 +653,22 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE user_sessions ADD COLUMN revoke_reason TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN address TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN phone TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN bank_name TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE invoice_records ADD COLUMN bank_account TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
 

@@ -220,7 +220,7 @@ def login_complete():
         g.user_id = user_id
         g.username = username
 
-        db.execute("DELETE FROM user_tokens WHERE created_at < ?", ((datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
+        db.execute("DELETE FROM user_tokens WHERE created_at < ?", (((datetime.now(timezone.utc) + timedelta(hours=8)) - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S'),))
         token = secrets.token_hex(32)
         db.execute('INSERT INTO user_tokens (user_id, token, session_id) VALUES (?,?,?)', (user_id, token, new_session_id))
         db.commit()

@@ -4,7 +4,7 @@ Works with BOTH cookie sessions (Flask session) AND Bearer tokens (iOS WKWebView
 """
 
 import functools
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from flask import request, session, jsonify, redirect, g
 from .i18n import t
 from .db import get_db
@@ -136,7 +136,7 @@ def login_required(f):
                 with get_db() as db:
                     db.execute(
                         "UPDATE user_sessions SET last_seen_at=? WHERE session_id=?",
-                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), validated_session_id)
+                        ((datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), validated_session_id)
                     )
                     db.commit()
             except:
@@ -283,7 +283,7 @@ def schedule_delete(user_id, by_who, days):
     from .db import get_db
     from shared.email import _send_email
 
-    scheduled = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    scheduled = ((datetime.now(timezone.utc) + timedelta(hours=8)) + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
     with get_db() as db:
         db.execute(
             'UPDATE users SET is_disabled=1, delete_scheduled=?, delete_by=? WHERE id=?',
@@ -331,8 +331,8 @@ def send_deletion_reminders():
     from .db import get_db
     from shared.email import _send_email
 
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    window_end = (datetime.now() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+    now = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+    window_end = ((datetime.now(timezone.utc) + timedelta(hours=8)) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
 
     with get_db() as db:
         due = db.execute(
@@ -393,7 +393,7 @@ def cleanup_expired_deletions():
     from datetime import datetime
 
     with get_db() as db:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
         expired = db.execute(
             "SELECT id FROM users WHERE delete_scheduled IS NOT NULL AND delete_scheduled <= ?",
             (now,)
