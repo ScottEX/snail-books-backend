@@ -162,8 +162,8 @@ def api_invoice_record_create():
     # The PUT endpoint enforces file requirement for 'done' status.
     with get_db() as db:
         cur = db.execute(
-            'INSERT INTO invoice_records (user_id, procurement_batch_id, type, company, tax_id, amount, date, invoice_number, email, status, note, file_path, file_type, file_size) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO invoice_records (user_id, procurement_batch_id, type, company, tax_id, amount, date, invoice_number, email, address, phone, bank_name, bank_account, status, note, file_path, file_type, file_size) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (
                 user_id,
                 data.get('procurement_batch_id'),
@@ -174,6 +174,10 @@ def api_invoice_record_create():
                 data['date'],
                 (data.get('invoice_number') or '').strip(),
                 (data.get('email') or '').strip(),
+                (data.get('address') or '').strip(),
+                (data.get('phone') or '').strip(),
+                (data.get('bank_name') or '').strip(),
+                (data.get('bank_account') or '').strip(),
                 status,
                 (data.get('note') or '').strip(),
                 '',  # file_path populated by separate upload endpoint
@@ -223,7 +227,8 @@ def api_invoice_record_update(rid):
             return jsonify({'status': 'error', 'message': _t('err_missing_fields', g.lang, fields='invoice_number')}), 400
         # Apply update — only known fields
         updatable = ['procurement_batch_id', 'type', 'company', 'tax_id', 'amount', 'date',
-                     'invoice_number', 'email', 'status', 'note', 'file_path', 'file_thumb_paths', 'file_type', 'file_size']
+                     'invoice_number', 'email', 'address', 'phone', 'bank_name', 'bank_account',
+                     'status', 'note', 'file_path', 'file_thumb_paths', 'file_type', 'file_size']
         sets, vals = [], []
         for k in updatable:
             if k in data:
