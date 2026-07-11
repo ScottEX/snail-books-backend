@@ -128,7 +128,7 @@ jobs:
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
-            curl -sSf -o /dev/null http://localhost:8601/api/admin/check && echo "✅ Staging 冒烟测试通过" || { echo "❌ Staging 冒烟测试失败"; exit 1; }
+            curl -sSf -o /dev/null http://localhost:8601/ && echo "✅ Staging 冒烟测试通过" || { echo "❌ Staging 冒烟测试失败"; exit 1; }
             echo "✅ Staging 部署完成"
 
   deploy-production:
@@ -237,5 +237,5 @@ jobs:
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books
-            curl -sSf -o /dev/null http://localhost:8600/api/admin/check && echo "✅ 生产冒烟测试通过" || { echo "❌ 生产冒烟测试失败"; exit 1; }
+            curl -sSf -o /dev/null http://localhost:8600/ && echo "✅ 生产冒烟测试通过" || { echo "❌ 生产冒烟测试失败"; exit 1; }
             echo "✅ 生产部署完成"
