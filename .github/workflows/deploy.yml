@@ -59,11 +59,13 @@ jobs:
               --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
               .
             ls -t /opt/backups/snail-staging-code-*.tar.gz | tail -n +4 | xargs -r rm -f
-            # 2) 数据库备份
+            # 2) 数据库备份（每个 db 独立保留 3 份）
             for db in /opt/snail-books-backend-staging/data/*.db; do
-              [ -f "$db" ] && cp "$db" "/opt/backups/snail-staging-$(basename "$db" .db)-$(date +%Y%m%d_%H%M%S).db"
+              [ -f "$db" ] || continue
+              base=$(basename "$db" .db)
+              cp "$db" "/opt/backups/snail-staging-${base}-$(date +%Y%m%d_%H%M%S).db"
+              ls -t /opt/backups/snail-staging-${base}-*.db | tail -n +4 | xargs -r rm -f
             done
-            ls -t /opt/backups/snail-staging-*.db | tail -n +4 | xargs -r rm -f
 
       - name: Clean stale web dist (staging)
         uses: appleboy/ssh-action@v1
@@ -166,11 +168,13 @@ jobs:
               --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
               .
             ls -t /opt/backups/snail-prod-code-*.tar.gz | tail -n +4 | xargs -r rm -f
-            # 2) 数据库备份
+            # 2) 数据库备份（每个 db 独立保留 3 份）
             for db in /opt/snail-books-backend/data/*.db; do
-              [ -f "$db" ] && cp "$db" "/opt/backups/snail-prod-$(basename "$db" .db)-$(date +%Y%m%d_%H%M%S).db"
+              [ -f "$db" ] || continue
+              base=$(basename "$db" .db)
+              cp "$db" "/opt/backups/snail-prod-${base}-$(date +%Y%m%d_%H%M%S).db"
+              ls -t /opt/backups/snail-prod-${base}-*.db | tail -n +4 | xargs -r rm -f
             done
-            ls -t /opt/backups/snail-prod-*.db | tail -n +4 | xargs -r rm -f
 
       - name: Clean stale web dist (production)
         uses: appleboy/ssh-action@v1
