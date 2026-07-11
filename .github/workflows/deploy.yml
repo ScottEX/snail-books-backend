@@ -115,6 +115,7 @@ jobs:
           target: "/opt/snail-books-backend/static/"
           strip_components: 0
           overwrite: true
+          rm: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
