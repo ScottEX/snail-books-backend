@@ -43,6 +43,22 @@ jobs:
           npm ci
           npm run build:web
 
+      - name: Snapshot backup (staging)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /opt/backups
+            tar -czf /opt/backups/snail-staging-$(date +%Y%m%d_%H%M%S).tar.gz \
+              -C /opt snail-books-backend-staging \
+              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
+              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
+              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
+              .
+            ls -t /opt/backups/snail-staging-*.tar.gz | tail -n +4 | xargs -r rm -f
+
       - name: Clean stale web dist (staging)
         uses: appleboy/ssh-action@v1
         with:
@@ -126,6 +142,22 @@ jobs:
         run: |
           npm ci
           npm run build:web
+
+      - name: Snapshot backup (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /opt/backups
+            tar -czf /opt/backups/snail-prod-$(date +%Y%m%d_%H%M%S).tar.gz \
+              -C /opt snail-books-backend \
+              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
+              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
+              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
+              .
+            ls -t /opt/backups/snail-prod-*.tar.gz | tail -n +4 | xargs -r rm -f
 
       - name: Clean stale web dist (production)
         uses: appleboy/ssh-action@v1
