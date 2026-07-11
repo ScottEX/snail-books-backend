@@ -43,6 +43,38 @@ jobs:
           npm ci
           npm run build:web
 
+      - name: Snapshot backup (staging)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /opt/backups
+            # 1) 代码快照（不含大文件）
+            tar -czf /opt/backups/snail-staging-code-$(date +%Y%m%d_%H%M%S).tar.gz \
+              -C /opt snail-books-backend-staging \
+              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
+              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
+              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
+              .
+            ls -t /opt/backups/snail-staging-code-*.tar.gz | tail -n +4 | xargs -r rm -f
+            # 2) 数据库备份（每个 db 独立保留 3 份）
+            for db in /opt/snail-books-backend-staging/data/*.db; do
+              [ -f "$db" ] || continue
+              base=$(basename "$db" .db)
+              cp "$db" "/opt/backups/snail-staging-${base}-$(date +%Y%m%d_%H%M%S).db"
+              ls -t /opt/backups/snail-staging-${base}-*.db | tail -n +4 | xargs -r rm -f
+            done
+
+      - name: Clean stale web dist (staging)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: rm -rf /opt/snail-books-backend-staging/static/web-build/dist/*
+
       - name: Sync web dist → server backend/static (staging)
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -60,6 +92,20 @@ jobs:
           repository: ScottEX/snail-books-backend
           ref: develop
           path: backend
+
+      - name: Clean stale backend files (staging)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -f /opt/snail-books-backend-staging/app.py
+            rm -f /opt/snail-books-backend-staging/i18n_backend.py
+            rm -f /opt/snail-books-backend-staging/requirements.txt
+            rm -rf /opt/snail-books-backend-staging/shared/
+            rm -rf /opt/snail-books-backend-staging/routes/
+            rm -rf /opt/snail-books-backend-staging/templates/
 
       - name: SCP backend code → staging
         uses: appleboy/scp-action@v0.1.7
@@ -82,6 +128,7 @@ jobs:
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
+            curl -sSf -o /dev/null http://localhost:8601/api/admin/check && echo "✅ Staging 冒烟测试通过" || { echo "❌ Staging 冒烟测试失败"; exit 1; }
             echo "✅ Staging 部署完成"
 
   deploy-production:
@@ -105,6 +152,38 @@ jobs:
           npm ci
           npm run build:web
 
+      - name: Snapshot backup (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /opt/backups
+            # 1) 代码快照（不含大文件）
+            tar -czf /opt/backups/snail-prod-code-$(date +%Y%m%d_%H%M%S).tar.gz \
+              -C /opt snail-books-backend \
+              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
+              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
+              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
+              .
+            ls -t /opt/backups/snail-prod-code-*.tar.gz | tail -n +4 | xargs -r rm -f
+            # 2) 数据库备份（每个 db 独立保留 3 份）
+            for db in /opt/snail-books-backend/data/*.db; do
+              [ -f "$db" ] || continue
+              base=$(basename "$db" .db)
+              cp "$db" "/opt/backups/snail-prod-${base}-$(date +%Y%m%d_%H%M%S).db"
+              ls -t /opt/backups/snail-prod-${base}-*.db | tail -n +4 | xargs -r rm -f
+            done
+
+      - name: Clean stale web dist (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: rm -rf /opt/snail-books-backend/static/web-build/dist/*
+
       - name: Sync web dist → server backend/static (production)
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -115,7 +194,6 @@ jobs:
           target: "/opt/snail-books-backend/static/"
           strip_components: 0
           overwrite: true
-          rm: true
 
       - name: Checkout backend
         uses: actions/checkout@v4
@@ -123,6 +201,20 @@ jobs:
           repository: ScottEX/snail-books-backend
           ref: main
           path: backend
+
+      - name: Clean stale backend files (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -f /opt/snail-books-backend/app.py
+            rm -f /opt/snail-books-backend/i18n_backend.py
+            rm -f /opt/snail-books-backend/requirements.txt
+            rm -rf /opt/snail-books-backend/shared/
+            rm -rf /opt/snail-books-backend/routes/
+            rm -rf /opt/snail-books-backend/templates/
 
       - name: SCP backend code → production
         uses: appleboy/scp-action@v0.1.7
@@ -145,4 +237,5 @@ jobs:
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books
+            curl -sSf -o /dev/null http://localhost:8600/api/admin/check && echo "✅ 生产冒烟测试通过" || { echo "❌ 生产冒烟测试失败"; exit 1; }
             echo "✅ 生产部署完成"
