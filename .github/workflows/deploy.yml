@@ -51,13 +51,19 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /opt/backups
-            tar -czf /opt/backups/snail-staging-$(date +%Y%m%d_%H%M%S).tar.gz \
+            # 1) 代码快照（不含大文件）
+            tar -czf /opt/backups/snail-staging-code-$(date +%Y%m%d_%H%M%S).tar.gz \
               -C /opt snail-books-backend-staging \
               --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
               --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
               --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
               .
-            ls -t /opt/backups/snail-staging-*.tar.gz | tail -n +4 | xargs -r rm -f
+            ls -t /opt/backups/snail-staging-code-*.tar.gz | tail -n +4 | xargs -r rm -f
+            # 2) 数据库备份
+            for db in /opt/snail-books-backend-staging/data/*.db; do
+              [ -f "$db" ] && cp "$db" "/opt/backups/snail-staging-$(basename "$db" .db)-$(date +%Y%m%d_%H%M%S).db"
+            done
+            ls -t /opt/backups/snail-staging-*.db | tail -n +4 | xargs -r rm -f
 
       - name: Clean stale web dist (staging)
         uses: appleboy/ssh-action@v1
@@ -120,6 +126,7 @@ jobs:
             systemctl restart snail-books-staging
             sleep 2
             systemctl is-active snail-books-staging
+            curl -sSf -o /dev/null http://localhost:8601/api/admin/check && echo "✅ Staging 冒烟测试通过" || { echo "❌ Staging 冒烟测试失败"; exit 1; }
             echo "✅ Staging 部署完成"
 
   deploy-production:
@@ -151,13 +158,19 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /opt/backups
-            tar -czf /opt/backups/snail-prod-$(date +%Y%m%d_%H%M%S).tar.gz \
+            # 1) 代码快照（不含大文件）
+            tar -czf /opt/backups/snail-prod-code-$(date +%Y%m%d_%H%M%S).tar.gz \
               -C /opt snail-books-backend \
               --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
               --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
               --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
               .
-            ls -t /opt/backups/snail-prod-*.tar.gz | tail -n +4 | xargs -r rm -f
+            ls -t /opt/backups/snail-prod-code-*.tar.gz | tail -n +4 | xargs -r rm -f
+            # 2) 数据库备份
+            for db in /opt/snail-books-backend/data/*.db; do
+              [ -f "$db" ] && cp "$db" "/opt/backups/snail-prod-$(basename "$db" .db)-$(date +%Y%m%d_%H%M%S).db"
+            done
+            ls -t /opt/backups/snail-prod-*.db | tail -n +4 | xargs -r rm -f
 
       - name: Clean stale web dist (production)
         uses: appleboy/ssh-action@v1
@@ -220,4 +233,5 @@ jobs:
             systemctl restart snail-books
             sleep 2
             systemctl is-active snail-books
+            curl -sSf -o /dev/null http://localhost:8600/api/admin/check && echo "✅ 生产冒烟测试通过" || { echo "❌ 生产冒烟测试失败"; exit 1; }
             echo "✅ 生产部署完成"
