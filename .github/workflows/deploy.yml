@@ -105,6 +105,14 @@ jobs:
           npm ci
           npm run build:web
 
+      - name: Clean stale web dist (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: rm -rf /opt/snail-books-backend/static/web-build/dist/*
+
       - name: Sync web dist → server backend/static (production)
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -122,6 +130,20 @@ jobs:
           repository: ScottEX/snail-books-backend
           ref: main
           path: backend
+
+      - name: Clean stale backend files (production)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -f /opt/snail-books-backend/app.py
+            rm -f /opt/snail-books-backend/i18n_backend.py
+            rm -f /opt/snail-books-backend/requirements.txt
+            rm -rf /opt/snail-books-backend/shared/
+            rm -rf /opt/snail-books-backend/routes/
+            rm -rf /opt/snail-books-backend/templates/
 
       - name: SCP backend code → production
         uses: appleboy/scp-action@v0.1.7
