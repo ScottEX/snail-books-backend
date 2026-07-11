@@ -51,15 +51,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /opt/backups
-            # 1) 代码快照（不含大文件）
-            tar -czf /opt/backups/snail-staging-code-$(date +%Y%m%d_%H%M%S).tar.gz \
-              -C /opt snail-books-backend-staging \
-              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
-              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
-              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
-              .
-            ls -t /opt/backups/snail-staging-code-*.tar.gz | tail -n +4 | xargs -r rm -f
-            # 2) 数据库备份（每个 db 独立保留 3 份）
             for db in /opt/snail-books-backend-staging/data/*.db; do
               [ -f "$db" ] || continue
               base=$(basename "$db" .db)
@@ -160,15 +151,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /opt/backups
-            # 1) 代码快照（不含大文件）
-            tar -czf /opt/backups/snail-prod-code-$(date +%Y%m%d_%H%M%S).tar.gz \
-              -C /opt snail-books-backend \
-              --exclude='venv' --exclude='*.db' --exclude='data/*.db' \
-              --exclude='static' --exclude='user-images' --exclude='expense-imgs' \
-              --exclude='invoice-files' --exclude='pdf_cache' --exclude='__pycache__' \
-              .
-            ls -t /opt/backups/snail-prod-code-*.tar.gz | tail -n +4 | xargs -r rm -f
-            # 2) 数据库备份（每个 db 独立保留 3 份）
             for db in /opt/snail-books-backend/data/*.db; do
               [ -f "$db" ] || continue
               base=$(basename "$db" .db)
