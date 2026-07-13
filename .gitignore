@@ -12,3 +12,4 @@ invoice-files/
 user-images/
 data/.flask_secret
 static/web-build/
+pdf_cache/

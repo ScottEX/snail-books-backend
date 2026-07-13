@@ -108,6 +108,24 @@ jobs:
           target: "/opt/snail-books-backend-staging/"
           strip_components: 1
 
+      - name: Deploy nginx config (staging)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/deploy/nginx/test.rowanlan.xyz.conf"
+          target: "/etc/nginx/sites-enabled/"
+          strip_components: 3
+
+      - name: Reload nginx (staging)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: nginx -t && systemctl reload nginx
+
       - name: Install deps & restart backend (staging)
         uses: appleboy/ssh-action@v1
         with:
