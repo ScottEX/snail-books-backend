@@ -885,3 +885,160 @@ def api_share_png(token):
     response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     response.headers['Cache-Control'] = 'private, max-age=86400'
     return response
+
+# PNG image export (first page of procurement PDF)
+def _cached_png_path(batch_id, lang):
+    return os.path.join(PDF_CACHE_DIR, f"batch_{batch_id}_{lang}.png")
+
+def _get_cached_png(batch_id, lang):
+    cache_path = _cached_png_path(batch_id, lang)
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return f.read()
+    return None
+
+def _save_cached_png(batch_id, png_bytes, lang):
+    os.makedirs(PDF_CACHE_DIR, exist_ok=True)
+    cache_path = _cached_png_path(batch_id, lang)
+    with open(cache_path, "wb") as f:
+        f.write(png_bytes)
+
+def _pdf_to_png(pdf_bytes):
+    """Convert first page of PDF to PNG using PyMuPDF (fitz)."""
+    import fitz
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    mat = fitz.Matrix(2, 2)
+    pix = page.get_pixmap(matrix=mat)
+    png_bytes = pix.tobytes("png")
+    doc.close()
+    return png_bytes
+
+@procurement_bp.route("/procurement-batches/<int:id>/png", methods=["GET"])
+@login_required
+def api_procurement_batch_png(id):
+    supplier = request.args.get("supplier", "").strip()
+    refresh = request.args.get("refresh", "0") == "1"
+    cache_lang = f"__sup__{supplier}__{g.lang}" if supplier else g.lang
+
+    cached_png = None if refresh else _get_cached_png(id, cache_lang)
+    if cached_png:
+        resp = make_response(cached_png)
+        resp.headers["Content-Type"] = "image/png"
+        return resp
+
+    pdf_bytes = None if refresh else _get_cached_pdf(id, cache_lang)
+    if not pdf_bytes:
+        # Re-run the PDF generation logic
+        with get_db() as db:
+            row = db.execute("SELECT * FROM procurement_batches WHERE id=?", (id,)).fetchone()
+            if not row:
+                return jsonify({"status": "error", "message": "Not found"}), 404
+            b = dict(row)
+            b["images"] = json.loads(b["images"]) if b["images"] else []
+            items = db.execute(
+                "SELECT pi.*, p.supplier FROM procurement_items pi "
+                "LEFT JOIN products p ON pi.product_id = p.id "
+                "WHERE pi.batch_id=? ORDER BY pi.id",
+                (id,),
+            ).fetchall()
+            if supplier:
+                items = [it for it in items if (it["supplier"] or "") == supplier]
+            b["items"] = [dict(it) for it in items]
+
+        # Import inside function to reuse existing imports at module level
+        import html as _html
+        from datetime import datetime, timezone, timedelta
+
+        items_html = ""
+        for it in b["items"]:
+            spec = it.get("spec", "") or ""
+            items_html += (
+                f"<tr><td>{_html.escape(it['product_name'])}</td>"
+                f"<td>{_html.escape(spec)}</td>"
+                f"<td>¥{it['unit_price']:,.2f}</td>"
+                f"<td>{it['quantity']}</td>"
+                f"<td>¥{it['subtotal']:,.2f}</td></tr>"
+            )
+
+        images_html = ""
+        img_dir = EXPENSE_IMG_DIR
+        if b["images"]:
+            imgs = ""
+            for img in b["images"]:
+                img_path = os.path.join(img_dir, img)
+                if os.path.isfile(img_path):
+                    imgs += f'<img src="file://{os.path.abspath(img_path)}" />'
+            if imgs:
+                images_html = (
+                    '<div class="images-section">'
+                    f'<div class="img-label">📎 {_t("pdfImgLabel", g.lang)}</div>'
+                    f'<div class="images-grid">{imgs}</div>'
+                    "</div>"
+                )
+
+        try:
+            d = datetime.strptime(b["date"], "%Y-%m-%d")
+            date_str = _format_pdf_date(d, g.lang)
+        except Exception:
+            date_str = b.get("date", "")
+
+        template_path = os.path.join(
+            os.path.dirname(__file__), "..", "templates", "procurement_order.html"
+        )
+        with open(template_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        _note_raw = (b.get("note") or "").strip()
+        note_html = (
+            f'<div class="note">{_t("procNoteOptional", g.lang)}：{_note_raw}</div>'
+            if _note_raw else ""
+        )
+
+        now = datetime.now(timezone.utc) + timedelta(hours=8)
+        html = html.format(
+            batch_number=f"2026-{b['batch_number']:04d}",
+            date=date_str,
+            payment_method=_t(b.get("payment_method", "payWechat"), g.lang),
+            category=_t(b.get("category", "goods"), g.lang),
+            items_html=items_html,
+            total=sum(it["subtotal"] for it in b["items"]) if supplier else b["total"],
+            images_html=images_html,
+            note_html=note_html,
+            batch_label_text=_t("procNowBatch", g.lang, n=b["batch_number"]),
+            operator=g.username,
+            gen_date=_format_pdf_date(now, g.lang),
+            pdf_title=_t("pdfTitle", g.lang),
+            pdf_subtitle=_t("pdfSubtitle", g.lang),
+            label_date=_t("pdfLabelDate", g.lang),
+            label_payment=_t("pdfLabelPayment", g.lang),
+            label_category=_t("pdfLabelCategory", g.lang),
+            label_batch=_t("procBatchLabel", g.lang),
+            col_name=_t("pdfColName", g.lang),
+            col_spec=_t("pdfColSpec", g.lang),
+            col_unit_price=_t("pdfColUnitPrice", g.lang),
+            col_qty=_t("pdfColQty", g.lang),
+            col_subtotal=_t("pdfColSubtotal", g.lang),
+            total_cny=_t("pdfTotalCNY", g.lang),
+            operator_label=_t("pdfOperator", g.lang),
+            gen_date_label=_t("pdfGenDate", g.lang),
+        )
+
+        try:
+            pdf_bytes = _write_pdf_with_timeout(html)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+        _save_cached_pdf(id, pdf_bytes, cache_lang)
+
+    try:
+        png_bytes = _pdf_to_png(pdf_bytes)
+    except Exception as e:
+        current_app.logger.error(f"PDF to PNG conversion failed: {e}")
+        return jsonify({"status": "error", "message": "Image conversion failed"}), 500
+
+    _save_cached_png(id, png_bytes, cache_lang)
+    resp = make_response(png_bytes)
+    resp.headers["Content-Type"] = "image/png"
+    return resp
+
