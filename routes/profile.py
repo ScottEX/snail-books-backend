@@ -357,6 +357,26 @@ def change_password():
     return jsonify({'status': 'ok', 'message': '密码修改成功'})
 
 
+# ── Verify password (for Face ID enrollment on iOS) ──
+# Lightweight check: confirms the logged-in user's password WITHOUT any
+# side effects. Unlike /login it does NOT create a session, revoke other
+# sessions, or hit the login rate-limiter. Used by the iOS app before
+# storing the password in Keychain for Face ID login.
+
+@profile_bp.route('/profile/verify-password', methods=['POST'])
+@login_required
+def verify_password():
+    data = request.get_json()
+    pw = data.get('password', '') if data else ''
+    if not pw:
+        return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
+    with get_db() as db:
+        user = db.execute('SELECT password FROM users WHERE id=?', (g.user_id,)).fetchone()
+    if user and check_password_hash(user['password'], pw):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error', 'message': '密码错误'}), 400
+
+
 # ── Change email ──
 
 @profile_bp.route('/profile/email/send-code', methods=['POST'])
