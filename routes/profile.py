@@ -114,8 +114,8 @@ def auth_prefs():
             timeout_hours = int(timeout_hours)
         except (TypeError, ValueError):
             return jsonify({'status': 'error', 'message': 'session_timeout_hours must be an integer'}), 400
-        if timeout_hours not in (1, 2, 6, 24):
-            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
+        if timeout_hours not in (1, 2, 6, 24, 72):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24, 72'}), 400
 
     with get_db() as db:
         if enforce_sso is not None:
