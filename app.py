@@ -19,7 +19,7 @@ from shared.config import FLASK_SECRET_KEY, FRONTEND_DIR, EXPENSE_IMG_DIR, BG_DI
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
-app.permanent_session_lifetime = timedelta(hours=24)
+app.permanent_session_lifetime = timedelta(hours=168)  # 7 days, covers max user timeout (72h)
 
 AVATAR_DIR = os.path.join(BG_DIR, 'avatars')
 

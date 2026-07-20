@@ -114,8 +114,8 @@ def auth_prefs():
             timeout_hours = int(timeout_hours)
         except (TypeError, ValueError):
             return jsonify({'status': 'error', 'message': 'session_timeout_hours must be an integer'}), 400
-        if timeout_hours not in (1, 2, 6, 24):
-            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24'}), 400
+        if timeout_hours not in (1, 2, 6, 24, 72):
+            return jsonify({'status': 'error', 'message': 'session_timeout_hours must be one of 1, 2, 6, 24, 72'}), 400
 
     with get_db() as db:
         if enforce_sso is not None:
@@ -151,6 +151,14 @@ def auth_prefs():
                     row = db.execute('SELECT session_id FROM user_tokens WHERE token=?', (tk,)).fetchone()
                     if row and row['session_id']:
                         cur_sid = row['session_id']
+            if not cur_sid:
+                # Fallback: find user's most recent active session directly
+                row = db.execute(
+                    'SELECT session_id FROM user_sessions WHERE user_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1',
+                    (g.user_id,)
+                ).fetchone()
+                if row and row['session_id']:
+                    cur_sid = row['session_id']
             if cur_sid:
                 new_expires = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=int(timeout_hours))).strftime('%Y-%m-%d %H:%M:%S')
                 db.execute('UPDATE user_sessions SET expires_at=? WHERE session_id=?', (new_expires, cur_sid))
