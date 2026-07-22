@@ -252,7 +252,7 @@ def get_reconciliations():
             result = [_fmt_recon_row(dict(r)) for r in rows]
             if request.args.get('include_cash_on_hand', '0') == '1':
                 cash = _get_cash_on_hand(db)
-                diff_val = float(result[0].get('real_total', 0)) - cash if result else -cash
+                diff_val = float(result[0].get('real_total', 0)) - float(cash) if result else float(-cash)
                 return jsonify({'records': result, 'cash_on_hand': fmt_money(cash), 'diff': fmt_money(diff_val)})
             return jsonify(result)
 
