@@ -395,6 +395,56 @@ def api_invoice_file_serve(user_id, filename):
     return resp
 
 
+# ── Convert first page of invoice PDF to PNG ──
+@invoice_bp.route('/invoice-files/<int:user_id>/<path:filename>/png', methods=['GET'])
+@login_required
+def api_invoice_file_png(user_id, filename):
+    user_dir = os.path.join(INVOICE_FILE_DIR, str(user_id))
+    file_path = os.path.normpath(os.path.join(user_dir, filename))
+    if not file_path.startswith(user_dir) or not os.path.isfile(file_path):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == '.png':
+        # Already a PNG — serve directly
+        resp = make_response(send_file(file_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'private, max-age=3600'
+        return resp
+
+    if ext != '.pdf':
+        return jsonify({'status': 'error', 'message': _t('err_invoice_file_type', g.lang)}), 400
+
+    # Check cache
+    cache_dir = os.path.join(INVOICE_FILE_DIR, '.png_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        resp = make_response(send_file(cache_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'private, max-age=3600'
+        return resp
+
+    try:
+        import fitz
+        with open(file_path, 'rb') as fh:
+            doc = fitz.open(stream=fh.read(), filetype='pdf')
+        page = doc[0]
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        png_bytes = pix.tobytes('png')
+        doc.close()
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'PDF conversion failed: {str(e)}'}), 500
+
+    with open(cache_path, 'wb') as fh:
+        fh.write(png_bytes)
+
+    resp = make_response(png_bytes)
+    resp.headers['Content-Type'] = 'image/png'
+    resp.headers['Cache-Control'] = 'private, max-age=3600'
+    return resp
+
+
 # ── Lite procurement batches (for invoice-record batch selector) ──
 @invoice_bp.route('/procurement-batches-lite', methods=['GET'])
 @login_required
