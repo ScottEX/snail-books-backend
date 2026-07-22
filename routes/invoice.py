@@ -321,20 +321,28 @@ def api_invoice_record_upload(rid):
     if not user_id:
         return jsonify({'status': 'error', 'message': _t('err_need_verify', g.lang)}), 401
     user_dir = _ensure_user_dir(user_id)
-    new_name = f'{uuid.uuid4().hex}.jpg'
+    # Determine file type and extension
+    is_pdf = ext == '.pdf' or (f.content_type and 'pdf' in f.content_type)
+    new_name = f'{uuid.uuid4().hex}.jpg' if not is_pdf else f'{uuid.uuid4().hex}.pdf'
     full_path = os.path.join(user_dir, new_name)
     rel_path = f'{user_id}/{new_name}'
 
-    # Compress original image server-side (max 1920px, JPEG quality 80)
-    try:
-        size = compress_original(f.stream, full_path)
-        content_type = 'image/jpeg'
-    except Exception:
-        # PIL unavailable or image corrupt — fall back to raw save
-        f.seek(0)
+    if is_pdf:
+        # Save PDF as-is, no JPEG compression
         f.save(full_path)
         size = os.path.getsize(full_path)
-        content_type = 'image/jpeg'
+        content_type = 'application/pdf'
+    else:
+        # Compress original image server-side (max 1920px, JPEG quality 80)
+        try:
+            size = compress_original(f.stream, full_path)
+            content_type = 'image/jpeg'
+        except Exception:
+            # PIL unavailable or image corrupt — fall back to raw save
+            f.seek(0)
+            f.save(full_path)
+            size = os.path.getsize(full_path)
+            content_type = f.content_type or 'image/jpeg'
 
     # Generate 128×128 thumbnail for faster list rendering
     thumb_path_on_disk = os.path.join(user_dir, thumb_name(new_name))
