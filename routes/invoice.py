@@ -299,6 +299,14 @@ def api_invoice_record_upload(rid):
     safe_name = secure_filename(f.filename) or 'upload'
     ext = os.path.splitext(safe_name)[1].lower()
     if ext not in ALLOWED_EXT:
+        # Safari on iOS may send files without extension; fall back to MIME type
+        mime = (f.content_type or '').lower()
+        for mime_hint, fallback_ext in [('pdf', '.pdf'), ('jpeg', '.jpg'), ('jpg', '.jpg'), ('png', '.png'), ('webp', '.webp')]:
+            if mime_hint in mime:
+                ext = fallback_ext
+                safe_name = safe_name + ext
+                break
+    if ext not in ALLOWED_EXT:
         return jsonify({'status': 'error', 'message': _t('err_invoice_file_type', g.lang)}), 400
     # Validate size (seek to end)
     f.seek(0, os.SEEK_END)
