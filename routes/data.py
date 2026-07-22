@@ -167,32 +167,6 @@ def create_reconciliation():
             return jsonify({'ok': True, 'action': 'created', 'id': new_id}), 201
 
 
-def _get_summary(db):
-    """Compute current cash_on_hand and cumulative_expense (same logic as business_summary)."""
-    rev = db.execute(
-        'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
-        ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
-    ).fetchone()
-    actual_received = to_decimal(rev['total_revenue']) + to_decimal(rev['total_jd'])
-    pf = db.execute(
-        'SELECT COALESCE(SUM(meituan_cashier),0) + COALESCE(SUM(meituan_waimai),0) +'
-        ' COALESCE(SUM(shangou_waimai),0) + COALESCE(SUM(meituan_tuan),0) as total_pf FROM platform_fees'
-    ).fetchone()
-    platform_fees_total = to_decimal(pf['total_pf'])
-    cumulative_revenue = actual_received - platform_fees_total
-    exp = db.execute(
-        "SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE -amount END),0) as total_exp"
-        " FROM transactions WHERE type IN ('expense','income')"
-    ).fetchone()
-    cumulative_expense = to_decimal(exp['total_exp'])
-    pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
-    total_investment = to_decimal(pinv['total_inv'])
-    pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
-    total_dividends = to_decimal(pdiv['total_div'])
-    cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
-    return cash_on_hand, cumulative_expense
-
-
 @data_bp.route('/reconciliations', methods=['GET'])
 @login_required
 def get_reconciliations():
@@ -250,12 +224,7 @@ def get_reconciliations():
                     f'SELECT * FROM reconciliations {where} ORDER BY date DESC, bill_date DESC LIMIT ?',
                     params + [limit]
                 ).fetchall()
-            result = [_fmt_recon_row(dict(r)) for r in rows]
-            if request.args.get('include_cash_on_hand', '0') == '1':
-                cash, cum_exp = _get_summary(db)
-                diff_val = float(result[0].get('real_total', 0)) - float(cash) if result else float(-cash)
-                return jsonify({'records': result, 'cash_on_hand': fmt_money(cash), 'cumulative_expense': fmt_money(cum_exp), 'diff': fmt_money(diff_val)})
-            return jsonify(result)
+            return jsonify([_fmt_recon_row(dict(r)) for r in rows])
 
 
 # ═══════════════════════════════════════════
