@@ -426,12 +426,33 @@ def api_invoice_file_png(user_id, filename):
 
     try:
         import fitz
+        from PIL import Image
+        import io
+
         with open(file_path, 'rb') as fh:
             doc = fitz.open(stream=fh.read(), filetype='pdf')
-        page = doc[0]
         mat = fitz.Matrix(2, 2)
-        pix = page.get_pixmap(matrix=mat)
-        png_bytes = pix.tobytes('png')
+        page_count = doc.page_count
+
+        if page_count == 1:
+            pix = doc[0].get_pixmap(matrix=mat)
+            png_bytes = pix.tobytes('png')
+        else:
+            images = []
+            for i in range(page_count):
+                pix = doc[i].get_pixmap(matrix=mat)
+                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                images.append(img)
+            total_h = sum(img.height for img in images)
+            max_w = max(img.width for img in images)
+            combined = Image.new("RGB", (max_w, total_h), "white")
+            y = 0
+            for img in images:
+                combined.paste(img, (0, y))
+                y += img.height
+            buf = io.BytesIO()
+            combined.save(buf, format="PNG")
+            png_bytes = buf.getvalue()
         doc.close()
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'PDF conversion failed: {str(e)}'}), 500
