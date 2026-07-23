@@ -904,8 +904,11 @@ def _save_cached_png(batch_id, png_bytes, lang):
         f.write(png_bytes)
 
 def _pdf_to_png(pdf_bytes):
-    """Convert all pages of PDF to a single vertically concatenated PNG using PyMuPDF (fitz)."""
+    """Convert all pages of PDF to a single vertically concatenated PNG using PyMuPDF + PIL."""
     import fitz
+    from PIL import Image
+    import io
+
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     mat = fitz.Matrix(2, 2)
     page_count = doc.page_count
@@ -916,29 +919,26 @@ def _pdf_to_png(pdf_bytes):
         doc.close()
         return png_bytes
 
-    # Multi-page: render and vertically concatenate all pages
-    pages_rgb = []
+    # Multi-page: render each page with PyMuPDF, combine with PIL
+    images = []
     for i in range(page_count):
         pix = doc[i].get_pixmap(matrix=mat)
-        if pix.n > 3:
-            pix = fitz.Pixmap(fitz.csRGB, pix)
-        pages_rgb.append(pix)
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        images.append(img)
     doc.close()
 
-    total_h = sum(p.height for p in pages_rgb)
-    max_w = max(p.width for p in pages_rgb)
+    total_h = sum(img.height for img in images)
+    max_w = max(img.width for img in images)
 
-    combined = fitz.Pixmap(fitz.csRGB, max_w, total_h)
+    combined = Image.new("RGB", (max_w, total_h), "white")
     y = 0
-    for pix in pages_rgb:
-        row_bytes = pix.width * pix.n
-        for row in range(pix.height):
-            src_start = row * pix.stride
-            dst_start = (y + row) * combined.stride
-            combined.samples[dst_start:dst_start + row_bytes] = pix.samples[src_start:src_start + row_bytes]
-        y += pix.height
+    for img in images:
+        combined.paste(img, (0, y))
+        y += img.height
 
-    return combined.tobytes("png")
+    buf = io.BytesIO()
+    combined.save(buf, format="PNG")
+    return buf.getvalue()
 
 @procurement_bp.route("/procurement-batches/<int:id>/png", methods=["GET"])
 @login_required
