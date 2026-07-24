@@ -903,42 +903,48 @@ def _save_cached_png(batch_id, png_bytes, lang):
     with open(cache_path, "wb") as f:
         f.write(png_bytes)
 
-def _pdf_to_png(pdf_bytes):
-    """Convert all pages of PDF to a single vertically concatenated PNG using PyMuPDF + PIL."""
+def _pdf_to_png(pdf_bytes, max_pages=None):
+    """Convert PDF pages to a single vertically concatenated PNG using PyMuPDF + PIL.
+    Per-page render-and-release to bound peak memory. If max_pages is set, only convert up to that many pages."""
     import fitz
     from PIL import Image
     import io
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    mat = fitz.Matrix(2, 2)
-    page_count = doc.page_count
+    try:
+        mat = fitz.Matrix(2, 2)
+        page_count = doc.page_count
+        if max_pages:
+            page_count = min(page_count, max_pages)
 
-    if page_count == 1:
-        pix = doc[0].get_pixmap(matrix=mat)
-        png_bytes = pix.tobytes("png")
+        if page_count == 1:
+            pix = doc[0].get_pixmap(matrix=mat)
+            return pix.tobytes("png")
+
+        # Get dimensions from page rects — no rendering needed
+        page_dims = []
+        for i in range(page_count):
+            r = doc[i].rect
+            page_dims.append((int(r.width * 2), int(r.height * 2)))
+
+        max_w = max(w for w, h in page_dims)
+        total_h = sum(h for w, h in page_dims)
+
+        combined = Image.new("RGB", (max_w, total_h), "white")
+        y = 0
+        for i, (w, h) in enumerate(page_dims):
+            pix = doc[i].get_pixmap(matrix=mat)
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            pix = None  # release pixmap
+            combined.paste(img, (0, y))
+            img = None  # release PIL image
+            y += h
+
+        buf = io.BytesIO()
+        combined.save(buf, format="PNG")
+        return buf.getvalue()
+    finally:
         doc.close()
-        return png_bytes
-
-    # Multi-page: render each page with PyMuPDF, combine with PIL
-    images = []
-    for i in range(page_count):
-        pix = doc[i].get_pixmap(matrix=mat)
-        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        images.append(img)
-    doc.close()
-
-    total_h = sum(img.height for img in images)
-    max_w = max(img.width for img in images)
-
-    combined = Image.new("RGB", (max_w, total_h), "white")
-    y = 0
-    for img in images:
-        combined.paste(img, (0, y))
-        y += img.height
-
-    buf = io.BytesIO()
-    combined.save(buf, format="PNG")
-    return buf.getvalue()
 
 @procurement_bp.route("/procurement-batches/<int:id>/png", methods=["GET"])
 @login_required
@@ -1056,6 +1062,14 @@ def api_procurement_batch_png(id):
             return jsonify({"status": "error", "message": str(e)}), 500
 
         _save_cached_pdf(id, pdf_bytes, cache_lang)
+
+    if request.args.get('pages') == '1':
+        import fitz
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            return jsonify({"pages": doc.page_count})
+        finally:
+            doc.close()
 
     try:
         png_bytes = _pdf_to_png(pdf_bytes)

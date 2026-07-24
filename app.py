@@ -67,6 +67,18 @@ def serve_expense_image_png(user_id, filename):
         resp.headers['Cache-Control'] = 'public, max-age=3600'
         return resp
 
+    if request.args.get('pages') == '1':
+        try:
+            import fitz
+            with open(file_path, 'rb') as fh:
+                doc = fitz.open(stream=fh.read(), filetype='pdf')
+            try:
+                return jsonify({"pages": doc.page_count})
+            finally:
+                doc.close()
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     try:
         import fitz
         from PIL import Image
@@ -74,28 +86,34 @@ def serve_expense_image_png(user_id, filename):
 
         with open(file_path, 'rb') as fh:
             doc = fitz.open(stream=fh.read(), filetype='pdf')
-        mat = fitz.Matrix(2, 2)
-        page_count = doc.page_count
+        try:
+            mat = fitz.Matrix(2, 2)
+            page_count = doc.page_count
 
-        if page_count == 1:
-            pix = doc[0].get_pixmap(matrix=mat)
-            png_bytes = pix.tobytes('png')
-        else:
-            images = []
-            for i in range(page_count):
-                pix = doc[i].get_pixmap(matrix=mat)
-                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                images.append(img)
-            total_h = sum(img.height for img in images)
-            max_w = max(img.width for img in images)
-            combined = Image.new("RGB", (max_w, total_h), "white")
-            y = 0
-            for img in images:
-                combined.paste(img, (0, y))
-                y += img.height
-            buf = io.BytesIO()
-            combined.save(buf, format="PNG")
-            png_bytes = buf.getvalue()
+            if page_count == 1:
+                pix = doc[0].get_pixmap(matrix=mat)
+                png_bytes = pix.tobytes('png')
+            else:
+                page_dims = []
+                for i in range(page_count):
+                    r = doc[i].rect
+                    page_dims.append((int(r.width * 2), int(r.height * 2)))
+                max_w = max(w for w, h in page_dims)
+                total_h = sum(h for w, h in page_dims)
+                combined = Image.new("RGB", (max_w, total_h), "white")
+                y = 0
+                for i, (w, h) in enumerate(page_dims):
+                    pix = doc[i].get_pixmap(matrix=mat)
+                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    pix = None
+                    combined.paste(img, (0, y))
+                    img = None
+                    y += h
+                buf = io.BytesIO()
+                combined.save(buf, format="PNG")
+                png_bytes = buf.getvalue()
+        finally:
+            doc.close()
 
         # Write to cache
         with open(cache_path, 'wb') as fh:
