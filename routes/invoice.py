@@ -440,6 +440,7 @@ def api_invoice_file_png(user_id, filename):
         import fitz
         from PIL import Image
         import io
+        import math
 
         with open(file_path, 'rb') as fh:
             doc = fitz.open(stream=fh.read(), filetype='pdf')
@@ -454,7 +455,7 @@ def api_invoice_file_png(user_id, filename):
                 page_dims = []
                 for i in range(page_count):
                     r = doc[i].rect
-                    page_dims.append((int(r.width * 2), int(r.height * 2)))
+                    page_dims.append((math.ceil(r.width * 2), math.ceil(r.height * 2)))
                 max_w = max(w for w, h in page_dims)
                 total_h = sum(h for w, h in page_dims)
                 combined = Image.new("RGB", (max_w, total_h), "white")
