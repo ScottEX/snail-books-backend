@@ -414,16 +414,7 @@ def api_invoice_file_png(user_id, filename):
     if ext != '.pdf':
         return jsonify({'status': 'error', 'message': _t('err_invoice_file_type', g.lang)}), 400
 
-    # Check cache
-    cache_dir = os.path.join(INVOICE_FILE_DIR, '.png_cache')
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
-    cache_path = os.path.join(cache_dir, cache_name)
-    if os.path.isfile(cache_path):
-        resp = make_response(send_file(cache_path, mimetype='image/png'))
-        resp.headers['Cache-Control'] = 'private, max-age=3600'
-        return resp
-
+    # ── Page-count query (before cache — cache returns image, not JSON) ──
     if request.args.get('pages') == '1':
         try:
             import fitz
@@ -435,6 +426,16 @@ def api_invoice_file_png(user_id, filename):
                 doc.close()
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # Check cache
+    cache_dir = os.path.join(INVOICE_FILE_DIR, '.png_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        resp = make_response(send_file(cache_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'private, max-age=3600'
+        return resp
 
     try:
         import fitz

@@ -57,16 +57,7 @@ def serve_expense_image_png(user_id, filename):
     if ext != '.pdf':
         return jsonify({'status': 'error', 'message': 'Not a PDF'}), 400
 
-    # Check cache
-    cache_dir = os.path.join(EXPENSE_IMG_DIR, '.png_cache')
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
-    cache_path = os.path.join(cache_dir, cache_name)
-    if os.path.isfile(cache_path):
-        resp = make_response(send_file(cache_path, mimetype='image/png'))
-        resp.headers['Cache-Control'] = 'public, max-age=3600'
-        return resp
-
+    # ── Page-count query (before cache — cache returns image, not JSON) ──
     if request.args.get('pages') == '1':
         try:
             import fitz
@@ -78,6 +69,16 @@ def serve_expense_image_png(user_id, filename):
                 doc.close()
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # Check cache
+    cache_dir = os.path.join(EXPENSE_IMG_DIR, '.png_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        resp = make_response(send_file(cache_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'public, max-age=3600'
+        return resp
 
     try:
         import fitz
