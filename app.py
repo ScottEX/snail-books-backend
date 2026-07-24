@@ -39,6 +39,74 @@ app.after_request(_log_response)
 #  routes take priority via Flask's registration order)
 # ═══════════════════════════════════════════════════════════
 
+@app.route('/expense-imgs/<int:user_id>/<path:filename>/png')
+def serve_expense_image_png(user_id, filename):
+    """Convert expense receipt PDF to PNG (single or combined multi-page).
+    Mirrors invoice PNG conversion logic."""
+    user_dir = os.path.join(EXPENSE_IMG_DIR, str(user_id))
+    file_path = os.path.normpath(os.path.join(user_dir, filename))
+    if not file_path.startswith(user_dir) or not os.path.isfile(file_path):
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == '.png':
+        resp = make_response(send_file(file_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'public, max-age=3600'
+        return resp
+
+    if ext != '.pdf':
+        return jsonify({'status': 'error', 'message': 'Not a PDF'}), 400
+
+    # Check cache
+    cache_dir = os.path.join(EXPENSE_IMG_DIR, '.png_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_name = f'{user_id}_{os.path.splitext(filename)[0]}.png'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        resp = make_response(send_file(cache_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'public, max-age=3600'
+        return resp
+
+    try:
+        import fitz
+        from PIL import Image
+        import io
+
+        with open(file_path, 'rb') as fh:
+            doc = fitz.open(stream=fh.read(), filetype='pdf')
+        mat = fitz.Matrix(2, 2)
+        page_count = doc.page_count
+
+        if page_count == 1:
+            pix = doc[0].get_pixmap(matrix=mat)
+            png_bytes = pix.tobytes('png')
+        else:
+            images = []
+            for i in range(page_count):
+                pix = doc[i].get_pixmap(matrix=mat)
+                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                images.append(img)
+            total_h = sum(img.height for img in images)
+            max_w = max(img.width for img in images)
+            combined = Image.new("RGB", (max_w, total_h), "white")
+            y = 0
+            for img in images:
+                combined.paste(img, (0, y))
+                y += img.height
+            buf = io.BytesIO()
+            combined.save(buf, format="PNG")
+            png_bytes = buf.getvalue()
+
+        # Write to cache
+        with open(cache_path, 'wb') as fh:
+            fh.write(png_bytes)
+
+        resp = make_response(send_file(cache_path, mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'public, max-age=3600'
+        return resp
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Conversion failed: {str(e)}'}), 500
+
 @app.route('/expense-imgs/<path:subpath>')
 def serve_expense_image(subpath):
     parts = subpath.split('/', 1)
