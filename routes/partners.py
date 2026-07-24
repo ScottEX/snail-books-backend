@@ -103,15 +103,20 @@ def upload_expense_images():
         ext = os.path.splitext(f.filename or 'img.jpg')[1] or '.jpg'
         if ext.lower() not in ALLOWED_IMG_EXT:
             continue
-        safe_name = f"{uuid.uuid4().hex}.jpg"
+        is_pdf = ext.lower() == '.pdf' or (f.content_type and 'pdf' in (f.content_type or ''))
+        safe_name = f"{uuid.uuid4().hex}{ext.lower()}"
         save_path = os.path.join(user_dir, safe_name)
 
-        # Compress original server-side (max 1920px, JPEG quality 80)
-        try:
-            compress_original(f.stream, save_path)
-        except Exception:
-            f.seek(0)
+        if is_pdf:
+            # Save PDF as-is, no JPEG compression
             f.save(save_path)
+        else:
+            # Compress original server-side (max 1920px, JPEG quality 80)
+            try:
+                compress_original(f.stream, save_path)
+            except Exception:
+                f.seek(0)
+                f.save(save_path)
 
         urls.append(f'/expense-imgs/{user_id}/{safe_name}')
 
