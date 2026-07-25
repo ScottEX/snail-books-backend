@@ -716,6 +716,14 @@ def init_db():
         except sqlite3.OperationalError:
             pass
         try:
+            db.execute("ALTER TABLE users ADD COLUMN linked_partner_id INTEGER REFERENCES users(id)")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN linked_partner_name TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:
             db.execute("ALTER TABLE invoice_records ADD COLUMN note TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
