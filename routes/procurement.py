@@ -210,8 +210,9 @@ def api_procurement_batch_detail(id):
     """Single procurement batch: detail, edit, delete."""
     with get_db() as db:
         row = db.execute(
-            'SELECT pb.*, su.username AS settled_by_username FROM procurement_batches pb '
-            'LEFT JOIN users su ON pb.settled_by = su.id WHERE pb.id=?',
+            'SELECT pb.*, su.username AS settled_by_username, ir.status AS invoice_status FROM procurement_batches pb '
+            'LEFT JOIN users su ON pb.settled_by = su.id '
+            'LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id WHERE pb.id=?',
             (id,)
         ).fetchone()
         if not row:
