@@ -25,7 +25,11 @@
 
 ## AI 一句话记账
 
-在后端服务环境中配置 `OPENAI_API_KEY` 并允许访问 `api.openai.com`，重启 Flask 后生效。`EXPENSE_AI_MODEL` 可选，默认是 `gpt-4.1-mini`。密钥由后端读取。
+使用 DeepSeek 时，在后端服务的环境配置中添加 `DEEPSEEK_API_KEY`，并允许后端访问 `api.deepseek.com`。可用 `DEEPSEEK_MODEL` 指定支持 JSON 输出的模型，默认是 `deepseek-chat`。测试环境对应 `snail-books-staging`，修改环境配置后重启该服务。
+
+通过 CI/CD 配置测试环境时，在后端 GitHub 仓库的 Actions Secrets 中添加 `STAGING_DEEPSEEK_API_KEY`，再运行 `develop` 部署。部署会为测试服务写入受限权限的环境文件并重启服务。更新 Secret 后重新运行部署即可轮换密钥。缺少这个 Secret 时，部署会保留服务器上已有的密钥。如果需要移除由 CI 写入的密钥，还需从服务器移除 `/etc/snail-books-staging/ci-deepseek.env` 和 `snail-books-staging.service.d/90-ci-deepseek.conf`，然后重新加载 systemd 并重启测试服务。
+
+当两个密钥都已配置时，使用 DeepSeek。只配置 `OPENAI_API_KEY` 时，使用 OpenAI，模型由 `EXPENSE_AI_MODEL` 指定，默认是 `gpt-4.1-mini`。密钥由后端读取。
 
 iOS 支出表单调用需要登录的 `POST /api/transactions/expense-draft`，请求体为 `{"text":"今天买菜花了 86 元，微信付的"}`。接口只将句子和业务日期提交给模型，返回待核对的草稿。用户确认后，客户端仍通过现有流水接口保存。缺少密钥时，草稿接口返回 HTTP 503，手动记账可以照常使用。
 

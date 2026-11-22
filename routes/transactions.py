@@ -9,8 +9,8 @@ from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
-from shared.config import EXPENSE_IMG_DIR, OPENAI_API_KEY
-from shared.expense_ai import extract_expense_draft
+from shared.config import EXPENSE_IMG_DIR
+from shared.expense_ai import expense_ai_configured, extract_expense_draft
 from shared.rate_limit import reserve_expense_ai_request
 
 tx_bp = Blueprint('transactions', __name__)
@@ -19,7 +19,7 @@ tx_bp = Blueprint('transactions', __name__)
 @tx_bp.route('/transactions/expense-draft', methods=['POST'])
 @login_required
 def expense_draft():
-    if not OPENAI_API_KEY:
+    if not expense_ai_configured():
         return jsonify({'status': 'error', 'message': 'expenseAiUnavailable'}), 503
     payload = request.get_json(silent=True)
     text = payload.get('text', '') if isinstance(payload, dict) else ''

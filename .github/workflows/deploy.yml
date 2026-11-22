@@ -126,6 +126,35 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: nginx -t && systemctl reload nginx
 
+      - name: Configure DeepSeek (staging)
+        uses: appleboy/ssh-action@v1
+        env:
+          STAGING_DEEPSEEK_API_KEY: ${{ secrets.STAGING_DEEPSEEK_API_KEY }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: STAGING_DEEPSEEK_API_KEY
+          script: |
+            set -eu
+            case "${STAGING_DEEPSEEK_API_KEY:-}" in
+              '') echo "No CI-managed DeepSeek secret for staging"; exit 0 ;;
+              *[!a-zA-Z0-9_-]*) echo "Invalid DeepSeek secret format" >&2; exit 1 ;;
+            esac
+
+            umask 077
+            env_dir=/etc/snail-books-staging
+            mkdir -p "$env_dir"
+            env_tmp=$(mktemp "$env_dir/.ci-deepseek.XXXXXX")
+            trap 'rm -f "$env_tmp"' EXIT
+            printf 'DEEPSEEK_API_KEY=%s\n' "$STAGING_DEEPSEEK_API_KEY" > "$env_tmp"
+            mv -f "$env_tmp" "$env_dir/ci-deepseek.env"
+
+            unit_dir=/etc/systemd/system/snail-books-staging.service.d
+            mkdir -p -m 0755 "$unit_dir"
+            printf '[Service]\nEnvironmentFile=%s/ci-deepseek.env\n' "$env_dir" > "$unit_dir/90-ci-deepseek.conf"
+            systemctl daemon-reload
+
       - name: Install deps & restart backend (staging)
         uses: appleboy/ssh-action@v1
         with:
