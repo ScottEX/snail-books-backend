@@ -112,7 +112,7 @@ def _capture_request():
     g._req_qs = request.query_string.decode('utf-8', errors='replace') or ''
 
     # Capture and mask request body for mutations
-    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH') and path != '/api/transactions/expense-draft':
         try:
             body = request.get_json(silent=True)
             if body is not None:
@@ -172,7 +172,7 @@ def _log_response(response):
             pass
 
         try:
-            raw = response.get_data(as_text=True)
+            raw = response.get_data(as_text=True) if path != '/api/transactions/expense-draft' else ''
             # Mask sensitive fields in response too
             try:
                 parsed = json.loads(raw)

@@ -23,6 +23,12 @@
 - API 路由：`/api/<资源名复数>`
 - 示例：`/api/transactions`、`/api/dividends`
 
+## AI 一句话记账
+
+在后端服务环境中配置 `OPENAI_API_KEY` 并允许访问 `api.openai.com`，重启 Flask 后生效。`EXPENSE_AI_MODEL` 可选，默认是 `gpt-4.1-mini`。密钥由后端读取。
+
+iOS 支出表单调用需要登录的 `POST /api/transactions/expense-draft`，请求体为 `{"text":"今天买菜花了 86 元，微信付的"}`。接口只将句子和业务日期提交给模型，返回待核对的草稿。用户确认后，客户端仍通过现有流水接口保存。缺少密钥时，草稿接口返回 HTTP 503，手动记账可以照常使用。
+
 ## 数据库
 
 ### 迁移

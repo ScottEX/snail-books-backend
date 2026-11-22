@@ -55,3 +55,6 @@ if not FLASK_SECRET_KEY:
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 RESEND_FROM = os.environ.get('RESEND_FROM', 'onboarding@resend.dev')
+
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+EXPENSE_AI_MODEL = os.environ.get('EXPENSE_AI_MODEL', 'gpt-4.1-mini')

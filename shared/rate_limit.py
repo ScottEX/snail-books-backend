@@ -74,3 +74,20 @@ def check_forgot_limit(ip):
 def record_forgot_attempt(ip):
     """Record a forgot-password attempt."""
     _record_attempt(f'forgot:{ip}', _FORGOT_WINDOW)
+
+
+def reserve_expense_ai_request(user_id):
+    """Atomically reserve one of ten AI requests per minute for this account."""
+    now = time.time()
+    cutoff = now - 60
+    with get_db() as db:
+        _ensure_table(db)
+        result = db.execute(
+            """INSERT INTO rate_limits (key, attempts, window_start) VALUES (?, 1, ?)
+               ON CONFLICT(key) DO UPDATE SET
+                 attempts = CASE WHEN window_start <= ? THEN 1 ELSE attempts + 1 END,
+                 window_start = CASE WHEN window_start <= ? THEN excluded.window_start ELSE window_start END
+               WHERE window_start <= ? OR attempts < 10""",
+            (f'expense-ai:{user_id}', now, cutoff, cutoff, cutoff),
+        )
+        return result.rowcount == 1

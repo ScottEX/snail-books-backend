@@ -3,14 +3,39 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
+import requests
 from flask import Blueprint, request, jsonify, g
 from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
-from shared.config import EXPENSE_IMG_DIR
+from shared.config import EXPENSE_IMG_DIR, OPENAI_API_KEY
+from shared.expense_ai import extract_expense_draft
+from shared.rate_limit import reserve_expense_ai_request
 
 tx_bp = Blueprint('transactions', __name__)
+
+
+@tx_bp.route('/transactions/expense-draft', methods=['POST'])
+@login_required
+def expense_draft():
+    if not OPENAI_API_KEY:
+        return jsonify({'status': 'error', 'message': 'expenseAiUnavailable'}), 503
+    payload = request.get_json(silent=True)
+    text = payload.get('text', '') if isinstance(payload, dict) else ''
+    if not isinstance(text, str) or not text.strip() or len(text) > 500:
+        return jsonify({'status': 'error', 'message': 'expenseAiInvalidInput'}), 400
+    if not reserve_expense_ai_request(g.user_id):
+        return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
+
+    today = datetime.now(timezone(timedelta(hours=8))).date()
+    try:
+        draft = extract_expense_draft(text.strip(), today)
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        return jsonify({'status': 'error', 'message': 'expenseAiFailed'}), 502
+    if draft is None:
+        return jsonify({'status': 'error', 'message': 'expenseAiUnclear'}), 422
+    return jsonify({'status': 'ok', 'draft': draft})
 
 
 @tx_bp.route('/transactions', methods=['GET', 'POST'])
