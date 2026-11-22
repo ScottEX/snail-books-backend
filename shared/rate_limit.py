@@ -76,7 +76,7 @@ def record_forgot_attempt(ip):
     _record_attempt(f'forgot:{ip}', _FORGOT_WINDOW)
 
 
-def reserve_expense_ai_request(user_id):
+def reserve_ai_request(user_id):
     """Atomically reserve one of ten AI requests per minute for this account."""
     now = time.time()
     cutoff = now - 60

@@ -10,8 +10,9 @@ from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
 from shared.config import EXPENSE_IMG_DIR
-from shared.expense_ai import expense_ai_configured, extract_expense_draft
-from shared.rate_limit import reserve_expense_ai_request
+from shared.ai_provider import ai_configured
+from shared.expense_ai import extract_expense_draft
+from shared.rate_limit import reserve_ai_request
 
 tx_bp = Blueprint('transactions', __name__)
 
@@ -19,13 +20,13 @@ tx_bp = Blueprint('transactions', __name__)
 @tx_bp.route('/transactions/expense-draft', methods=['POST'])
 @login_required
 def expense_draft():
-    if not expense_ai_configured():
+    if not ai_configured():
         return jsonify({'status': 'error', 'message': 'expenseAiUnavailable'}), 503
     payload = request.get_json(silent=True)
     text = payload.get('text', '') if isinstance(payload, dict) else ''
     if not isinstance(text, str) or not text.strip() or len(text) > 500:
         return jsonify({'status': 'error', 'message': 'expenseAiInvalidInput'}), 400
-    if not reserve_expense_ai_request(g.user_id):
+    if not reserve_ai_request(g.user_id):
         return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
 
     today = datetime.now(timezone(timedelta(hours=8))).date()

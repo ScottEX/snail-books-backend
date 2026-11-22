@@ -1,12 +1,9 @@
 """Extract and validate an expense draft from a model response."""
 
-import json
 import re
 from datetime import date
 
-import requests
-
-from shared.config import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, EXPENSE_AI_MODEL, OPENAI_API_KEY
+from shared.ai_provider import request_json
 
 
 EXPENSE_CATEGORIES = ('daily', 'rent', 'salary', 'goods')
@@ -20,10 +17,6 @@ _FIELDS = {
 }
 
 
-def expense_ai_configured():
-    return bool(DEEPSEEK_API_KEY or OPENAI_API_KEY)
-
-
 def extract_expense_draft(text, today):
     instructions = (
         f'Extract exactly one completed CNY expense. Today in Beijing is {today.isoformat()}. '
@@ -35,72 +28,8 @@ def extract_expense_draft(text, today):
         'salary=wages, goods=inventory or merchandise. For account use payCash, payWechat, '
         'or payAlipay when specified. Write a note of at most 200 characters in the input language.'
     )
-    if DEEPSEEK_API_KEY:
-        output = _deepseek_output(text, instructions)
-    else:
-        output = _openai_output(text, instructions)
-    return _validated_draft(json.loads(output), today)
-
-
-def _deepseek_output(text, instructions):
-    expected_fields = json.dumps(dict.fromkeys(_FIELDS))
-    response = requests.post(
-        'https://api.deepseek.com/chat/completions',
-        headers={'Authorization': f'Bearer {DEEPSEEK_API_KEY}'},
-        json={
-            'model': DEEPSEEK_MODEL,
-            'messages': [
-                {'role': 'system', 'content': (
-                    f'{instructions} Return a single JSON object with exactly these keys: {expected_fields}.'
-                )},
-                {'role': 'user', 'content': text},
-            ],
-            'response_format': {'type': 'json_object'},
-            'max_tokens': 512,
-        },
-        timeout=(3, 12),
-    )
-    response.raise_for_status()
-    choice = next(iter(response.json().get('choices', [])), {})
-    if choice.get('finish_reason') != 'stop':
-        raise ValueError('Incomplete model response')
-    return choice['message']['content']
-
-
-def _openai_output(text, instructions):
-    response = requests.post(
-        'https://api.openai.com/v1/responses',
-        headers={'Authorization': f'Bearer {OPENAI_API_KEY}'},
-        json={
-            'model': EXPENSE_AI_MODEL,
-            'store': False,
-            'instructions': instructions,
-            'input': text,
-            'max_output_tokens': 512,
-            'text': {'format': {
-                'type': 'json_schema',
-                'name': 'expense_draft',
-                'strict': True,
-                'schema': {
-                    'type': 'object',
-                    'properties': _FIELDS,
-                    'required': list(_FIELDS),
-                    'additionalProperties': False,
-                },
-            }},
-        },
-        timeout=(3, 12),
-    )
-    response.raise_for_status()
-    result = response.json()
-    if result.get('status') != 'completed':
-        raise ValueError('Incomplete model response')
-    for item in result.get('output', []):
-        if item.get('type') == 'message':
-            for part in item.get('content', []):
-                if part.get('type') == 'output_text':
-                    return part['text']
-    raise ValueError('Missing model output')
+    draft = request_json(text, instructions, 'expense_draft', _FIELDS)
+    return _validated_draft(draft, today)
 
 
 def _validated_draft(draft, today):

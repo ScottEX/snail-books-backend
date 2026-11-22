@@ -5,15 +5,42 @@ from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, session, g
 import sqlite3
+import requests
 
+from shared.ai_provider import ai_configured
 from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
 from shared.validation import validate_required
 from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
+from shared.ledger_query import answer_ledger_question, interpret_ledger_question
+from shared.rate_limit import reserve_ai_request
 
 data_bp = Blueprint('data', __name__)
+
+
+@data_bp.route('/ledger/ask', methods=['POST'])
+@login_required
+def ledger_ask():
+    if not ai_configured():
+        return jsonify({'status': 'error', 'message': 'ledgerAiUnavailable'}), 503
+    payload = request.get_json(silent=True)
+    question = payload.get('question') if isinstance(payload, dict) else None
+    if not isinstance(question, str) or not question.strip() or len(question) > 300:
+        return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
+    if not reserve_ai_request(g.user_id):
+        return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
+
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+    try:
+        plan = interpret_ledger_question(question.strip(), today)
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        return jsonify({'status': 'error', 'message': 'ledgerAiFailed'}), 502
+    answer = answer_ledger_question(plan, today)
+    if answer is None:
+        return jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422
+    return jsonify({'status': 'ok', 'answer': answer})
 
 
 # ── Server time (Beijing) ──

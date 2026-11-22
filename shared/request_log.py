@@ -66,6 +66,7 @@ def _now_iso() -> str:
 
 
 _SENSITIVE_MASK = '***'
+_PRIVATE_BODY_PATHS = {'/api/transactions/expense-draft', '/api/ledger/ask'}
 
 
 def _mask_sensitive(data):
@@ -112,7 +113,7 @@ def _capture_request():
     g._req_qs = request.query_string.decode('utf-8', errors='replace') or ''
 
     # Capture and mask request body for mutations
-    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH') and path != '/api/transactions/expense-draft':
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH') and path not in _PRIVATE_BODY_PATHS:
         try:
             body = request.get_json(silent=True)
             if body is not None:
@@ -172,7 +173,7 @@ def _log_response(response):
             pass
 
         try:
-            raw = response.get_data(as_text=True) if path != '/api/transactions/expense-draft' else ''
+            raw = response.get_data(as_text=True) if path not in _PRIVATE_BODY_PATHS else ''
             # Mask sensitive fields in response too
             try:
                 parsed = json.loads(raw)
