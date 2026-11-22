@@ -16,6 +16,16 @@ from shared.rate_limit import reserve_ai_request
 
 tx_bp = Blueprint('transactions', __name__)
 
+_TRANSACTION_SELECT = """
+    SELECT t.*, pb.batch_number AS proc_batch_number,
+           pb.settled_at AS proc_settled_at, pb.settled_by AS proc_settled_by,
+           su.username AS proc_settled_by_username, ir.status AS invoice_status
+    FROM transactions t
+    LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id
+    LEFT JOIN users su ON pb.settled_by = su.id
+    LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id
+"""
+
 
 @tx_bp.route('/transactions/expense-draft', methods=['POST'])
 @login_required
@@ -103,13 +113,8 @@ def transactions():
         pages = max(1, (count + per_page - 1) // per_page)
         offset = (page - 1) * per_page
         rows = db.execute(
-            f'SELECT t.*, pb.batch_number AS proc_batch_number, '
-            f'pb.settled_at AS proc_settled_at, pb.settled_by AS proc_settled_by, '
-            f'su.username AS proc_settled_by_username, ir.status AS invoice_status FROM transactions t '
-            f'LEFT JOIN procurement_batches pb ON t.procurement_batch_id = pb.id '
-            f'LEFT JOIN users su ON pb.settled_by = su.id '
-            f'LEFT JOIN invoice_records ir ON ir.procurement_batch_id = pb.id '
-            f'WHERE {where_sql} ORDER BY t.date DESC, t.created_at DESC, t.id DESC LIMIT ? OFFSET ?',
+            f'{_TRANSACTION_SELECT} WHERE {where_sql} '
+            'ORDER BY t.date DESC, t.created_at DESC, t.id DESC LIMIT ? OFFSET ?',
             params + [per_page, offset]
         ).fetchall()
     return jsonify({
@@ -119,9 +124,15 @@ def transactions():
     })
 
 
-@tx_bp.route('/transactions/<int:id>', methods=['DELETE', 'PUT'])
+@tx_bp.route('/transactions/<int:id>', methods=['GET', 'DELETE', 'PUT'])
 @login_required
 def transaction_by_id(id):
+    if request.method in ('GET', 'HEAD'):
+        with get_db() as db:
+            row = db.execute(f'{_TRANSACTION_SELECT} WHERE t.id = ?', (id,)).fetchone()
+        if row is None:
+            return jsonify({'status': 'error', 'message': t('err_not_found', g.lang)}), 404
+        return jsonify(dict(row))
     if request.method == 'PUT':
         data = request.get_json()
 

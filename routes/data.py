@@ -8,6 +8,7 @@ import sqlite3
 import requests
 
 from shared.ai_provider import ai_configured
+from shared.app_search import search_app_records
 from shared.db import get_db
 from shared.auth import login_required
 from shared.i18n import t
@@ -18,6 +19,16 @@ from shared.ledger_query import answer_ledger_question, interpret_ledger_questio
 from shared.rate_limit import reserve_ai_request
 
 data_bp = Blueprint('data', __name__)
+
+
+@data_bp.route('/app/search', methods=['POST'])
+@login_required
+def app_search():
+    payload = request.get_json(silent=True)
+    keyword = payload.get('keyword') if isinstance(payload, dict) else None
+    if not isinstance(keyword, str) or not keyword.strip() or len(keyword) > 80:
+        return jsonify({'status': 'error', 'message': 'appSearchInvalidInput'}), 400
+    return jsonify({'results': search_app_records(keyword.strip())})
 
 
 @data_bp.route('/ledger/ask', methods=['POST'])

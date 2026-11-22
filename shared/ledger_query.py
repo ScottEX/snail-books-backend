@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 
 from shared.ai_provider import request_json
+from shared.app_search import keyword_variants
 from shared.db import get_db
 from shared.money import fmt_money, to_decimal
 
@@ -22,6 +23,7 @@ _FIELDS = {
     'start_date': {'type': ['string', 'null']},
     'end_date': {'type': ['string', 'null']},
     'compare_period': {'type': ['string', 'null'], 'enum': [*_PERIODS, None]},
+    'supplier': {'type': ['string', 'null']},
 }
 
 
@@ -32,6 +34,8 @@ def interpret_ledger_question(question, today):
         'Select metric turnover for 营业额 or gross sales, received for 实收 or actual receipts, and expense '
         'for expenses. Select category salary for wages, goods for procurement, rent for rent, daily for '
         'daily operating expenses, or null for total expense and for revenue metrics. '
+        'For procurement by supplier, copy the explicit supplier name from the question into supplier. '
+        'Otherwise set supplier to null. A reference such as "this supplier" without a name is ambiguous. '
         f'For the primary period use one of {", ".join(_PERIODS)}, or custom for an explicit date or date range. '
         'Weeks start on Monday. This week and this month end today. If custom, set start_date and end_date in '
         'YYYY-MM-DD inclusive format and use the same date for a single day. Otherwise set both dates to null. '
@@ -77,10 +81,23 @@ def _date_range(plan, today, named_ranges):
     return start, end
 
 
-def _ledger_total(db, metric, category, interval):
+def _ledger_total(db, metric, category, interval, supplier):
     start, end = (day.isoformat() for day in interval)
     params = [start, end]
-    if metric == 'expense':
+    if supplier:
+        variants = tuple(name.lower() for name in keyword_variants(supplier))
+        placeholders = ','.join('?' for _ in variants)
+        row = db.execute(
+            f"""SELECT COUNT(DISTINCT b.id) AS records, SUM(i.subtotal) AS total
+                FROM procurement_batches b
+                JOIN procurement_items i ON i.batch_id = b.id
+                JOIN products p ON p.id = i.product_id
+                WHERE b.date BETWEEN ? AND ? AND COALESCE(b.settled_at, '') <> ''
+                  AND LOWER(TRIM(p.supplier)) IN ({placeholders})""",
+            [*params, *variants],
+        ).fetchone()
+        amount = to_decimal(row['total'])
+    elif metric == 'expense':
         sql = """SELECT COUNT(*) AS records, SUM(amount) AS total
                  FROM transactions WHERE type='expense' AND date BETWEEN ? AND ?"""
         if category:
@@ -116,10 +133,16 @@ def answer_ledger_question(plan, today):
         return None
     metric, category = plan['metric'], plan['category']
     period, compare_period = plan['period'], plan['compare_period']
+    supplier = plan['supplier']
     if (metric not in _METRICS or category not in (None, *_CATEGORY_NAMES)
             or (metric != 'expense' and category is not None)
             or period not in (*_PERIODS, 'custom') or compare_period not in (None, *_PERIODS)):
         return None
+    if supplier is not None:
+        if (category != 'goods' or not isinstance(supplier, str)
+                or not 1 <= len(supplier.strip()) <= 80):
+            return None
+        supplier = supplier.strip()
     named_ranges = _named_ranges(today)
     interval = _date_range(plan, today, named_ranges)
     comparison_interval = named_ranges.get(compare_period)
@@ -128,12 +151,12 @@ def answer_ledger_question(plan, today):
 
     with get_db() as db:
         db.execute('BEGIN')  # Both totals must use the same read snapshot.
-        current = _ledger_total(db, metric, category, interval)
-        comparison = _ledger_total(db, metric, category, comparison_interval) if comparison_interval else None
+        current = _ledger_total(db, metric, category, interval, supplier)
+        comparison = _ledger_total(db, metric, category, comparison_interval, supplier) if comparison_interval else None
     difference = None
     if comparison and current['records'] and comparison['records']:
         difference = fmt_money(to_decimal(current['amount']) - to_decimal(comparison['amount']))
     return {
-        'metric': metric, 'category': category, 'current': current,
+        'metric': metric, 'category': category, 'supplier': supplier, 'current': current,
         'comparison': comparison, 'difference': difference,
     }
