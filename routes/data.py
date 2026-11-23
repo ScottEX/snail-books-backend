@@ -42,16 +42,19 @@ def ledger_ask():
     question = payload.get('question') if isinstance(payload, dict) else None
     if not isinstance(question, str) or not question.strip() or len(question) > 300:
         return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
+    record_queries = payload.get('record_queries') is True
     if not reserve_ai_request(g.user_id):
         return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
 
     today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
     try:
-        plan = interpret_ledger_question(question.strip(), today)
+        plan = interpret_ledger_question(question.strip(), today, record_queries=record_queries)
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
         return jsonify({'status': 'error', 'message': 'ledgerAiFailed'}), 502
     try:
-        answer = answer_ledger_question(plan, today, is_admin=str(g.user_id) == ADMIN_USER_ID)
+        answer = answer_ledger_question(
+            plan, today, is_admin=str(g.user_id) == ADMIN_USER_ID, record_queries=record_queries,
+        )
     except LedgerAdminRequired:
         return jsonify({'status': 'error', 'message': 'ledgerAiAdminOnly'}), 403
     if answer is None:
