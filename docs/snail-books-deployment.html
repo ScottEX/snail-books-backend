@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柳味探秘 · 部署架构</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --panel: #121827; --panel-2: #171f33; --line: #26314d;
+    --text: #e6ecf5; --muted: #8a94ad;
+    --blue: #4da3ff; --blue-bg: rgba(77,163,255,.12);
+    --violet: #9d7bff; --violet-bg: rgba(157,123,255,.12);
+    --green: #34d399; --green-bg: rgba(52,211,153,.12);
+    --amber: #fbbf24; --amber-bg: rgba(251,191,36,.12);
+    --pink: #f472b6; --pink-bg: rgba(244,114,182,.12);
+    --cyan: #22d3ee; --cyan-bg: rgba(34,211,238,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(52,211,153,.16), transparent 60%),
+      radial-gradient(900px 500px at 90% 40%, rgba(77,163,255,.12), transparent 60%),
+      var(--bg);
+    color: var(--text); padding: 48px 24px 64px; min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 38px; }
+  header h1 { font-size: 34px; font-weight: 700; background: linear-gradient(90deg, #34d399, #4da3ff, #9d7bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header .sub { color: var(--muted); margin-top: 10px; font-size: 15px; }
+
+  .layer-label { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin: 22px 0 12px; }
+  .layer-label .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; box-shadow: 0 8px 24px rgba(0,0,0,.28);
+    transition: transform .18s ease;
+  }
+  .card:hover { transform: translateY(-3px); }
+  .card .head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .card .head .ico { font-size: 20px; }
+  .card .head .name { font-size: 15px; font-weight: 700; }
+  .card .head .tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; margin-left: auto; }
+  .card .desc { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .card .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .chip { font-size: 11.5px; padding: 3px 9px; border-radius: 7px; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+  .sbox code, .card code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .94em; color: #9fb4d8; }
+
+  .card.browser { border-color: rgba(77,163,255,.4); background: linear-gradient(180deg, var(--blue-bg), var(--panel)); flex:1; min-width:200px; }
+  .card.browser .tag { background: var(--blue-bg); color: var(--blue); }
+  .card.browser .chip { background: rgba(77,163,255,.1); color:#7cb8ff; }
+  .card.debug { border-color: rgba(157,123,255,.4); background: linear-gradient(180deg, var(--violet-bg), var(--panel)); flex:1.3; min-width:240px; }
+  .card.debug .tag { background: var(--violet-bg); color: var(--violet); }
+  .card.debug .chip { background: rgba(157,123,255,.1); color:#b79cff; }
+  .card.release { border-color: rgba(52,211,153,.4); background: linear-gradient(180deg, var(--green-bg), var(--panel)); flex:1; min-width:200px; }
+  .card.release .tag { background: var(--green-bg); color: var(--green); }
+  .card.release .chip { background: rgba(52,211,153,.1); color:#7de8c0; }
+
+  /* arrow row */
+  .arrow-row { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 0 14px; color: var(--muted); }
+  .arrow-row .line { width: 1px; height: 24px; background: linear-gradient(180deg, var(--line), transparent); }
+  .arrow-row .tip { font-size: 15px; color: var(--green); }
+  .arrow-row .lbl { font-size: 12px; font-family: ui-monospace, monospace; background: var(--panel-2); padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line); }
+
+  /* server container */
+  .server { background: var(--panel); border: 1px solid rgba(52,211,153,.35); border-radius: 16px; padding: 22px; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+  .server .top { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .server .top .name { font-size: 17px; font-weight: 700; }
+  .server .top .spec { margin-left: auto; font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .sgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sbox { background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px; padding: 13px 14px; }
+  .sbox .n { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .sbox .r { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+  .sbox.prod { border-color: rgba(52,211,153,.4); }
+  .sbox.prod .n { color: #7de8c0; }
+  .sbox.stg { border-color: rgba(251,191,36,.4); }
+  .sbox.stg .n { color: #f4cf6d; }
+  .sbox.frp { border-color: rgba(157,123,255,.4); }
+  .sbox.frp .n { color: #b79cff; }
+  .sbox.ngx { border-color: rgba(77,163,255,.4); }
+  .sbox.ngx .n { color: #7cb8ff; }
+  .sbox.sto { border-color: rgba(34,211,238,.4); }
+  .sbox.sto .n { color: #7dd3fc; }
+
+  /* dev / github */
+  .card.dev { border-color: rgba(77,163,255,.4); background: linear-gradient(180deg, var(--blue-bg), var(--panel)); flex:1.4; min-width:280px; }
+  .card.dev .tag { background: var(--blue-bg); color: var(--blue); }
+  .card.dev .chip { background: rgba(77,163,255,.1); color:#7cb8ff; }
+  .card.gh { border-color: rgba(157,123,255,.4); background: linear-gradient(180deg, var(--violet-bg), var(--panel)); flex:1; min-width:220px; }
+  .card.gh .tag { background: var(--violet-bg); color: var(--violet); }
+  .card.gh .chip { background: rgba(157,123,255,.1); color:#b79cff; }
+
+  /* external */
+  .extrow { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ext { flex:1; min-width:150px; text-align:center; background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .ext .ico { font-size: 20px; }
+  .ext .n { font-size: 14px; font-weight: 700; margin-top: 5px; }
+  .ext .r { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  /* dataflow */
+  .flow { margin-top: 30px; }
+  .flow .title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .flow-item {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
+    padding: 11px 14px; margin-bottom: 8px; font-size: 12.5px;
+  }
+  .flow-item .step { background: var(--panel-2); border: 1px solid var(--line); padding: 4px 10px; border-radius: 8px; font-family: ui-monospace, monospace; }
+  .flow-item .arr { color: var(--green); font-weight: 700; }
+  .flow-item .note { color: var(--muted); font-size: 11.5px; }
+
+  @media (max-width: 700px) { .sgrid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>柳味探秘 · 部署架构</h1>
+    <div class="sub">代码从开发机 → GitHub → 服务器 → 客户端的完整交付链路 &nbsp;·&nbsp; 模块划分见 <a href="snail-books-architecture.html" style="color:var(--blue)">架构图</a></div>
+  </header>
+
+  <!-- 客户端 -->
+  <div class="layer-label"><span class="dot" style="background:var(--blue)"></span>客户端 Client</div>
+  <div class="cards">
+    <div class="card browser">
+      <div class="head"><span class="ico">🌐</span><span class="name">浏览器 Web</span><span class="tag">同源部署</span></div>
+      <div class="desc">生产 <code>www.rowanlan.xyz</code> · 测试 <code>test.rowanlan.xyz</code>，HTML/JS 由 Flask 托管 <code>static/web-build/dist</code> 直出。</div>
+      <div class="chips"><span class="chip">HTTPS → nginx → 后端</span></div>
+    </div>
+    <div class="card debug">
+      <div class="head"><span class="ico">📱</span><span class="name">iOS 测试包</span><span class="tag">DEBUG · 热更新</span></div>
+      <div class="desc">不加载自带 bundle，启动时经 frp 拉开发机 Metro 的最新 JS（仅测试期）。</div>
+      <div class="chips"><span class="chip">8.135.58.90:8081</span><span class="chip">改代码即热刷新</span></div>
+    </div>
+    <div class="card release">
+      <div class="head"><span class="ico">📦</span><span class="name">iOS 正式包</span><span class="tag">Release</span></div>
+      <div class="desc">打包内置 bundle，直连生产后端 API。</div>
+      <div class="chips"><span class="chip">TestFlight / App Store</span></div>
+    </div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="line"></div><span class="tip">▼</span><div class="line"></div>
+    <span class="lbl">HTTPS · HTTP API · X-Lang · Bearer/Cookie</span>
+  </div>
+
+  <!-- 服务器 -->
+  <div class="server">
+    <div class="top">
+      <span style="font-size:20px">🖥️</span>
+      <span class="name">VPS 服务器</span>
+      <span class="spec">8.135.58.90 · 2 vCPU / 1.6GB RAM</span>
+    </div>
+    <div class="sgrid">
+      <div class="sbox ngx"><div class="n">🚪 nginx</div><div class="r">TLS 终止 · 反代 <code>www→8600</code> / <code>test→8601</code> · 静态由 Flask 出 · 20M 上限 · PDF 关缓冲</div></div>
+      <div class="sbox prod"><div class="n">🟢 生产后端 :8600</div><div class="r">systemd snail-books · /opt/snail-books-backend/venv · Gunicorn -w 1 --timeout 120 · APP_ENV=production · ADMIN 4</div></div>
+      <div class="sbox stg"><div class="n">🟡 测试后端 :8601</div><div class="r">systemd snail-books-staging · venv · Gunicorn -w 1 --timeout 120 · APP_ENV=staging · ADMIN 64</div></div>
+      <div class="sbox frp"><div class="n">🔀 frps :8081</div><div class="r">内网穿透服务端 · 控制口 4443 · 转发 DEBUG 包拉 Metro（仅测试期 · 无鉴权）</div></div>
+      <div class="sbox sto"><div class="n">🗄️ 存储</div><div class="r">SQLite data/snail.db · invoice-files/ · expense-imgs/ · user-images/ · 部署前快照 /opt/backups ×3</div></div>
+      <div class="sbox sto"><div class="n">🌐 static/</div><div class="r">web-build/dist · 由后端 CI 从 snail-books-web 构建后 scp · Flask FRONTEND_DIR 直出</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="line"></div><span class="tip">▲</span><div class="line"></div>
+    <span class="lbl">CI/CD 部署 · frp 隧道</span>
+  </div>
+
+  <!-- 开发与交付 -->
+  <div class="layer-label"><span class="dot" style="background:var(--violet)"></span>开发与交付 Dev & Delivery</div>
+  <div class="cards">
+    <div class="card dev">
+      <div class="head"><span class="ico">💻</span><span class="name">开发机 Mac</span><span class="tag">本机 · 不关机</span></div>
+      <div class="desc">三仓库源码 + Metro 打包 + frpc 内网穿透，launchd 托管常驻（com.snailbooks.metro / metro-tunnel）。</div>
+      <div class="chips"><span class="chip">snail-books-web</span><span class="chip">snail-books-ios</span><span class="chip">snail-books-backend</span><span class="chip">Metro :8081</span><span class="chip">frpc → SSH -L 14443 → frps 4443</span></div>
+    </div>
+    <div class="card gh">
+      <div class="head"><span class="ico">🐙</span><span class="name">GitHub Actions</span><span class="tag">CI/CD</span></div>
+      <div class="desc">后端 push develop → 测试环境，main → 生产；Web 产物由后端 CI 从 web 仓库构建。深层检查见 docs/production-deploy-checklist.md。</div>
+      <div class="chips"><span class="chip">deploy.yml</span><span class="chip">ScottEX 三仓库</span></div>
+    </div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="line"></div><span class="tip">▼</span><div class="line"></div>
+    <span class="lbl">AI · 邮件</span>
+  </div>
+
+  <!-- 外部服务 -->
+  <div class="layer-label"><span class="dot" style="background:var(--pink)"></span>外部服务 External</div>
+  <div class="extrow">
+    <div class="ext"><div class="ico">🧠</div><div class="n">DeepSeek</div><div class="r">主 · deepseek-chat</div></div>
+    <div class="ext"><div class="ico">🔄</div><div class="n">OpenAI</div><div class="r">兜底</div></div>
+    <div class="ext"><div class="ico">✉️</div><div class="n">Resend</div><div class="r">邮件</div></div>
+  </div>
+
+  <!-- 关键数据流 -->
+  <div class="flow">
+    <div class="title">🔁 关键数据流</div>
+    <div class="flow-item">
+      <span class="step">💻 push develop</span><span class="arr">→</span>
+      <span class="step">🐙 CI test</span><span class="arr">→</span>
+      <span class="step">构建 web(develop)</span><span class="arr">→</span>
+      <span class="step">备份 DB</span><span class="arr">→</span>
+      <span class="step">scp dist + 后端码</span><span class="arr">→</span>
+      <span class="step">下发 nginx 配置</span><span class="arr">→</span>
+      <span class="step">写 DeepSeek env</span><span class="arr">→</span>
+      <span class="step">restart snail-books-staging</span><span class="arr">→</span>
+      <span class="step">curl :8601</span>
+      <span class="note">develop → 测试 8601</span>
+    </div>
+    <div class="flow-item">
+      <span class="step">💻 push main</span><span class="arr">→</span>
+      <span class="step">🐙 CI test</span><span class="arr">→</span>
+      <span class="step">构建 web(main)</span><span class="arr">→</span>
+      <span class="step">备份 DB</span><span class="arr">→</span>
+      <span class="step">scp dist + 后端码</span><span class="arr">→</span>
+      <span class="step">restart snail-books</span><span class="arr">→</span>
+      <span class="step">curl :8600</span>
+      <span class="note">main → 生产 8600（不碰 nginx / 生产 env）</span>
+    </div>
+    <div class="flow-item">
+      <span class="step">📱 iOS 测试包</span><span class="arr">→</span>
+      <span class="step">8.135.58.90:8081</span><span class="arr">→</span>
+      <span class="step">frps(4443) → SSH -L 14443</span><span class="arr">→</span>
+      <span class="step">💻 frpc → Metro 8081</span>
+      <span class="note">热更新：拉开发机最新 JS bundle · launchd 托管</span>
+    </div>
+    <div class="flow-item">
+      <span class="step">🌐 浏览器 / 📦 iOS 正式</span><span class="arr">→</span>
+      <span class="step">nginx</span><span class="arr">→</span>
+      <span class="step">www→8600 / test→8601</span>
+      <span class="note">正式访问：HTTPS 直达后端 API</span>
+    </div>
+    <div class="flow-item">
+      <span class="step">🖥️ 后端</span><span class="arr">→</span>
+      <span class="step">🧠 DeepSeek / 🔄 OpenAI</span>
+      <span class="step">·</span>
+      <span class="step">✉️ Resend</span>
+      <span class="note">AI 草稿/问答 · 邮件发送</span>
+    </div>
+    <div class="flow-item">
+      <span class="step">✅ 每次部署后：A–F 检查</span>
+      <span class="note">nginx 端口 &nbsp;·&nbsp; env 完整性 &nbsp;·&nbsp; schema 对齐 &nbsp;·&nbsp; 登录/开票/账本冒烟 &nbsp;·&nbsp; 版本号 —— docs/production-deploy-checklist.md</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

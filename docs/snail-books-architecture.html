@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柳味探秘 · 前后端架构</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --panel: #121827;
+    --panel-2: #171f33;
+    --line: #26314d;
+    --text: #e6ecf5;
+    --muted: #8a94ad;
+    --blue: #4da3ff;
+    --blue-bg: rgba(77,163,255,.12);
+    --violet: #9d7bff;
+    --violet-bg: rgba(157,123,255,.12);
+    --green: #34d399;
+    --green-bg: rgba(52,211,153,.12);
+    --amber: #fbbf24;
+    --amber-bg: rgba(251,191,36,.12);
+    --pink: #f472b6;
+    --pink-bg: rgba(244,114,182,.12);
+    --cyan: #22d3ee;
+    --cyan-bg: rgba(34,211,238,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(77,163,255,.18), transparent 60%),
+      radial-gradient(900px 500px at 90% 40%, rgba(157,123,255,.12), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    padding: 48px 24px 64px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  /* ── Header ── */
+  header { text-align: center; margin-bottom: 40px; }
+  header h1 {
+    font-size: 34px; font-weight: 700; letter-spacing: .5px;
+    background: linear-gradient(90deg, #4da3ff, #9d7bff, #f472b6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { color: var(--muted); margin-top: 10px; font-size: 15px; }
+  header .sub code {
+    background: var(--panel-2); color: var(--blue);
+    padding: 2px 8px; border-radius: 6px; font-size: 13px; margin: 0 3px;
+  }
+
+  /* ── Layer band ── */
+  .layer { margin-bottom: 8px; }
+  .layer-label {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; font-weight: 600; letter-spacing: 1px;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 12px;
+  }
+  .layer-label .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .cards { display: flex; gap: 16px; flex-wrap: wrap; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+    transition: transform .18s ease, border-color .18s ease;
+  }
+  .card:hover { transform: translateY(-3px); }
+
+  .card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .card .head .ico { font-size: 22px; line-height: 1; }
+  .card .head .name { font-size: 16px; font-weight: 700; }
+  .card .head .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px;
+    font-weight: 600; margin-left: auto;
+  }
+  .card .desc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+  .card .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 12px; padding: 3px 9px; border-radius: 7px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+
+  /* client cards */
+  .card.web { border-color: rgba(77,163,255,.4); background: linear-gradient(180deg, var(--blue-bg), var(--panel)); }
+  .card.web .tag { background: var(--blue-bg); color: var(--blue); }
+  .card.web .chip { background: rgba(77,163,255,.1); color: #7cb8ff; }
+  .card.ios { border-color: rgba(157,123,255,.4); background: linear-gradient(180deg, var(--violet-bg), var(--panel)); }
+  .card.ios .tag { background: var(--violet-bg); color: var(--violet); }
+  .card.ios .chip { background: rgba(157,123,255,.1); color: #b79cff; }
+
+  /* backend container */
+  .backend {
+    background: var(--panel); border: 1px solid rgba(52,211,153,.35);
+    border-radius: 16px; padding: 22px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  .backend .top { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .backend .top .name { font-size: 18px; font-weight: 700; }
+  .backend .top .tag { font-size: 11px; background: var(--green-bg); color: var(--green); padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .backend .top .env { margin-left: auto; font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+
+  .backend .sub-label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 1px; margin: 16px 0 8px; text-transform: uppercase; }
+  .mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .mod {
+    padding: 8px 11px; border-radius: 9px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .mod .mname { font-size: 13px; font-weight: 600; font-family: ui-monospace, Menlo, monospace; color: #c7d2e8; }
+  .mod .mdesc { font-size: 11px; color: var(--muted); line-height: 1.45; }
+  .mod.ai { border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.07); }
+  .mod.ai .mname { color: #7de8c0; }
+  .mod.route { border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.07); }
+  .mod.route .mname { color: #f4cf6d; }
+
+  /* data / external */
+  .card.data { border-color: rgba(251,191,36,.4); background: linear-gradient(180deg, var(--amber-bg), var(--panel)); flex: 1; min-width: 200px; }
+  .card.data .tag { background: var(--amber-bg); color: var(--amber); }
+  .card.data .chip { background: rgba(251,191,36,.1); color: #f4cf6d; }
+  .card.ext { border-color: rgba(244,114,182,.4); background: linear-gradient(180deg, var(--pink-bg), var(--panel)); flex: 1.4; min-width: 280px; }
+  .card.ext .tag { background: var(--pink-bg); color: var(--pink); }
+  .card.ext .chip { background: rgba(244,114,182,.1); color: #f9a3ce; }
+  .card.file { border-color: rgba(34,211,238,.4); background: linear-gradient(180deg, var(--cyan-bg), var(--panel)); flex: 1; min-width: 220px; }
+  .card.file .tag { background: var(--cyan-bg); color: var(--cyan); }
+  .card.file .chip { background: rgba(34,211,238,.1); color: #7dd3fc; }
+
+  .ext-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ext-item { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 10px; text-align: center; }
+  .ext-item .ico { font-size: 18px; }
+  .ext-item .n { font-size: 13px; font-weight: 700; margin-top: 4px; }
+  .ext-item .r { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* arrows between layers */
+  .arrow-row { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 0 14px; color: var(--muted); }
+  .arrow-row .line { width: 1px; height: 26px; background: linear-gradient(180deg, var(--line), transparent); }
+  .arrow-row .tip { font-size: 15px; color: var(--blue); }
+  .arrow-row .lbl { font-size: 12px; font-family: ui-monospace, monospace; background: var(--panel-2); padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line); }
+
+  /* deploy footer */
+  .deploy { margin-top: 20px; }
+  .deploy .bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px;
+  }
+  .deploy .title { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 6px; }
+  .deploy .pill { font-size: 12.5px; padding: 5px 12px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--line); }
+  .deploy .pill b { color: var(--blue); font-family: ui-monospace, monospace; }
+  .deploy .pill .prod { color: var(--green); font-weight: 700; }
+  .deploy .pill .stg { color: var(--amber); font-weight: 700; }
+
+  @media (max-width: 640px) {
+    .ext-grid { grid-template-columns: 1fr; }
+    .cards { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>柳味探秘 · 前后端架构</h1>
+    <div class="sub">
+      一个后端 + 两套独立前端 &nbsp;·&nbsp; <code>snail-books-web</code> <code>snail-books-ios</code> <code>snail-books-backend</code>
+    </div>
+  </header>
+
+  <!-- ── 客户端层 ── -->
+  <div class="layer">
+    <div class="layer-label"><span class="dot" style="background:var(--blue)"></span>客户端层 Client</div>
+    <div class="cards">
+      <div class="card web" style="flex:1;min-width:300px">
+        <div class="head">
+          <span class="ico">🌐</span><span class="name">Web 前端</span>
+          <span class="tag">React + TS</span>
+        </div>
+        <div class="desc">浏览器端 SPA，同源部署到后端 <code>static/</code>，相对路径请求，无跨域。</div>
+        <div class="chips">
+          <span class="chip">src/api/client.ts</span>
+          <span class="chip">screens · home/expense/partner/profile</span>
+          <span class="chip">components · hooks · utils</span>
+          <span class="chip">三语 i18n (t)</span>
+        </div>
+      </div>
+      <div class="card ios" style="flex:1;min-width:300px">
+        <div class="head">
+          <span class="ico">📱</span><span class="name">iOS 前端</span>
+          <span class="tag">RN Expo SDK 52</span>
+        </div>
+        <div class="desc">原生 App，raw fetch + Bearer token 为主（同时带 credentials 尝试 cookie）。DEBUG 包走 frp 隧道 + Metro 热更新。</div>
+        <div class="chips">
+          <span class="chip">src/api · components · screens</span>
+          <span class="chip">hooks · navigation · utils</span>
+          <span class="chip">Face ID · 语音识别 · PDF.js</span>
+          <span class="chip">三语 i18n</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="line"></div>
+    <span class="tip">▼</span>
+    <div class="line"></div>
+    <span class="lbl">HTTP API · JSON · X-Lang · Bearer/Cookie · 401 {code}</span>
+  </div>
+
+  <!-- ── 后端层 ── -->
+  <div class="backend">
+    <div class="top">
+      <span class="ico" style="font-size:22px">⚙️</span>
+      <span class="name">后端 · snail-books-backend</span>
+      <span class="tag">Flask + SQLite</span>
+      <span class="env">app.py · 生产 :8600 / 测试 :8601</span>
+    </div>
+
+    <div class="sub-label">🛡️ app.py · 全局中间件</div>
+    <div class="mods">
+      <div class="mod"><span class="mname">g.lang</span><span class="mdesc">X-Lang → 请求级语言</span></div>
+      <div class="mod"><span class="mname">request_log</span><span class="mdesc">TraceID · 耗时 · PII 脱敏</span></div>
+      <div class="mod"><span class="mname">SPA 路由</span><span class="mdesc">dist 直出（index no-store）</span></div>
+      <div class="mod"><span class="mname">error 404/500</span><span class="mdesc">500 JSON · 404 仅 /api/*</span></div>
+    </div>
+
+    <div class="sub-label">🔀 routes / · 10 个蓝图（auth 在根路径，其余 /api/*）</div>
+    <div class="mods">
+      <div class="mod route"><span class="mname">auth</span><span class="mdesc">登录·注册·验证·找回·登出</span></div>
+      <div class="mod route"><span class="mname">admin</span><span class="mdesc">用户管理（仅 Rowan）</span></div>
+      <div class="mod route"><span class="mname">data</span><span class="mdesc">对账·手续费·日营收·汇总</span></div>
+      <div class="mod route"><span class="mname">invoice</span><span class="mdesc">开票记录 CRUD</span></div>
+      <div class="mod route"><span class="mname">partners</span><span class="mdesc">合伙人·分红·支出图片</span></div>
+      <div class="mod route"><span class="mname">procurement</span><span class="mdesc">商品·购物车·采购批次·PDF</span></div>
+      <div class="mod route"><span class="mname">profile</span><span class="mdesc">资料·头像·封面·密码·邮箱</span></div>
+      <div class="mod route"><span class="mname">settings</span><span class="mdesc">背景·语言·主题·统计·OTA</span></div>
+      <div class="mod route"><span class="mname">transactions</span><span class="mdesc">收入/支出流水·分页</span></div>
+      <div class="mod route"><span class="mname">webauthn</span><span class="mdesc">Face ID / Touch ID 免密登录</span></div>
+    </div>
+
+    <div class="sub-label">🤖 shared / · AI 链路</div>
+    <div class="mods">
+      <div class="mod ai"><span class="mname">ai_provider</span><span class="mdesc">AI 统一入口（DeepSeek / OpenAI）</span></div>
+      <div class="mod ai"><span class="mname">expense_ai</span><span class="mdesc">AI 支出草稿提取校验</span></div>
+      <div class="mod ai"><span class="mname">ledger_query</span><span class="mdesc">账本问题解读 + 取数</span></div>
+      <div class="mod ai"><span class="mname">ledger_assistant</span><span class="mdesc">助手示例 + 短期动作</span></div>
+      <div class="mod ai"><span class="mname">app_search</span><span class="mdesc">关键词搜共享业务记录</span></div>
+    </div>
+
+    <div class="sub-label">📄 文档 <div class="sub-label">📄 shared / · 文档 & 文件</div>amp; 文件子系统</div>
+    <div class="mods">
+      <div class="mod"><span class="mname">weasyprint</span><span class="mdesc">采购单模板 → PDF</span></div>
+      <div class="mod"><span class="mname">pymupdf</span><span class="mdesc">PDF → PNG（首页）</span></div>
+      <div class="mod"><span class="mname">pdf_cache · .png_cache</span><span class="mdesc">PDF / PNG 转换缓存</span></div>
+      <div class="mod"><span class="mname">share token</span><span class="mdesc">/share/&lt;token&gt; 免登录只读</span></div>
+    </div>
+
+    <div class="sub-label">🧩 shared / · 通用模块</div>
+    <div class="mods">
+      <div class="mod"><span class="mname">config</span><span class="mdesc">集中配置（环境变量）</span></div>
+      <div class="mod"><span class="mname">db</span><span class="mdesc">SQLite 连接</span></div>
+      <div class="mod"><span class="mname">auth</span><span class="mdesc">login_required · cookie/Bearer · 401 code</span></div>
+      <div class="mod"><span class="mname">sessions</span><span class="mdesc">单会话强制 · 踢出 / 过期</span></div>
+      <div class="mod"><span class="mname">i18n</span><span class="mdesc">三语文案</span></div>
+      <div class="mod"><span class="mname">money</span><span class="mdesc">Decimal 金额精确计算</span></div>
+      <div class="mod"><span class="mname">rate_limit</span><span class="mdesc">限流（SQLite 持久化）</span></div>
+      <div class="mod"><span class="mname">request_log</span><span class="mdesc">请求日志·TraceID·脱敏</span></div>
+      <div class="mod"><span class="mname">audit</span><span class="mdesc">审计追踪</span></div>
+      <div class="mod"><span class="mname">thumbnail</span><span class="mdesc">128×128 缩略图</span></div>
+      <div class="mod"><span class="mname">validation</span><span class="mdesc">输入校验</span></div>
+      <div class="mod"><span class="mname">email</span><span class="mdesc">Resend 邮件</span></div>
+      <div class="mod"><span class="mname">version</span><span class="mdesc">版本 · OTA 刷新</span></div>
+      <div class="mod"><span class="mname">bank_bins</span><span class="mdesc">卡号 BIN → 银行</span></div>
+    </div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="line"></div>
+    <span class="tip">▼</span>
+    <div class="line"></div>
+  </div>
+
+  <!-- ── 数据 + 外部服务 ── -->
+  <div class="cards">
+    <div class="card data">
+      <div class="head"><span class="ico">🗄️</span><span class="name">SQLite</span><span class="tag">本地文件</span></div>
+      <div class="desc">单文件数据库，业务数据全部落在这里。</div>
+      <div class="chips"><span class="chip">data/snail.db</span><span class="chip">ALTER TABLE 自动迁移</span></div>
+    </div>
+    <div class="card file">
+      <div class="head"><span class="ico">🖼️</span><span class="name">文件存储</span><span class="tag">上传图片/发票</span></div>
+      <div class="desc">用户上传的图片、发票、头像、封面等静态文件。</div>
+      <div class="chips"><span class="chip">expense-imgs/</span><span class="chip">user-images/avatars·covers·backgrounds</span><span class="chip">invoice-files/</span></div>
+    </div>
+    <div class="card ext">
+      <div class="head"><span class="ico">🔌</span><span class="name">外部服务</span><span class="tag">AI + 邮件</span></div>
+      <div class="ext-grid">
+        <div class="ext-item"><div class="ico">🧠</div><div class="n">DeepSeek</div><div class="r">主 · deepseek-chat</div></div>
+        <div class="ext-item"><div class="ico">🔄</div><div class="n">OpenAI</div><div class="r">兜底</div></div>
+        <div class="ext-item"><div class="ico">✉️</div><div class="n">Resend</div><div class="r">邮件</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 部署 ── -->
+  <div class="deploy">
+    <div class="bar">
+      <span class="title">🚀 部署</span>
+      <span class="pill">VPS <b>8.135.58.90</b> · 2 vCPU / 1.6GB</span>
+      <span class="pill"><span class="prod">生产 :8600</span> &nbsp;·&nbsp; <span class="stg">测试 :8601</span></span>
+      <span class="pill">Gunicorn <b>-w 1 --timeout 120</b></span>
+      <span class="pill">后端 push develop → CI/CD 部署（含 Web 构建）</span>
+      <span class="pill">iOS 不部署 · 测试走 DEBUG 包热更新</span>
+      <span class="pill">📄 部署细节见 <a href="snail-books-deployment.html" style="color:var(--blue);text-decoration:none">部署架构图</a></span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
