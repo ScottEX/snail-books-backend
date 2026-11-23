@@ -15,7 +15,9 @@ from shared.i18n import t
 from shared.validation import validate_required
 from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
-from shared.ledger_query import answer_ledger_question, interpret_ledger_question
+from shared.ledger_query import (
+    LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, operating_totals,
+)
 from shared.rate_limit import reserve_ai_request
 
 data_bp = Blueprint('data', __name__)
@@ -48,7 +50,10 @@ def ledger_ask():
         plan = interpret_ledger_question(question.strip(), today)
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
         return jsonify({'status': 'error', 'message': 'ledgerAiFailed'}), 502
-    answer = answer_ledger_question(plan, today)
+    try:
+        answer = answer_ledger_question(plan, today, is_admin=str(g.user_id) == ADMIN_USER_ID)
+    except LedgerAdminRequired:
+        return jsonify({'status': 'error', 'message': 'ledgerAiAdminOnly'}), 403
     if answer is None:
         return jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422
     return jsonify({'status': 'ok', 'answer': answer})
@@ -477,35 +482,19 @@ def business_summary():
         expense_by_category = {r['category']: fmt_money(r['total']) for r in cat_rows}
 
         # Today / this-month expense for frontend cards (avoid full-scan on frontend)
-        today_str = (datetime.now(timezone.utc) + timedelta(hours=8)).date().isoformat()
+        today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+        today_str = today.isoformat()
         month_prefix = today_str[:7] + '%'
-        today_exp = db.execute(
-            "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date=?",
-            (today_str,)
-        ).fetchone()
-        today_income_row = db.execute(
-            "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
-            (today_str,)
-        ).fetchone()
-        today_income = to_decimal(today_income_row['total'])
-        today_profit = today_income - to_decimal(today_exp['total'])
+        today_income, today_expense, _ = operating_totals(db, today_str, today_str)
+        today_profit = today_income - today_expense
         month_exp = db.execute(
             "SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE type='expense' AND date LIKE ?",
             (month_prefix,)
         ).fetchone()
 
         # Yesterday stats — income from daily_revenue, expense from transactions
-        yesterday_str = ((datetime.now(timezone.utc) + timedelta(hours=8)).date() - timedelta(days=1)).isoformat()
-        yesterday_income_row = db.execute(
-            "SELECT COALESCE(SUM(revenue + jd_revenue), 0) as total FROM daily_revenue WHERE date=?",
-            (yesterday_str,)
-        ).fetchone()
-        yesterday_income = to_decimal(yesterday_income_row['total'])
-        yesterday_expense_row = db.execute(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense' AND date=?",
-            (yesterday_str,)
-        ).fetchone()
-        yesterday_expense = to_decimal(yesterday_expense_row['total'])
+        yesterday_str = (today - timedelta(days=1)).isoformat()
+        yesterday_income, yesterday_expense, _ = operating_totals(db, yesterday_str, yesterday_str)
         yesterday_profit = yesterday_income - yesterday_expense
 
         pinv = db.execute('SELECT COALESCE(SUM(investment),0) as total_inv FROM partners').fetchone()
@@ -524,7 +513,7 @@ def business_summary():
             'total_investment': fmt_money(total_investment),
             'total_dividends': fmt_money(total_dividends),
             'expense_by_category': expense_by_category,
-            'today_expense': fmt_money(to_decimal(today_exp['total'])),
+            'today_expense': fmt_money(today_expense),
             'today_income': fmt_money(today_income),
             'today_profit': fmt_money(today_profit),
             'month_expense_amount': fmt_money(to_decimal(month_exp['total'])),
