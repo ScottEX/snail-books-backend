@@ -15,6 +15,7 @@ from shared.i18n import t
 from shared.validation import validate_required
 from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
+from shared import ledger_assistant
 from shared.ledger_query import (
     LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, operating_totals,
 )
@@ -36,9 +37,14 @@ def app_search():
 @data_bp.route('/ledger/ask', methods=['POST'])
 @login_required
 def ledger_ask():
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict) and payload.get('assistant_v2') is True:
+        try:
+            return _assistant_ledger_ask(payload)
+        except LedgerAdminRequired:
+            return jsonify({'status': 'error', 'message': 'ledgerAiAdminOnly'}), 403
     if not ai_configured():
         return jsonify({'status': 'error', 'message': 'ledgerAiUnavailable'}), 503
-    payload = request.get_json(silent=True)
     question = payload.get('question') if isinstance(payload, dict) else None
     if not isinstance(question, str) or not question.strip() or len(question) > 300:
         return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
@@ -60,6 +66,44 @@ def ledger_ask():
     if answer is None:
         return jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422
     return jsonify({'status': 'ok', 'answer': answer})
+
+
+def _assistant_ledger_ask(payload):
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+    is_admin = str(g.user_id) == ADMIN_USER_ID
+    context = ledger_assistant.read_context(payload.get('context'))
+    if 'example' in payload:
+        example = payload['example']
+        plan = ledger_assistant.EXAMPLES.get(example) if isinstance(example, str) else None
+    elif 'action' in payload:
+        action = payload['action']
+        if not context or action not in context['actions']:
+            return jsonify({'status': 'error', 'message': 'ledgerAiContextExpired'}), 422
+        result = ledger_assistant.apply_action(context, action, payload, is_admin=is_admin)
+        return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
+    else:
+        question = payload.get('question')
+        if not isinstance(question, str) or not question.strip() or len(question) > 300:
+            return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
+        action = ledger_assistant.question_action(question)
+        if context and action in context['actions']:
+            return jsonify(ledger_assistant.apply_action(context, action, payload, is_admin=is_admin))
+        if action:
+            return jsonify({'status': 'error', 'message': 'ledgerAiContextRequired'}), 422
+        plan = ledger_assistant.direct_question(question)
+        if plan and 'reason' in plan:
+            return jsonify(ledger_assistant.clarification_response(plan, today))
+        if not plan:
+            if not ai_configured():
+                return jsonify({'status': 'error', 'message': 'ledgerAiUnavailable'}), 503
+            if not reserve_ai_request(g.user_id):
+                return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
+            try:
+                plan = interpret_ledger_question(question.strip(), today, record_queries=True)
+            except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+                return jsonify({'status': 'error', 'message': 'ledgerAiFailed'}), 502
+    result = ledger_assistant.answer_response(plan, today, is_admin=is_admin)
+    return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
 
 
 # ── Server time (Beijing) ──

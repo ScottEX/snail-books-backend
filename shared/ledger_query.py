@@ -47,11 +47,9 @@ class LedgerAdminRequired(Exception):
 
 
 def interpret_ledger_question(question, today, *, record_queries=False):
-    if record_queries and any(
-        re.fullmatch(r'(?:最近一次|上次|最后一次)(?:进货|采购)(?:[是时]?什么时候|时间|日期)?[？?。.]?', variant)
-        for variant in keyword_variants(re.sub(r'\s+', '', question))
-    ):
-        return dict.fromkeys(_FIELDS) | {'metric': 'latest_procurement', 'period': 'all_time'}
+    known = latest_question_plan(question) if record_queries else None
+    if known:
+        return known
 
     instructions = (
         f'Today in Beijing is {today.isoformat()}. Interpret a single read-only question about recorded totals. '
@@ -73,7 +71,8 @@ def interpret_ledger_question(question, today, *, record_queries=False):
         'YYYY-MM-DD inclusive format and use the same date for a single day. Otherwise set both dates to null. '
         'For a comparison choose the earlier named period as compare_period, e.g. this_month vs last_month. '
         'If no comparison is asked, set compare_period to null. Shareholders, all_time and latest_round do not support comparisons. '
-        'Set every field to null if the metric or period is missing or ambiguous, or the question is unsupported. '
+        'For a supported metric with no date range and no defined default, keep the metric and filters and set period to null. '
+        'Set every field to null if the metric is ambiguous or the question is unsupported. '
         'Unsupported questions include forecasts, balances, profit after platform fees, channel or person filters, '
         'rates or percentages, custom comparison ranges and multiple different metrics. '
     )
@@ -90,13 +89,31 @@ def interpret_ledger_question(question, today, *, record_queries=False):
             'expenses (采购支出). For these new metrics, use all_time if there is no explicit date range. '
             'For latest_expense, category can filter the expense. For latest_procurement or the two purchase order '
             'totals, supplier can filter by the exact explicit supplier name. Leave unused filters null. '
-            'These new metrics do not support comparison. For latest records, reject filters other than date, expense category '
+            'Only aggregate order value or outstanding order totals can be compared across two named periods. '
+            'For latest records, reject filters other than date, expense category '
             'or procurement supplier, and reject requests for multiple records or arbitrary fields.'
         )
         fields = {**_FIELDS, 'metric': {**_FIELDS['metric'], 'enum': [*_METRICS, *_RECORD_METRICS, None]}}
     else:
         instructions += 'Record details and unsettled purchase orders are unsupported.'
     return request_json(question, instructions, 'ledger_question', fields)
+
+
+def latest_question_plan(question):
+    text = re.sub(r'\s+', '', question).rstrip('？?。.!！')
+    for variant in keyword_variants(text):
+        match = re.fullmatch(
+            r'(?:我们)?(?:最近一次|上一次|上次|最后一次)(进货|采购|对[账帐])'
+            r'(?:是?(?:在)?(?:什么时候|[哪那]一?[天日])|时什么时候|时间|日期)?', variant,
+        )
+        if match:
+            metric = 'latest_reconciliation' if match[1].startswith('对') else 'latest_procurement'
+            return make_plan(metric, 'all_time')
+    return None
+
+
+def make_plan(metric, period, **filters):
+    return dict.fromkeys(_FIELDS) | {'metric': metric, 'period': period} | filters
 
 
 def _named_ranges(today):
@@ -194,10 +211,10 @@ def _latest_record(db, metric, interval, category, supplier):
     }
 
 
-def _procurement_total(db, start, end, supplier, *, unsettled):
+def _procurement_source(start, end, supplier, *, unsettled):
     params = []
     source = 'procurement_batches b'
-    count, amount = 'COUNT(*)', 'SUM(b.total)'
+    amount = 'b.total'
     if supplier:
         names = _supplier_values(supplier)
         placeholders = ','.join('?' for _ in names)
@@ -205,14 +222,40 @@ def _procurement_total(db, start, end, supplier, *, unsettled):
                        JOIN products p ON p.id = i.product_id
                        AND LOWER(TRIM(p.supplier)) IN ({placeholders})"""
         params.extend(names)
-        count, amount = 'COUNT(DISTINCT b.id)', 'SUM(i.subtotal)'
-    sql = f"""SELECT {count} AS records, {amount} AS total FROM {source}
-              WHERE b.date <> '' AND substr(b.date, 1, 10) <= ?
-                AND (? IS NULL OR b.date >= ?)"""
+        amount = 'i.subtotal'
+    source += """ WHERE b.date <> '' AND substr(b.date, 1, 10) <= ?
+                   AND (? IS NULL OR b.date >= ?)"""
     if unsettled:
-        sql += " AND COALESCE(b.settled_at, '') = ''"
-    row = db.execute(sql, [*params, end, start, start]).fetchone()
+        source += " AND COALESCE(b.settled_at, '') = ''"
+    return source, amount, [*params, end, start, start]
+
+
+def _procurement_total(db, start, end, supplier, *, unsettled):
+    source, amount, params = _procurement_source(start, end, supplier, unsettled=unsettled)
+    row = db.execute(f'SELECT COUNT(DISTINCT b.id) AS records, SUM({amount}) AS total FROM {source}', params).fetchone()
     return {'records': row['records'], 'amount': fmt_money(to_decimal(row['total']))}
+
+
+def procurement_answer_records(plan, today, offset, limit):
+    interval = _date_range(plan, today, _named_ranges(today))
+    if not interval:
+        return []
+    start, end = (day.isoformat() if day else None for day in interval)
+    source, amount, params = _procurement_source(
+        start, end, plan['supplier'], unsettled=plan['metric'] == 'unsettled_procurement',
+    )
+    with get_db() as db:
+        rows = db.execute(
+            f"""SELECT b.id, b.batch_number, substr(b.date, 1, 10) AS date, SUM({amount}) AS amount,
+                       COALESCE(b.settled_at, '') <> '' AS settled
+                FROM {source} GROUP BY b.id ORDER BY b.date DESC, b.id DESC LIMIT ? OFFSET ?""",
+            [*params, limit, offset],
+        ).fetchall()
+    return [
+        {'id': row['id'], 'kind': 'procurement', 'title': str(row['batch_number']), 'detail': None,
+         'date': row['date'], 'amount': fmt_money(to_decimal(row['amount'])), 'settled': bool(row['settled'])}
+        for row in rows
+    ]
 
 
 def _registered_users(db, start, end):
@@ -320,7 +363,7 @@ def _ledger_total(db, metric, category, interval, supplier, *, latest_round=Fals
     }
 
 
-def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False):
+def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False, validate_only=False):
     if not isinstance(plan, dict) or plan.keys() != _FIELDS.keys():
         return None
     metric, category = plan['metric'], plan['category']
@@ -340,7 +383,7 @@ def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False)
     if ((period == 'all_time' and metric not in ('registered_users', 'shareholders', *_DIVIDEND_METRICS, *_RECORD_METRICS))
             or (period == 'latest_round' and metric not in _DIVIDEND_METRICS)
             or (compare_period and period in ('all_time', 'latest_round'))
-            or (compare_period and metric in (*_LATEST_RECORDS, *_PROCUREMENT_TOTALS))
+            or (compare_period and metric in _LATEST_RECORDS)
             or (metric == 'shareholders' and (period not in ('all_time', 'today') or compare_period))):
         return None
     named_ranges = _named_ranges(today)
@@ -350,6 +393,8 @@ def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False)
         return None
     if metric == 'registered_users' and not is_admin:
         raise LedgerAdminRequired()
+    if validate_only:
+        return True
 
     with get_db() as db:
         if metric in _LATEST_RECORDS:
@@ -364,7 +409,7 @@ def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False)
     if comparison:
         if metric in ('registered_users', 'dividend_rounds'):
             difference = current['amount'] - comparison['amount']
-        elif current['records'] and comparison['records']:
+        elif metric in _PROCUREMENT_TOTALS or (current['records'] and comparison['records']):
             difference = fmt_money(to_decimal(current['amount']) - to_decimal(comparison['amount']))
     return {
         'metric': metric, 'category': category, 'supplier': supplier, 'current': current,
