@@ -1,4 +1,4 @@
-"""Regression tests for the assistant's public ledger endpoint."""
+"""Regression tests for the assistant's question and expense draft endpoints."""
 
 import os
 import tempfile
@@ -91,6 +91,36 @@ class LedgerAssistantTest(unittest.TestCase):
                 result = self.request(self.client(), question=text)
                 self.assertEqual(result['answer']['record']['date'], '2026-11-23')
                 self.assertEqual(result['answer']['record']['id'], 2)
+
+    def test_expense_draft_resolves_explicit_relative_dates_in_beijing(self):
+        client = self.client()
+        clock_time = datetime(2026, 11, 22, 17, tzinfo=timezone.utc)
+        draft = {'amount': '86.50', 'category': 'daily', 'account': 'payWechat', 'note': '买菜'}
+        cases = (
+            ('我今天买菜花了86.50元，微信付的', None, '2026-11-23'),
+            ('今天下午买菜花了86元', '2026-11-22', '2026-11-23'),
+            ('昨天下午買菜花了86元', None, '2026-11-22'),
+            ('前天买菜花了86元', None, '2026-11-21'),
+            ('买菜花了86元', None, None),
+            ('昨天买的菜，今天补记86元', '2026-11-22', '2026-11-22'),
+            ('11月20日买的菜，今天补记86元', '2026-11-20', '2026-11-20'),
+        )
+        with patch('routes.transactions.ai_configured', return_value=True), patch(
+            'routes.transactions.reserve_ai_request', return_value=True,
+        ), patch('routes.transactions.datetime', wraps=datetime) as clock, patch(
+            'shared.expense_ai.request_json',
+        ) as provider:
+            clock.now.side_effect = clock_time.astimezone
+            for text, model_date, expected_date in cases:
+                with self.subTest(text=text):
+                    provider.return_value = {**draft, 'date': model_date}
+                    response = client.post('/api/transactions/expense-draft', json={'text': text})
+                    self.assertEqual(response.status_code, 200, response.get_json())
+                    self.assertEqual(response.get_json()['draft']['date'], expected_date)
+                    self.assertEqual(response.get_json()['draft']['amount'], '86.50')
+            provider.return_value = {**draft, 'amount': None, 'date': None}
+            response = client.post('/api/transactions/expense-draft', json={'text': '今天买菜，忘了金额'})
+            self.assertEqual(response.status_code, 422)
 
     def test_clarify_then_compare_or_follow_up(self):
         client = self.client()
