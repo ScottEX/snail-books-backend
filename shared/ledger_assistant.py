@@ -63,6 +63,22 @@ def question_action(question):
     return None
 
 
+def operating_question(question):
+    text = re.sub(r'\s+', '', question).rstrip('？?。.!！')
+    periods = {'今天': 'today', '今日': 'today', '昨日': 'yesterday', '昨天': 'yesterday',
+               '本月': 'this_month', '这个月': 'this_month', '上月': 'last_month', '上个月': 'last_month'}
+    metrics = {'营业额': 'turnover', '实收': 'received', '扣费后收入': 'net_received',
+               '经营利润': 'operating_profit', '营运利润': 'operating_profit', '利润': 'operating_profit'}
+    for variant in keyword_variants(text):
+        match = re.fullmatch(
+            r'(今天|今日|昨日|昨天|本月|这个月|上月|上个月)(?:的)?(营业额|实收|扣费后收入|经营利润|营运利润|利润)'
+            r'(?:是?多少(?:钱)?|有多少(?:钱)?)?', variant,
+        )
+        if match:
+            return make_plan(metrics[match[2]], periods[match[1]])
+    return None
+
+
 def direct_question(question):
     known = latest_question_plan(question)
     if known:
@@ -94,27 +110,29 @@ def clarification_response(choice, today):
             'context': _pack(choice['plan'], today, actions)}
 
 
-def _month_actions(plan, today, *, is_admin):
+def _month_actions(plan, today, *, is_admin, operating_metrics):
     actions = []
     for period in _PERIOD_ACTIONS:
         candidate = {**plan, 'period': period, 'start_date': None, 'end_date': None, 'compare_period': None}
-        if answer_ledger_question(candidate, today, is_admin=is_admin, record_queries=True, validate_only=True):
+        if answer_ledger_question(candidate, today, is_admin=is_admin, record_queries=True,
+                                  validate_only=True, operating_metrics=operating_metrics):
             actions.append(period)
     return actions
 
 
-def answer_response(plan, today, *, is_admin):
-    answer = answer_ledger_question(plan, today, is_admin=is_admin, record_queries=True)
+def answer_response(plan, today, *, is_admin, operating_metrics=False):
+    answer = answer_ledger_question(plan, today, is_admin=is_admin, record_queries=True, operating_metrics=operating_metrics)
     if answer is None:
         if isinstance(plan, dict) and plan.get('period') is None and plan.get('compare_period') is None:
-            actions = _month_actions(plan, today, is_admin=is_admin)
+            actions = _month_actions(plan, today, is_admin=is_admin, operating_metrics=operating_metrics)
             if actions:
                 return clarification_response(clarification('period', plan, actions), today)
         return None
 
     actions = []
     if 'current' in answer:
-        actions = [period for period in _month_actions(plan, today, is_admin=is_admin) if period != plan['period']]
+        actions = [period for period in _month_actions(plan, today, is_admin=is_admin, operating_metrics=operating_metrics)
+                   if period != plan['period']]
         if plan['period'] == 'this_month' and plan['compare_period'] is None and 'last_month' in actions:
             actions.insert(0, 'compare_last_month')
         if answer['metric'] in _ORDER_METRICS and answer['current']['records']:
@@ -123,7 +141,7 @@ def answer_response(plan, today, *, is_admin):
             'context': _pack(plan, today, actions) if actions else None}
 
 
-def apply_action(context, action, payload, *, is_admin):
+def apply_action(context, action, payload, *, is_admin, operating_metrics=False):
     plan = context['plan']
     today = date.fromisoformat(context['date'])
     if action == 'details':
@@ -141,4 +159,4 @@ def apply_action(context, action, payload, *, is_admin):
         plan = {**plan, 'compare_period': 'last_month'}
     else:
         plan = {**plan, 'period': action, 'start_date': None, 'end_date': None, 'compare_period': None}
-    return answer_response(plan, today, is_admin=is_admin)
+    return answer_response(plan, today, is_admin=is_admin, operating_metrics=operating_metrics)

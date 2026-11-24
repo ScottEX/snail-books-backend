@@ -17,8 +17,9 @@ from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
 from shared import ledger_assistant
 from shared.ledger_query import (
-    LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, operating_totals,
+    LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, make_plan, operating_totals,
 )
+from shared.operating_metrics import dashboard_periods, period_operating_metrics
 from shared.rate_limit import reserve_ai_request
 from shared.write_request import start_write, finish_write
 
@@ -72,15 +73,19 @@ def ledger_ask():
 def _assistant_ledger_ask(payload):
     today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
     is_admin = str(g.user_id) == ADMIN_USER_ID
+    operating_metrics = payload.get('operating_metrics') is True
+    options = {'is_admin': is_admin, 'operating_metrics': operating_metrics}
     context = ledger_assistant.read_context(payload.get('context'))
     if 'example' in payload:
         example = payload['example']
         plan = ledger_assistant.EXAMPLES.get(example) if isinstance(example, str) else None
+        if operating_metrics and example in ('profit', 'net_received'):
+            plan = make_plan('operating_profit' if example == 'profit' else 'net_received', 'today')
     elif 'action' in payload:
         action = payload['action']
         if not context or action not in context['actions']:
             return jsonify({'status': 'error', 'message': 'ledgerAiContextExpired'}), 422
-        result = ledger_assistant.apply_action(context, action, payload, is_admin=is_admin)
+        result = ledger_assistant.apply_action(context, action, payload, **options)
         return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
     else:
         question = payload.get('question')
@@ -88,10 +93,12 @@ def _assistant_ledger_ask(payload):
             return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
         action = ledger_assistant.question_action(question)
         if context and action in context['actions']:
-            return jsonify(ledger_assistant.apply_action(context, action, payload, is_admin=is_admin))
+            result = ledger_assistant.apply_action(context, action, payload, **options)
+            return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
         if action:
             return jsonify({'status': 'error', 'message': 'ledgerAiContextRequired'}), 422
-        plan = ledger_assistant.direct_question(question)
+        plan = ledger_assistant.operating_question(question) if operating_metrics else None
+        plan = plan or ledger_assistant.direct_question(question)
         if plan and 'reason' in plan:
             return jsonify(ledger_assistant.clarification_response(plan, today))
         if not plan:
@@ -100,10 +107,10 @@ def _assistant_ledger_ask(payload):
             if not reserve_ai_request(g.user_id):
                 return jsonify({'status': 'error', 'message': 'expenseAiRateLimit'}), 429
             try:
-                plan = interpret_ledger_question(question.strip(), today, record_queries=True)
+                plan = interpret_ledger_question(question.strip(), today, record_queries=True, operating_metrics=operating_metrics)
             except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
                 return jsonify({'status': 'error', 'message': 'ledgerAiFailed'}), 502
-    result = ledger_assistant.answer_response(plan, today, is_admin=is_admin)
+    result = ledger_assistant.answer_response(plan, today, **options)
     return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
 
 
@@ -508,6 +515,7 @@ def daily_revenue_total():
 @login_required
 def business_summary():
     with get_db() as db:
+        db.execute('BEGIN')
         rev = db.execute(
             'SELECT COALESCE(SUM(revenue),0) as total_revenue, COALESCE(SUM(turnover),0) as receivable,'
             ' COALESCE(SUM(jd_revenue),0) as total_jd FROM daily_revenue'
@@ -554,8 +562,13 @@ def business_summary():
         pdiv = db.execute('SELECT COALESCE(SUM(amount),0) as total_div FROM dividends').fetchone()
         total_dividends = to_decimal(pdiv['total_div'])
         cash_on_hand = (total_investment + cumulative_revenue) - (cumulative_expense + total_dividends)
+        operating = {}
+        for period, interval in dashboard_periods(today).items():
+            totals = period_operating_metrics(db, *interval)
+            operating[period] = {key: fmt_money(value) if isinstance(value, Decimal) else value for key, value in totals.items()}
 
         return jsonify({
+            'operating': operating,
             'actual_received': fmt_money(actual_received),
             'receivable': fmt_money(receivable),
             'discount': fmt_money(discount),
