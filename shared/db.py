@@ -9,9 +9,9 @@ from .config import DB as DB_PATH
 def get_db():
     db = sqlite3.connect(DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
     try:
-        yield db
+        db.execute("PRAGMA journal_mode=WAL")
+        with db:
+            yield db
     finally:
-        db.commit()
         db.close()

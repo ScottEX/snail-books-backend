@@ -22,10 +22,10 @@ jobs:
           echo "✅ 语法检查通过"
       - name: Schema 一致性检查
         run: python scripts/check_schema_consistency.py
-      - name: 助手问答回归测试
+      - name: 助手和账务写入回归测试
         run: |
           python -m pip install -r requirements.txt
-          python -m unittest discover -s tests -p test_ledger_assistant.py
+          python -m unittest discover -s tests
 
   deploy-staging:
     needs: test

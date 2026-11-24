@@ -9,6 +9,8 @@ from flask import Blueprint, request, jsonify, g
 
 from shared.auth import login_required
 from shared.db import get_db
+from shared.dividend_allocation import DividendAllocationError, allocate_dividend
+from shared.write_request import start_write, finish_write
 
 # ── Lazy-loaded heavy libraries (init once, reuse across requests) ──
 _opencc = None
@@ -271,24 +273,69 @@ def update_partner(id):
 #  Dividends CRUD
 # ═══════════════════════════════════════════════════════════
 
+@bp.route('/dividends/preview', methods=['POST'])
+@login_required
+def dividend_preview():
+    data = request.get_json(silent=True)
+    total = data.get('total') if isinstance(data, dict) else None
+    try:
+        with get_db() as db:
+            result = allocate_dividend(db, total)
+    except DividendAllocationError as error:
+        return jsonify({'status': 'error', 'message': str(error)}), 400
+    return jsonify({'status': 'ok', **result})
+
+
 @bp.route('/dividends', methods=['GET', 'POST'])
 @login_required
 def dividends():
     if request.method == 'POST':
-        data = request.get_json()
-        items = data.get('items', [data])  # support single item or array
-        for item in items:
-            missing = validate_required(item, 'partner', 'amount')
-            if missing:
-                return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
         with get_db() as db:
-            for item in items:
-                db.execute('INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
-                           (item['partner'], item['amount'], item.get('note', ''), (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'), g.user_id))
-            db.commit()
-            from shared.audit import audit
-            audit('CREATE_DIVIDEND', extra=f'{len(items)} items')
-        return jsonify({'status': 'ok'})
+            receipt, replay = start_write(db, data)
+            if replay is not None:
+                return replay
+            if 'total' in data:
+                round_number = data.get('round')
+                if type(round_number) is not int or not 1 <= round_number <= 999_999:
+                    return jsonify({'status': 'error', 'message': 'dividendInvalidRound'}), 400
+                try:
+                    allocation = allocate_dividend(db, data['total'])
+                except DividendAllocationError as error:
+                    return jsonify({'status': 'error', 'message': str(error)}), 400
+                if data.get('preview') != allocation['preview']:
+                    return jsonify({'status': 'error', 'message': 'dividendPreviewChanged'}), 409
+                note = f'第{round_number}次'
+                if db.execute(
+                    'SELECT 1 FROM dividends WHERE note IN (?, ?) OR note LIKE ? LIMIT 1',
+                    (note, f'{note}分红', f'{note}分红 (%)'),
+                ).fetchone():
+                    return jsonify({'status': 'error', 'message': 'dividendRoundExists'}), 409
+                items = [
+                    {'partner': item['name'], 'amount': item['amount'], 'note': note}
+                    for item in allocation['allocations']
+                ]
+                result = {'status': 'ok', **allocation}
+            else:
+                items = data.get('items', [data])  # Older clients send a single entry or a list.
+                if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+                    return jsonify({'status': 'error', 'message': t('err_empty_fields', g.lang)}), 400
+                for item in items:
+                    missing = validate_required(item, 'partner', 'amount')
+                    if missing:
+                        return jsonify({'status': 'error', 'message': t('err_missing_fields', g.lang, fields=', '.join(missing))}), 400
+                result = {'status': 'ok'}
+            recorded_at = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+            db.executemany(
+                'INSERT INTO dividends (partner,amount,note,date,user_id) VALUES (?,?,?,?,?)',
+                [(item['partner'], item['amount'], item.get('note', ''), recorded_at, g.user_id) for item in items],
+            )
+            response = finish_write(db, receipt, result)
+        from shared.audit import audit
+        audit('CREATE_DIVIDEND', extra=f'{len(items)} items')
+        return response
     with get_db() as db:
         rows = db.execute('SELECT * FROM dividends ORDER BY date DESC, created_at DESC').fetchall()
     data = [dict(r) for r in rows]

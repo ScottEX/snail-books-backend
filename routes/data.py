@@ -20,6 +20,7 @@ from shared.ledger_query import (
     LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, operating_totals,
 )
 from shared.rate_limit import reserve_ai_request
+from shared.write_request import start_write, finish_write
 
 data_bp = Blueprint('data', __name__)
 
@@ -380,6 +381,9 @@ def add_platform_fee_entry():
     sw = data.get('shangou_waimai', 0)
     mt = data.get('meituan_tuan', 0)
     with get_db() as db:
+        receipt, replay = start_write(db, data)
+        if replay is not None:
+            return replay
         beijing_now = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
         db.execute('''INSERT INTO platform_fees (year, month, meituan_cashier, meituan_waimai, shangou_waimai, meituan_tuan, updated_at)
                       VALUES (?,?,?,?,?,?,?)
@@ -395,9 +399,10 @@ def add_platform_fee_entry():
                       VALUES (?,?,?,?,?,?)''',
                    (fee_id, entry_date, mc, mw, sw, mt))
         updated = db.execute('SELECT * FROM platform_fees WHERE year=? AND month=?', (year, month)).fetchone()
-        from shared.audit import audit
-        audit('CREATE_PLATFORM_FEE', extra=f'{year}/{month} entry={entry_date}')
-        return jsonify({'status': 'ok', 'data': _fmt_fee_row(dict(updated))})
+        response = finish_write(db, receipt, {'status': 'ok', 'data': _fmt_fee_row(dict(updated))})
+    from shared.audit import audit
+    audit('CREATE_PLATFORM_FEE', extra=f'{year}/{month} entry={entry_date}')
+    return response
 
 
 @data_bp.route('/platform-fees/<int:id>', methods=['PUT'])

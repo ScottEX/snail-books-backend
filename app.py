@@ -3,7 +3,6 @@
 
 import sqlite3, os, functools, re, json, time, mimetypes
 from datetime import datetime, date
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 try:
@@ -16,6 +15,7 @@ except ImportError:
 from flask import Flask, request, jsonify, session, g, make_response, send_file
 from i18n_backend import get_lang, t as _t
 from shared.config import FLASK_SECRET_KEY, FRONTEND_DIR, EXPENSE_IMG_DIR, BG_DIR, DB
+from shared.db import get_db
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
@@ -237,17 +237,6 @@ def serve_spa_root(path):
 #  Database
 # ═══════════════════════════════════════════════════════════
 
-@contextmanager
-def get_db():
-    db = sqlite3.connect(DB)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
-    try:
-        yield db
-    finally:
-        db.commit()
-        db.close()
-
 # ── Seed data ──
 
 PARTNER_DATA = [
@@ -408,6 +397,14 @@ def init_db():
                 procurement_batch_id INTEGER,
                 user_id INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS write_requests (
+                user_id INTEGER NOT NULL,
+                endpoint TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                response TEXT NOT NULL,
+                PRIMARY KEY (user_id, endpoint, request_key)
             );
             CREATE TABLE IF NOT EXISTS dividends (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

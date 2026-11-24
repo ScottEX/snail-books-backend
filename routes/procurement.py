@@ -12,6 +12,7 @@ from shared.i18n import t as _t
 from shared.validation import validate_required
 from shared.config import EXPENSE_IMG_DIR
 from shared.money import fmt_money, to_decimal
+from shared.write_request import start_write, finish_write
 
 procurement_bp = Blueprint('procurement', __name__)
 
@@ -136,7 +137,9 @@ def api_procurement_batches():
         if not items or not isinstance(items, list):
             return jsonify({'status': 'error', 'message': _t('err_empty_fields', g.lang)}), 400
         with get_db() as db:
-            db.execute('BEGIN IMMEDIATE')
+            receipt, replay = start_write(db, data)
+            if replay is not None:
+                return replay
             cur = db.execute('SELECT COALESCE(MAX(batch_number),0) FROM procurement_batches').fetchone()
             batch_no = cur[0] + 1
             total = to_decimal(0)
@@ -173,10 +176,12 @@ def api_procurement_batches():
                 "INSERT INTO transactions (type,amount,category,account,note,date,images,thumb_images,procurement_batch_id,created_at) VALUES ('expense',?,?,?,?,?,?,?,?,?)",
                 (0, data.get('category', '采购'), data['payment_method'], data.get('note', ''), data['date'], images_json, thumbs_json, batch_id, (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
             )
-            db.commit()
-            from shared.audit import audit
-            audit('CREATE_PROCUREMENT', extra=f'batch#{batch_no} ¥{fmt_money(total)} {data.get("date","")}')
-        return jsonify({'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': fmt_money(total)})
+            response = finish_write(db, receipt, {
+                'status': 'ok', 'batch_id': batch_id, 'batch_number': batch_no, 'total': fmt_money(total),
+            })
+        from shared.audit import audit
+        audit('CREATE_PROCUREMENT', extra=f'batch#{batch_no} ¥{fmt_money(total)} {data.get("date","")}')
+        return response
 
     # GET: paginated list
     page = request.args.get('page', 1, type=int)

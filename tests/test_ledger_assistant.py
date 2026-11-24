@@ -20,10 +20,14 @@ class LedgerAssistantTest(unittest.TestCase):
         })
         cls.env.start()
         cls.addClassCleanup(cls.env.stop)
-        from app import app
+        import app as app_module
+        import shared.db as db_module
         from shared.config import ADMIN_USER_ID
         from shared.db import get_db
-        cls.app, cls.admin_id = app, int(ADMIN_USER_ID)
+        cls.enterClassContext(patch.object(app_module, 'DB', os.environ['DB']))
+        cls.enterClassContext(patch.object(db_module, 'DB_PATH', os.environ['DB']))
+        app_module.init_db()
+        cls.app, cls.admin_id = app_module.app, int(ADMIN_USER_ID)
         with get_db() as db:
             db.executemany(
                 "INSERT INTO users (id, username, password, is_verified, created_at) VALUES (?, ?, 'fixture', 1, '2026-11-01')",

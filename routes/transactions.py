@@ -13,6 +13,7 @@ from shared.config import EXPENSE_IMG_DIR
 from shared.ai_provider import ai_configured
 from shared.expense_ai import extract_expense_draft
 from shared.rate_limit import reserve_ai_request
+from shared.write_request import start_write, finish_write
 
 tx_bp = Blueprint('transactions', __name__)
 
@@ -64,6 +65,9 @@ def transactions():
                 return jsonify({'status': 'error', 'message': t('err_invalid_category', g.lang)}), 400
             if data['account'] not in ('payCash', 'payWechat', 'payAlipay'):
                 return jsonify({'status': 'error', 'message': t('err_invalid_account', g.lang)}), 400
+            receipt, replay = start_write(db, data)
+            if replay is not None:
+                return replay
             db.execute(
                 'INSERT INTO transactions (type,amount,category,account,note,images,thumb_images,date,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
                 (data['type'], data['amount'], data['category'], data['account'],
@@ -74,10 +78,10 @@ def transactions():
                  g.user_id,
                  (datetime.now(timezone.utc) + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
             )
-            db.commit()
-            from shared.audit import audit
-            audit('CREATE_TRANSACTION', extra=f'{data["type"]} ¥{data["amount"]} {data["category"]} {data.get("date","")}')
-        return jsonify({'status': 'ok'})
+            response = finish_write(db, receipt, {'status': 'ok'})
+        from shared.audit import audit
+        audit('CREATE_TRANSACTION', extra=f'{data["type"]} ¥{data["amount"]} {data["category"]} {data.get("date","")}')
+        return response
 
     # GET with pagination
     page = request.args.get('page', 1, type=int)
