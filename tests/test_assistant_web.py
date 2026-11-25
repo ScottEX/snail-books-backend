@@ -67,3 +67,15 @@ class AssistantWebTest(unittest.TestCase):
         ):
             sources = search_regional_report('深圳', '螺蛳粉', retry=True)
         self.assertEqual([item['url'] for item in sources], ['https://example.com/local'])
+
+    def test_domestic_search_uses_the_snippet_from_the_same_result(self):
+        markup = '''
+            <h3><a href="/link?url=local">螺蛳粉门店</a></h3><div class="c-abstract">在深圳开店。</div>
+            <h3><a href="/link?url=unrelated">螺蛳粉报道</a></h3>
+            <h3><a href="javascript:alert(1)">深圳警告</a></h3><div class="c-abstract">深圳螺蛳粉</div>
+        '''.encode('utf-8')
+        with patch('shared.assistant_web._read_rss', return_value=[]), patch(
+            'shared.assistant_web._read_response', return_value=markup,
+        ):
+            sources = search_public_web('深圳 螺蛳粉', required_terms=('深圳', '螺蛳粉'))
+        self.assertEqual([item['url'] for item in sources], ['https://www.baidu.com/link?url=local'])

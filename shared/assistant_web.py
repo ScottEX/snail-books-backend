@@ -7,7 +7,7 @@ from html import unescape
 from html.parser import HTMLParser
 import json
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from xml.etree import ElementTree
 
 import requests
@@ -174,17 +174,36 @@ class _BaiduTitles(HTMLParser):
         self.in_heading = False
         self.link = None
         self.title = []
+        self.description = None
+        self.description_source = None
+        self.description_tag = None
+        self.description_depth = 0
 
     def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
         if tag == 'h3':
             self.in_heading = True
+            self.description = None
+            self.description_source = None
         elif tag == 'a' and self.in_heading and not self.link:
-            self.link = _public_link(dict(attrs).get('href'))
+            href = values.get('href') or ''
+            self.link = _public_link(urljoin(_BAIDU_SEARCH, href) if href.startswith('/link?') else href)
             self.title = []
+        elif self.description is not None:
+            if tag == self.description_tag:
+                self.description_depth += 1
+        elif self.description_source is not None and not self.in_heading and tag in ('span', 'div', 'p'):
+            classes = (values.get('class') or '').split()
+            if any(c == 'c-abstract' or c.startswith(('c-line-clamp', 'content-right_')) for c in classes):
+                self.description = []
+                self.description_tag = tag
+                self.description_depth = 1
 
     def handle_data(self, data):
         if self.link:
             self.title.append(data)
+        if self.description is not None:
+            self.description.append(data)
 
     def handle_endtag(self, tag):
         if tag in ('a', 'h3') and self.link:
@@ -193,9 +212,17 @@ class _BaiduTitles(HTMLParser):
                 host = urlsplit(self.link).hostname
                 self.sources.append({'title': title, 'url': self.link, 'publisher': host,
                                      'published_date': None, 'snippet': ''})
+                self.description_source = self.sources[-1]
             self.link = None
         if tag == 'h3':
             self.in_heading = False
+        if self.description is not None and tag == self.description_tag:
+            self.description_depth -= 1
+            if self.description_depth == 0:
+                snippet = _text(' '.join(self.description), 450)
+                if snippet and not self.description_source['snippet']:
+                    self.description_source['snippet'] = snippet
+                self.description = None
 
 
 def _baidu_sources(keyword):
@@ -256,9 +283,9 @@ def search_public_web(keyword, *, required_terms=()):
 
 def search_regional_report(region, subject, *, retry=False):
     if retry:
-        queries = (f'{region} {subject} 门店 外卖', f'{region} {subject}')
+        queries = (f'{region} {subject} 门店 外卖', f'{region} {subject} 探店', f'{region} {subject}')
     else:
-        queries = (f'{region} {subject}', f'{region} {subject} 市场 门店')
+        queries = (f'{region} {subject}', f'{region} {subject} 市场 门店', f'{region} {subject} 美食')
     sources = {}
     unavailable = 0
     with ThreadPoolExecutor(max_workers=len(queries)) as executor:
@@ -307,7 +334,8 @@ def regional_report_outline(location, sources):
         lines.extend(f"- {item['title']} [{index}]" for index, item in enumerate(sources[:3], 1))
     else:
         lines.append('本次没有核实到可用于判断当地现状的公开资料。')
-    return '\n'.join([*lines, '', '资料缺口', '现有材料不足以核实当地门店总量、市场规模、销量或增长率。'])
+    return '\n'.join([*lines, '', '资料缺口', '现有材料不足以核实当地门店总量、市场规模、销量或增长率。',
+                      '如需量化结论，可进一步核验同一口径下的门店目录、平台外卖覆盖和商户经营数据。'])
 
 
 def public_background(question):
