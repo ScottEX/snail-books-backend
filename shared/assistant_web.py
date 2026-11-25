@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
+from html.parser import HTMLParser
 import json
 import re
 from urllib.parse import urlsplit
@@ -16,8 +17,10 @@ from shared.ai_provider import request_json
 _SEARCH_URLS = (
     ('Bing News', 'https://www.bing.com/news/search'),
     ('Google News', 'https://news.google.com/rss/search'),
+    ('Bing China', 'https://cn.bing.com/search'),
     ('Bing', 'https://www.bing.com/search'),
 )
+_BAIDU_SEARCH = 'https://www.baidu.com/s'
 _MAX_BYTES = 512 * 1024
 _MAX_RESULTS = 6
 _BEIJING = timezone(timedelta(hours=8))
@@ -82,8 +85,10 @@ def _publish_date(raw):
         return None
 
 
-def _read_rss(url, params):
-    with requests.get(url, params=params, timeout=(2, 3), allow_redirects=False, stream=True) as response:
+def _read_response(url, params, accept):
+    headers = {'Accept': accept, 'User-Agent': 'SnailBooks-Assistant/1.0'}
+    with requests.get(url, params=params, headers=headers, timeout=(2, 3),
+                      allow_redirects=False, stream=True) as response:
         response.raise_for_status()
         if response.status_code != 200:
             raise ValueError('Unexpected search response')
@@ -92,6 +97,11 @@ def _read_rss(url, params):
             data.extend(chunk)
             if len(data) > _MAX_BYTES:
                 raise ValueError('Oversized search response')
+    return data
+
+
+def _read_rss(url, params):
+    data = _read_response(url, params, 'application/rss+xml, application/xml, text/xml')
     upper = data.upper()
     if b'<!DOCTYPE' in upper or b'<!ENTITY' in upper or b'\x00' in data:
         raise ValueError('Unexpected XML declaration')
@@ -100,6 +110,48 @@ def _read_rss(url, params):
     if root.tag != 'rss' or channel is None:
         raise ValueError('Expected an RSS feed')
     return channel.findall('item')
+
+
+class _BaiduTitles(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.sources = []
+        self.in_heading = False
+        self.link = None
+        self.title = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'h3':
+            self.in_heading = True
+        elif tag == 'a' and self.in_heading and not self.link:
+            self.link = _public_link(dict(attrs).get('href'))
+            self.title = []
+
+    def handle_data(self, data):
+        if self.link:
+            self.title.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in ('a', 'h3') and self.link:
+            title = _text(' '.join(self.title), 220)
+            if title and len(self.sources) < _MAX_RESULTS and all(item['url'] != self.link for item in self.sources):
+                host = urlsplit(self.link).hostname
+                self.sources.append({'title': title, 'url': self.link, 'publisher': host,
+                                     'published_date': None, 'snippet': ''})
+            self.link = None
+        if tag == 'h3':
+            self.in_heading = False
+
+
+def _baidu_sources(keyword):
+    try:
+        data = _read_response(_BAIDU_SEARCH, {'wd': keyword, 'rn': '10'}, 'text/html')
+    except (requests.RequestException, ValueError):
+        return None
+    parser = _BaiduTitles()
+    parser.feed(data.decode('utf-8', errors='replace'))
+    parser.close()
+    return parser.sources or None
 
 
 def _provider_items(provider, url, keyword, zh):
@@ -116,11 +168,11 @@ def _provider_items(provider, url, keyword, zh):
 
 def search_public_web(keyword):
     zh = bool(re.search(r'[\u3400-\u9fff]', keyword))
-    with ThreadPoolExecutor(max_workers=len(_SEARCH_URLS)) as executor:
+    with ThreadPoolExecutor(max_workers=len(_SEARCH_URLS) + int(zh)) as executor:
         futures = [executor.submit(_provider_items, provider, url, keyword, zh) for provider, url in _SEARCH_URLS]
+        domestic = executor.submit(_baidu_sources, keyword) if zh else None
         feeds = [future.result() for future in futures]
-    if all(feed is None for feed in feeds):
-        raise WebSearchUnavailable()
+        domestic_sources = domestic.result() if domestic else None
     sources, seen = [], set()
     for feed in feeds:
         for item in feed or []:
@@ -135,7 +187,13 @@ def search_public_web(keyword):
                             'snippet': _text(item.findtext('description'), 450)})
             if len(sources) == _MAX_RESULTS:
                 return sources
-    return sources
+    if sources:
+        return sources
+    if domestic_sources:
+        return domestic_sources
+    if all(feed is None for feed in feeds):
+        raise WebSearchUnavailable()
+    return []
 
 
 def summarize_public_web(question, sources):

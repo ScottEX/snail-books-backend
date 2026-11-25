@@ -18,7 +18,9 @@ class AssistantWebTest(unittest.TestCase):
               <item><title>无效</title><link>javascript:alert(1)</link></item>
             </channel>
         ''').findall('item')
-        with patch('shared.assistant_web._read_rss', return_value=items):
+        with patch('shared.assistant_web._read_rss', return_value=items), patch(
+            'shared.assistant_web._baidu_sources', return_value=None,
+        ):
             sources = search_public_web('螺蛳粉 产业')
         self.assertEqual(sources, [{
             'title': '螺蛳粉产业', 'url': 'https://example.com/one', 'publisher': '产业周刊',
@@ -26,11 +28,27 @@ class AssistantWebTest(unittest.TestCase):
         }])
 
     def test_no_results_differs_from_failure_and_unknown_citations_are_invalid(self):
-        with patch('shared.assistant_web._read_rss', side_effect=requests.Timeout):
+        with patch('shared.assistant_web._read_rss', side_effect=requests.Timeout), patch(
+            'shared.assistant_web._baidu_sources', return_value=None,
+        ):
             with self.assertRaises(WebSearchUnavailable):
                 search_public_web('螺蛳粉')
-        with patch('shared.assistant_web._read_rss', return_value=[]):
+        with patch('shared.assistant_web._read_rss', return_value=[]), patch(
+            'shared.assistant_web._baidu_sources', return_value=None,
+        ):
             self.assertEqual(search_public_web('螺蛳粉'), [])
         with patch('shared.assistant_web.request_json', return_value={'answer': '引用不存在。[2]'}):
             with self.assertRaises(ValueError):
                 summarize_public_web('螺蛳粉行业如何', [{'title': '报道', 'url': 'https://example.com/one'}])
+
+    def test_domestic_search_can_return_headlines_when_rss_is_unreachable(self):
+        markup = b'''<h3><a href="https://www.baidu.com/link?url=article">Industry <em>headline</em></a></h3>
+                     <h3><a href="javascript:alert(1)">Unsafe</a></h3>'''
+        with patch('shared.assistant_web._read_rss', side_effect=requests.Timeout), patch(
+            'shared.assistant_web._read_response', return_value=markup,
+        ):
+            sources = search_public_web('螺蛳粉 产业')
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]['title'], 'Industry headline')
+        self.assertEqual(sources[0]['url'], 'https://www.baidu.com/link?url=article')
+        self.assertIsNone(sources[0]['published_date'])
