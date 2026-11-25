@@ -168,6 +168,7 @@ def delete_user_cascade(user_id):
         db.execute('DELETE FROM user_tokens WHERE user_id=?', (user_id,))
         db.execute('DELETE FROM user_sessions WHERE user_id=?', (user_id,))
         db.execute('DELETE FROM user_settings WHERE user_id=?', (user_id,))
+        db.execute('DELETE FROM assistant_chat_archive WHERE user_id=?', (user_id,))
 
         # 3. Delete user
         db.execute('DELETE FROM users WHERE id=?', (user_id,))

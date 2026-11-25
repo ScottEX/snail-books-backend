@@ -11,15 +11,15 @@ def ai_configured():
     return bool(DEEPSEEK_API_KEY or OPENAI_API_KEY)
 
 
-def request_json(text, instructions, schema_name, fields):
+def request_json(text, instructions, schema_name, fields, *, max_tokens=512):
     if DEEPSEEK_API_KEY:
-        output = _deepseek_output(text, instructions, fields)
+        output = _deepseek_output(text, instructions, fields, max_tokens)
     else:
-        output = _openai_output(text, instructions, schema_name, fields)
+        output = _openai_output(text, instructions, schema_name, fields, max_tokens)
     return json.loads(output)
 
 
-def _deepseek_output(text, instructions, fields):
+def _deepseek_output(text, instructions, fields, max_tokens):
     expected_fields = json.dumps(dict.fromkeys(fields))
     response = requests.post(
         'https://api.deepseek.com/chat/completions',
@@ -33,7 +33,7 @@ def _deepseek_output(text, instructions, fields):
                 {'role': 'user', 'content': text},
             ],
             'response_format': {'type': 'json_object'},
-            'max_tokens': 512,
+            'max_tokens': max_tokens,
         },
         timeout=(3, 12),
     )
@@ -44,7 +44,7 @@ def _deepseek_output(text, instructions, fields):
     return choice['message']['content']
 
 
-def _openai_output(text, instructions, schema_name, fields):
+def _openai_output(text, instructions, schema_name, fields, max_tokens):
     response = requests.post(
         'https://api.openai.com/v1/responses',
         headers={'Authorization': f'Bearer {OPENAI_API_KEY}'},
@@ -53,7 +53,7 @@ def _openai_output(text, instructions, schema_name, fields):
             'store': False,
             'instructions': instructions,
             'input': text,
-            'max_output_tokens': 512,
+            'max_output_tokens': max_tokens,
             'text': {'format': {
                 'type': 'json_schema',
                 'name': schema_name,

@@ -15,7 +15,7 @@ from shared.i18n import t
 from shared.validation import validate_required
 from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
-from shared import assistant_chat, ledger_assistant
+from shared import assistant_chat, assistant_memory, ledger_assistant
 from shared.ledger_query import (
     LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, make_plan, operating_totals,
 )
@@ -31,7 +31,11 @@ data_bp = Blueprint('data', __name__)
 def chat():
     is_admin = str(g.user_id) == ADMIN_USER_ID
     if request.method == 'GET':
-        return jsonify(assistant_chat.load_chat(g.user_id, is_admin=is_admin))
+        raw_before = request.args.get('before')
+        if raw_before is not None and not re.fullmatch(r'[1-9][0-9]{0,11}', raw_before):
+            return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+        before = int(raw_before) if raw_before is not None else None
+        return jsonify(assistant_chat.load_chat(g.user_id, is_admin=is_admin, before=before))
 
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
@@ -53,6 +57,25 @@ def chat():
     if state is None:
         return jsonify({'message': 'assistantChatChanged'}), 409
     return jsonify(assistant_chat.public_chat(state, is_admin=is_admin))
+
+
+@data_bp.route('/assistant/preferences', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def chat_preferences():
+    if request.method == 'GET':
+        return jsonify(assistant_memory.preferences(g.user_id))
+    payload = request.get_json(silent=True)
+    key = payload.get('key') if isinstance(payload, dict) else None
+    if not isinstance(key, str) or key not in assistant_memory.OPTIONS:
+        return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+    value = payload.get('value') if request.method == 'PUT' else None
+    if request.method == 'PUT' and not assistant_memory.valid_preference(key, value):
+        return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+    with get_db() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if not db.execute('SELECT 1 FROM users WHERE id=?', (g.user_id,)).fetchone():
+            return jsonify({'message': 'Unauthorized'}), 401
+        return jsonify(assistant_memory.save_preference(db, g.user_id, key, value))
 
 
 @data_bp.route('/app/search', methods=['POST'])

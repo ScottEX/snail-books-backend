@@ -58,6 +58,10 @@ class LedgerAssistantTest(unittest.TestCase):
             db.execute("INSERT INTO dividends (partner, amount, note, date) VALUES ('Fixture', 100, 'R1', '2026-11-20 08:00:00')")
 
     def setUp(self):
+        from shared.db import get_db
+        with get_db() as db:
+            db.execute("DELETE FROM user_settings WHERE key IN ('assistant_chat_v1', 'assistant_preferences_v1', 'assistant_habits_v1')")
+            db.execute('DELETE FROM assistant_chat_archive')
         clock = patch('routes.data.datetime', wraps=datetime)
         clock.start().now.return_value = datetime(2026, 11, 22, 17, tzinfo=timezone.utc)
         self.addCleanup(clock.stop)
@@ -195,6 +199,115 @@ class LedgerAssistantTest(unittest.TestCase):
         turn = result.get_json()['turns'][0]
         self.assertEqual((turn['answers'], turn['destinations'], turn['notice']), ([], [], 'ledgerAiAdminOnly'))
         self.assertEqual(self.app.test_client().get('/api/assistant/chat').status_code, 401)
+
+    def chat_message(self, client, index, text, state=None):
+        response = client.post('/api/assistant/chat', json={
+            'request_id': f'phase-two-three-{index}', 'text': text,
+            'revision': state['revision'] if state else None,
+        })
+        self.assertEqual(response.status_code, 200, response.get_json())
+        return response.get_json()
+
+    def test_chat_can_find_invoice_and_preview_draft_without_writing(self):
+        from shared.db import get_db
+        client = self.client()
+        with get_db() as db:
+            original = db.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
+        calls = [
+            {'tool': 'search_business_records', 'keyword': 'A-01', 'kind': 'invoice'},
+            {'tool': 'draft_expense', 'amount': '86', 'category': 'daily',
+             'date': '2026-11-22', 'account': 'payWechat', 'note': '买菜'},
+        ]
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={'calls': calls, 'message': None}):
+            state = self.chat_message(client, 1, '找 A-01 发票，今天微信花了 86 元买菜')
+        turn = state['turns'][-1]
+        self.assertEqual(turn['searches'][0]['records'][0]['kind'], 'invoice')
+        self.assertEqual(turn['searches'][0]['records'][0]['title'], 'A-01')
+        self.assertEqual(turn['draft']['date'], '2026-11-23')
+        self.assertEqual(turn['draft']['account'], 'payWechat')
+        with get_db() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM transactions').fetchone()[0], original)
+
+    def test_chat_compacts_context_and_can_load_archived_messages(self):
+        client = self.client()
+        state = None
+        with patch('shared.assistant_chat._MAX_TURNS', 4), patch(
+            'shared.assistant_summary.RECENT_TURNS', 2,
+        ), patch('shared.assistant_summary.MIN_BATCH', 2), patch(
+            'shared.assistant_summary.ai_configured', return_value=True,
+        ), patch('shared.assistant_summary.reserve_ai_request', return_value=True), patch(
+            'shared.assistant_summary.request_json', return_value={'summary': '保留月度口径'},
+        ) as summarizer, patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch(
+            'shared.assistant_chat.request_json', return_value={'calls': [], 'message': '收到'},
+        ) as planner:
+            for index in range(1, 9):
+                state = self.chat_message(client, index, f'第 {index} 次提问', state)
+        self.assertGreaterEqual(summarizer.call_count, 2)
+        last_input = json.loads(planner.call_args.args[0])
+        self.assertEqual(last_input['summary'], '保留月度口径')
+        self.assertNotIn({'user': '第 1 次提问', 'assistant': '收到'}, last_input['recent'])
+        self.assertEqual([turn['position'] for turn in state['turns']], [5, 6, 7, 8])
+        before = state['older_before']
+        older = client.get(f'/api/assistant/chat?before={before}').get_json()
+        self.assertEqual([turn['text'] for turn in older['turns']], [f'第 {i} 次提问' for i in range(1, 5)])
+        self.assertEqual(self.client(2).get(f'/api/assistant/chat?before={before}').get_json()['turns'], [])
+        client.delete('/api/assistant/chat', json={'revision': state['revision'], 'request_id': 'summary-reset'})
+        self.assertEqual(client.get(f'/api/assistant/chat?before={before}').get_json()['turns'], [])
+
+    def test_chat_memory_requires_consent_and_respects_edits(self):
+        client = self.client()
+        state = self.chat_message(client, 1, '以后问利润，默认给我扣手续费前的')
+        self.assertEqual(state['turns'][-1]['saved_preference']['value'], 'before_fees')
+        prefs = '/api/assistant/preferences'
+        self.assertEqual(client.get(prefs).get_json(), {'profit_basis': 'before_fees'})
+        self.assertEqual(self.client(2).get(prefs).get_json(), {})
+        self.assertEqual(client.put(prefs, json={'key': 'default_period', 'value': 'today'}).status_code, 200)
+        reset = client.delete('/api/assistant/chat', json={'revision': state['revision'], 'request_id': 'prefs-reset'})
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={
+            'calls': [{'tool': 'query_ledger', 'metric': 'operating_profit'}], 'message': None,
+        }):
+            state = self.chat_message(client, 2, '利润多少', reset.get_json())
+            answer = state['turns'][-1]['answers'][0]['answer']
+            self.assertEqual(answer['metric'], 'profit')
+            self.assertEqual(answer['current']['start_date'], '2026-11-23')
+            state = self.chat_message(client, 3, '今天扣手续费后的利润多少', state)
+            self.assertEqual(state['turns'][-1]['answers'][0]['answer']['metric'], 'operating_profit')
+        self.assertEqual(client.put(prefs, json={'key': 'profit_basis', 'value': 'after_fees'}).status_code, 200)
+        self.assertEqual(client.delete(prefs, json={'key': 'profit_basis'}).get_json(), {'default_period': 'today'})
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={
+            'calls': [{'tool': 'save_user_preference', 'key': 'profit_basis', 'value': 'after_fees'}], 'message': None,
+        }):
+            state = self.chat_message(client, 4, '不要记住扣完手续费的利润', state)
+        self.assertEqual(state['turns'][-1]['notice'], 'assistantMemorySpecify')
+        self.assertEqual(client.get(prefs).get_json(), {'default_period': 'today'})
+
+    def test_repeat_profit_queries_suggest_without_writing_a_preference(self):
+        client = self.client()
+        state = None
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={
+            'calls': [{'tool': 'query_ledger', 'metric': 'operating_profit', 'period': 'today'}], 'message': None,
+        }):
+            for index in range(1, 4):
+                state = self.chat_message(client, index, '今天扣完平台手续费后的利润多少', state)
+                if index == 2:
+                    state = client.delete('/api/assistant/chat', json={
+                        'revision': state['revision'], 'request_id': 'habit-across-chats',
+                    }).get_json()
+        suggestion = {'key': 'profit_basis', 'value': 'after_fees'}
+        self.assertEqual(state['turns'][-1]['suggestion'], suggestion)
+        self.assertEqual(client.get('/api/assistant/preferences').get_json(), {})
+        self.assertEqual(client.put('/api/assistant/preferences', json=suggestion).get_json(),
+                         {'profit_basis': 'after_fees'})
 
     def test_expense_draft_resolves_explicit_relative_dates_in_beijing(self):
         client = self.client()

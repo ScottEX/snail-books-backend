@@ -49,6 +49,10 @@ def extract_expense_draft(text, today):
         'or payAlipay when specified. Write a note of at most 200 characters in the input language.'
     )
     draft = request_json(text, instructions, 'expense_draft', _FIELDS)
+    return validate_expense_draft(draft, text, today)
+
+
+def validate_expense_draft(draft, text, today):
     return _validated_draft(draft, today, _explicit_relative_date(text, today))
 
 

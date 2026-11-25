@@ -61,12 +61,17 @@ def keyword_condition(column, variants):
     return '(' + ' OR '.join(f'INSTR(LOWER(COALESCE({column}, \'\')), LOWER(?)) > 0' for _ in variants) + ')'
 
 
-def search_app_records(keyword):
+APP_SEARCH_KINDS = tuple(source[0] for source in _SOURCES)
+
+
+def search_app_records(keyword, kind=None):
     variants = keyword_variants(keyword)
     with get_db() as db:
         results = []
-        for kind, query, columns in _SOURCES:
+        for source, query, columns in _SOURCES:
+            if kind is not None and kind != source:
+                continue
             conditions = [keyword_condition(column, variants) for column in columns]
             rows = db.execute(query.format(*conditions), variants * len(columns))
-            results.extend({'kind': kind, **dict(row)} for row in rows)
+            results.extend({'kind': source, **dict(row)} for row in rows)
     return results

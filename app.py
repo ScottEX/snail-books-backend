@@ -531,6 +531,13 @@ def init_db():
                 PRIMARY KEY (user_id, key),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+            CREATE TABLE IF NOT EXISTS assistant_chat_archive (
+                user_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                PRIMARY KEY (user_id, position),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
             CREATE TABLE IF NOT EXISTS system_config (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL DEFAULT ''
