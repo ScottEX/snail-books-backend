@@ -206,7 +206,7 @@ def _quick_find(text, *, is_admin):
     routes = exact_destinations(text)
     if routes:
         visible = [route for route in routes if find_app_destinations(route, is_admin=is_admin)]
-        return {'destinations': visible[:4]} if visible else {'notice': 'ledgerAiAdminOnly'}
+        return {'destinations': visible} if visible else {'notice': 'ledgerAiAdminOnly'}
     if not _LITERAL_KEYWORD.fullmatch(text):
         return None
     records = search_app_records(text, exact_identifiers=True)

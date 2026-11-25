@@ -289,6 +289,24 @@ class LedgerAssistantTest(unittest.TestCase):
         self.assertEqual(state['turns'][-1]['notice'], 'assistantMemorySpecify')
         self.assertEqual(client.get(prefs).get_json(), {'default_period': 'today'})
 
+    def test_chat_lists_history_choices_without_a_model(self):
+        client = self.client()
+        state = None
+        expected = [
+            'expense', 'revenue', 'procurementHistory', 'reconciliation',
+            'invoiceRecords', 'feeHistory', 'dividendHistory',
+        ]
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.request_json',
+        ) as model:
+            for index, text in enumerate(('历史', '歷史紀錄？', 'history'), 1):
+                state = self.chat_message(client, index, text, state)
+                self.assertEqual(state['turns'][-1]['destinations'], expected)
+                self.assertIsNone(state['turns'][-1]['notice'])
+            state = self.chat_message(client, 4, '发票历史', state)
+            self.assertEqual(state['turns'][-1]['destinations'], ['invoiceRecords'])
+            model.assert_not_called()
+
     def test_chat_routes_exact_keywords_without_a_model_and_preserves_search_context(self):
         client = self.client()
         with patch('shared.assistant_chat.ai_configured', return_value=True), patch(

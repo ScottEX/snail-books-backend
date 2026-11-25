@@ -60,6 +60,11 @@ The app shows a button; the user chooses whether to open it.
 """
 
 _AMBIGUOUS_METRICS = {'营业额', '营收', '分红', '股东', 'shareholders'}
+_HISTORY_KEYWORDS = {'历史', '历史记录', '历史纪录', '记录', '纪录', 'history', 'records'}
+_HISTORY_DESTINATIONS = (
+    'expense', 'revenue', 'procurementHistory', 'reconciliation',
+    'invoiceRecords', 'feeHistory', 'dividendHistory',
+)
 
 
 def find_app_destinations(route, *, is_admin):
@@ -86,6 +91,8 @@ def match_destination(text, *, is_admin):
 
 def exact_destinations(text):
     variants = set(keyword_variants(text.casefold().strip('？?。！! ')))
+    if variants.intersection(_HISTORY_KEYWORDS):
+        return list(_HISTORY_DESTINATIONS)
     if variants.intersection(_AMBIGUOUS_METRICS):
         return []
     return [route for route, aliases in DESTINATIONS.items() if variants.intersection(aliases.split('、'))]
