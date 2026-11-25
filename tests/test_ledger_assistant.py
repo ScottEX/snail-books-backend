@@ -307,6 +307,55 @@ class LedgerAssistantTest(unittest.TestCase):
             self.assertEqual(state['turns'][-1]['destinations'], ['invoiceRecords'])
             model.assert_not_called()
 
+    def test_chat_supports_general_replies_and_distinguishes_a_model_timeout(self):
+        from requests import Timeout
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', side_effect=[
+            {'calls': [], 'message': '新品上桌，酸辣开胃，等你来尝！'}, Timeout(),
+        ]), patch('shared.assistant_web.search_public_web') as search:
+            state = self.chat_message(self.client(), 1, '给我写一条螺蛳粉新品推广文案')
+            self.assertEqual(state['turns'][-1]['message'], '新品上桌，酸辣开胃，等你来尝！')
+            state = self.chat_message(self.client(), 2, '再短一点', state)
+            self.assertEqual(state['turns'][-1]['notice'], 'assistantModelTimeout')
+            search.assert_not_called()
+
+    def test_chat_routes_current_industry_questions_to_public_search(self):
+        from shared.assistant_web import WebSearchUnavailable
+        sources = [{
+            'title': '螺蛳粉产业报道', 'url': 'https://example.com/industry',
+            'publisher': '公开报道', 'published_date': '2026-10-01', 'snippet': '地方报道提到产业发展。',
+        }]
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_web.search_public_web', side_effect=[sources, WebSearchUnavailable()]) as search, patch(
+            'shared.assistant_web.request_json', side_effect=[
+                {'answer': '公开报道提到了产业发展。[1]'}, {'answer': '螺蛳粉源自柳州。'},
+            ],
+        ) as model, patch('shared.assistant_chat.request_json') as planner:
+            state = self.chat_message(self.client(), 1, '目前螺蛳粉行业现状。')
+            turn = state['turns'][-1]
+            self.assertEqual(turn['message'], '公开报道提到了产业发展。[1]')
+            self.assertEqual(turn['sources'][0]['published_date'], '2026-10-01')
+            self.assertEqual(turn['sources'][0]['url'], 'https://example.com/industry')
+            self.assertNotIn('snippet', turn['sources'][0])
+            self.assertNotIn('https://example.com', model.call_args.args[0])
+            state = self.chat_message(self.client(), 2, '目前螺蛳粉行业现状。', state)
+            self.assertEqual(state['turns'][-1]['notice'], 'assistantWebUnavailable')
+            self.assertEqual(state['turns'][-1]['message'], '螺蛳粉源自柳州。')
+            planner.assert_not_called()
+            self.assertEqual(search.call_args.args[0], '螺蛳粉 行业 产业 发展')
+
+    def test_chat_does_not_send_private_app_queries_to_public_search(self):
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={
+            'calls': [{'tool': 'search_public_web', 'keyword': '螺蛳粉 营业额'}], 'message': None,
+        }), patch('shared.assistant_web.search_public_web') as search:
+            state = self.chat_message(self.client(), 1, '查我们店的营业额')
+            self.assertEqual(state['turns'][-1]['notice'], 'assistantWebPublicOnly')
+            search.assert_not_called()
+
     def test_chat_routes_exact_keywords_without_a_model_and_preserves_search_context(self):
         client = self.client()
         with patch('shared.assistant_chat.ai_configured', return_value=True), patch(

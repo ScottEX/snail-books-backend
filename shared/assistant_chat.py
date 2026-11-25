@@ -1,11 +1,12 @@
 """Model tool dispatch and account-scoped recent conversation for the iOS assistant."""
 
 import json
+import logging
 import re
 
 import requests
 
-from shared import assistant_memory, assistant_summary, ledger_assistant
+from shared import assistant_memory, assistant_summary, assistant_web, ledger_assistant
 from shared.ai_provider import ai_configured, request_json
 from shared.assistant_navigation import DESTINATIONS, NAVIGATION_SKILL, exact_destinations, find_app_destinations, match_destination
 from shared.app_search import APP_SEARCH_KINDS, search_app_records
@@ -15,11 +16,12 @@ from shared.ledger_query import LedgerAdminRequired, REGISTRATION_METRICS, make_
 from shared.rate_limit import reserve_ai_request
 
 _SETTINGS_KEY = 'assistant_chat_v1'
+_LOG = logging.getLogger(__name__)
 _MAX_TURNS = 24
 _MODEL_TURN_LIMIT = 12
 _TOOL_NAMES = (
     'find_app_destinations', 'query_registered_users', 'query_ledger',
-    'search_business_records', 'draft_expense', 'save_user_preference',
+    'search_business_records', 'draft_expense', 'save_user_preference', 'search_public_web',
 )
 _DRAFT_FIELDS = ('amount', 'date', 'category', 'account', 'note')
 _LITERAL_KEYWORD = re.compile(r'[\w][\w .()（）/_-]{0,39}', re.UNICODE)
@@ -116,14 +118,21 @@ def _model_plan(text, previous, turns, today, summary, preferences):
     uncompressed = [turn for turn in turns if turn['position'] > summary.get('through', 0)][-_MODEL_TURN_LIMIT:]
     messages = [
         {'user': turn['text'], 'assistant': turn['message'],
-         'search_keywords': [result['keyword'] for result in turn.get('searches', [])]}
+         'search_keywords': [result['keyword'] for result in turn.get('searches', [])],
+         'public_topic': turn.get('public_topic')}
         for turn in uncompressed
     ]
     payload = json.dumps({'recent': messages, 'previous_query': previous, 'input': text,
                           'summary': summary.get('text'), 'preferences': preferences}, ensure_ascii=False)
     instructions = (
-        f'Today in Beijing is {today.isoformat()}. Interpret the input for the Snail Books application. '
-        'Only query tools provide facts. Output up to 3 tool calls in one turn. You may combine them. '
+        f'Today in Beijing is {today.isoformat()}. You are the Snail Books assistant. '
+        'For ordinary conversation, general knowledge, writing or brainstorming, answer directly in message '
+        '(up to 1200 characters in the user language), with calls=[]; match the requested format when practical. '
+        'Do not infer current facts from model memory. Use search_public_web for public current events, market '
+        'conditions, latest figures, or a request to search the public internet. Put a short public-only search '
+        'query in keyword. Never copy private business data, identifying details, credentials or internal '
+        'record identifiers to that tool. Reuse a recent public_topic when the user follows up about it. '
+        'For App actions and ledger facts, use the corresponding App tools. You may combine up to 3 calls. '
         'Use query_registered_users for count, names or registration timestamps (set metric to '
         'registered_users for count alone or registered_user_details for lists, names, combined count and names, or dates). '
         'Also include a find_app_destinations call with userManagement when giving registration details. '
@@ -151,7 +160,7 @@ def _model_plan(text, previous, turns, today, summary, preferences):
         f'{NAVIGATION_SKILL} Page catalog: {json.dumps(DESTINATIONS, ensure_ascii=False)}. '
         f'Each call has exactly these keys: {", ".join(_CALL_FIELDS)}. Use null for unused fields.'
     )
-    response = request_json(payload, instructions, 'assistant_chat', _FIELDS, max_tokens=1100)
+    response = request_json(payload, instructions, 'assistant_chat', _FIELDS, max_tokens=1500, timeout=(2, 9))
     if not isinstance(response, dict) or not isinstance(response.get('calls'), list):
         raise ValueError('Invalid assistant plan')
     return response
@@ -213,24 +222,70 @@ def _quick_find(text, *, is_admin):
     return {'searches': [{'keyword': text, 'records': records[:16]}]} if records else None
 
 
+def _model_error(error):
+    status = getattr(getattr(error, 'response', None), 'status_code', None)
+    _LOG.warning('Assistant model request failed (%s, status=%s)', type(error).__name__, status)
+    if isinstance(error, requests.Timeout):
+        return 'assistantModelTimeout'
+    if isinstance(error, ValueError):
+        return 'assistantModelInvalid'
+    if isinstance(error, requests.RequestException):
+        return 'assistantModelUnavailable'
+    return 'assistantModelInvalid'
+
+
+def _web_reply(text, query):
+    notice = 'assistantWebNoResults'
+    try:
+        sources = assistant_web.search_public_web(query)
+    except assistant_web.WebSearchUnavailable:
+        _LOG.warning('Assistant public search feeds unavailable')
+        sources = []
+        notice = 'assistantWebUnavailable'
+    if not sources:
+        result = {'notice': notice, 'public_topic': query}
+        if ai_configured():
+            try:
+                result['message'] = assistant_web.public_background(text)
+            except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as error:
+                _model_error(error)
+        return result
+    visible = [{key: value for key, value in source.items() if key != 'snippet'} for source in sources]
+    result = {'sources': visible, 'public_topic': query}
+    if not ai_configured():
+        return {**result, 'notice': 'assistantWebSummaryUnavailable'}
+    try:
+        return {**result, 'message': assistant_web.summarize_public_web(text, sources)}
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as error:
+        _model_error(error)
+        return {**result, 'notice': 'assistantWebSummaryUnavailable'}
+
+
 def _reply(text, previous, turns, today, summary, preferences, *, user_id, is_admin):
     preference = assistant_memory.confirmed_preference(text)
     if preference:
         return {'saved_preference': preference}
+    public_query = assistant_web.known_public_query(text)
+    if public_query:
+        if reserve_ai_request(user_id):
+            return _web_reply(text, public_query)
+        return {'notice': 'expenseAiRateLimit'}
     fallback = _fallback(text, previous, is_admin=is_admin)
     if ai_configured() and reserve_ai_request(user_id):
         try:
             response = _model_plan(text, previous, turns, today, summary, preferences)
-        except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as error:
+            reason = _model_error(error)
             response = fallback
             if response is None:
-                return {'notice': 'ledgerAiFailed'}
+                return {'notice': reason}
     elif fallback is not None:
         response = fallback
     else:
-        return {'notice': 'expenseAiRateLimit' if ai_configured() else 'ledgerAiUnavailable'}
+        return {'notice': 'expenseAiRateLimit' if ai_configured() else 'assistantModelUnavailable'}
 
     destinations, answers, searches = [], [], []
+    web = None
     draft = None
     latest_plan = None
     notice = None
@@ -270,15 +325,23 @@ def _reply(text, previous, turns, today, summary, preferences, *, user_id, is_ad
         elif tool == 'save_user_preference':
             # Only the server's explicit-consent parser above may authorize a chat write.
             notice = 'assistantMemorySpecify'
+        elif tool == 'search_public_web' and web is None:
+            query = assistant_web.public_keyword(text, call.get('keyword'))
+            web = _web_reply(text, query) if query else {'notice': 'assistantWebPublicOnly'}
     message = response.get('message')
     if answers or searches or draft or not isinstance(message, str):
         message = None
     if message:
-        message = message.strip()[:600]
+        message = message.strip()[:1500]
+    if web is not None:
+        # Use the source-backed response for public facts. Model-generated tool planning text is not evidence.
+        message = web.get('message')
+        notice = web.get('notice') or notice
     if not (message or answers or destinations or searches or draft or notice):
         notice = 'ledgerAiUnclear'
     return {'message': message, 'answers': answers, 'destinations': destinations, 'searches': searches,
-            'draft': draft, 'notice': notice, 'plan': latest_plan}
+            'draft': draft, 'notice': notice, 'plan': latest_plan,
+            **{key: web[key] for key in ('sources', 'public_topic') if web and key in web}}
 
 
 def send_message(user_id, revision, request_id, text, today, *, is_admin):
