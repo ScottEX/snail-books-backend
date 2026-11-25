@@ -173,8 +173,12 @@ jobs:
             curl -sSf -o /dev/null http://localhost:8601/ && echo "✅ Staging 冒烟测试通过" || { echo "❌ Staging 冒烟测试失败"; exit 1; }
             echo "✅ Staging 部署完成"
 
-      - name: Verify public search reachability (staging)
-        continue-on-error: true
+  search-smoke-staging:
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/develop' && needs.deploy-staging.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public search reachability
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
