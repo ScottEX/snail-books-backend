@@ -30,8 +30,9 @@ class LedgerAssistantTest(unittest.TestCase):
         cls.app, cls.admin_id = app_module.app, int(ADMIN_USER_ID)
         with get_db() as db:
             db.executemany(
-                "INSERT INTO users (id, username, password, is_verified, created_at) VALUES (?, ?, 'fixture', 1, '2026-11-01')",
-                [(1, 'member'), (2, 'other'), (cls.admin_id, 'admin')],
+                "INSERT INTO users (id, username, password, is_verified, created_at) VALUES (?, ?, 'fixture', 1, ?)",
+                [(1, 'member', '2026-11-10 10:20:00'), (2, 'other', '2026-10-08 08:30:00'),
+                 (cls.admin_id, 'admin', '2026-11-01 09:00:00')],
             )
             db.executemany(
                 "INSERT INTO reconciliations (id, date, bill_date) VALUES (?, ?, ?)",
@@ -95,6 +96,39 @@ class LedgerAssistantTest(unittest.TestCase):
                 result = self.request(self.client(), question=text)
                 self.assertEqual(result['answer']['record']['date'], '2026-11-23')
                 self.assertEqual(result['answer']['record']['id'], 2)
+
+    def test_registrations_answer_count_names_and_dates(self):
+        client = self.client(self.admin_id)
+        for text in ('有多少注册用户，分别叫什么', '有多少註冊使用者，分別叫什麼？'):
+            with self.subTest(text=text):
+                result = self.request(client, question=text)
+                answer = result['answer']
+                self.assertEqual(answer['current']['amount'], 3)
+                self.assertEqual(answer['registrations']['users'][0], {
+                    'id': 1, 'username': 'member', 'created_at': '2026-11-10 10:20:00',
+                })
+                self.assertEqual([row['username'] for row in answer['registrations']['users']],
+                                 ['member', 'admin', 'other'])
+                self.assertIsNone(answer['registrations']['next_offset'])
+        self.request(self.client(), status=403, question='有多少注册用户，分别叫什么')
+
+    def test_registration_follow_up_keeps_period_and_admin_scope(self):
+        client = self.client(self.admin_id)
+        initial = self.request(client, question='本月注册用户有多少')
+        self.assertNotIn('registrations', initial['answer'])
+        with patch('shared.ledger_query._REGISTRATION_PAGE_SIZE', 1):
+            result = self.request(client, context=initial['context'], question='分别是什么时候注册的')
+            answer = result['answer']
+            self.assertEqual(answer['current']['start_date'], '2026-11-01')
+            self.assertEqual(answer['current']['amount'], 2)
+            page = answer['registrations']
+            self.assertEqual([row['username'] for row in page['users']], ['member'])
+            more = self.request(client, action='registration_details', context=result['context'],
+                                offset=page['next_offset'])['answer']['registrations']
+            self.assertEqual([row['username'] for row in more['users']], ['admin'])
+            self.assertIsNone(more['next_offset'])
+        self.request(self.client(), status=422, action='registration_details', context=result['context'])
+        self.request(client, status=422, action='registration_details', context=result['context'], offset=-1)
 
     def test_expense_draft_resolves_explicit_relative_dates_in_beijing(self):
         client = self.client()

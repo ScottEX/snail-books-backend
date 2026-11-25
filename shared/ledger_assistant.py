@@ -8,7 +8,7 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 
 from shared.app_search import keyword_variants
 from shared.ledger_query import (
-    answer_ledger_question, latest_question_plan, make_plan, procurement_answer_records,
+    REGISTRATION_METRICS, answer_ledger_question, latest_question_plan, make_plan, procurement_answer_records,
 )
 
 EXAMPLES = {
@@ -29,6 +29,17 @@ EXAMPLES = {
 _PERIOD_ACTIONS = ('this_month', 'last_month')
 _ORDER_METRICS = ('procurement_summary', 'unsettled_procurement')
 _PAGE_SIZE = 8
+_REGISTRATION_PERIODS = {
+    '今天': 'today', '今日': 'today', '昨天': 'yesterday', '昨日': 'yesterday',
+    '本周': 'this_week', '这周': 'this_week', '上周': 'last_week',
+    '本月': 'this_month', '这个月': 'this_month', '上月': 'last_month', '上个月': 'last_month',
+}
+_REGISTRATION_DETAILS = re.compile(
+    r'(?:请)?(?:列出|看看|查看)?(?:他们|这些人|这些用户)?(?:分别|各自|各)?(?:都)?'
+    r'(?:叫(?:什么(?:名字)?|啥)|(?:是)?哪些人|(?:是)?谁|(?:是)?'
+    r'(?:何时|什么时候|哪天|哪一天)(?:注册的?)?|(?:的)?(?:注册(?:时间|日期)|名单|用户名|名字))'
+    r'(?:呢|吗|和注册时间)?'
+)
 
 
 def _serializer():
@@ -63,6 +74,36 @@ def question_action(question):
     return None
 
 
+def _registration_text(question):
+    return re.sub(r'\s+', '', question.lower()).strip('？?。.!！')
+
+
+def registration_follow_up(question):
+    text = _registration_text(question)
+    return any(_REGISTRATION_DETAILS.fullmatch(variant) for variant in keyword_variants(text)) or text in (
+        'whoarethey', 'whataretheirnames', 'whendidtheyregister', 'showtheirregistrationdates',
+    )
+
+
+def registration_question(question):
+    for variant in keyword_variants(_registration_text(question)):
+        head, _, tail = re.sub(r'[、；;,]', '，', variant).partition('，')
+        match = re.fullmatch(
+            r'(?:请问)?(?:我们)?(?P<period>今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|上个月)?'
+            r'(?:的)?(?:一共|总共|目前|现在)?(?P<count>有多少|有几个|有几位|有几名)?'
+            r'(?:个)?(?:已注册(?:的)?|注册(?:的)?)(?:用户|使用者)'
+            r'(?P<suffix>有多少|多少|有几个|有几位|有几名|有多少人|数量|名单|注册时间|分别叫什么|分别是谁)?', head,
+        )
+        if not match or (tail and not registration_follow_up(tail)):
+            continue
+        suffix = match['suffix']
+        details = bool(tail or (suffix and registration_follow_up(suffix)))
+        if details or match['count'] or suffix:
+            metric = 'registered_user_details' if details else 'registered_users'
+            return make_plan(metric, _REGISTRATION_PERIODS.get(match['period'], 'all_time'))
+    return None
+
+
 def operating_question(question):
     text = re.sub(r'\s+', '', question).rstrip('？?。.!！')
     periods = {'今天': 'today', '今日': 'today', '昨日': 'yesterday', '昨天': 'yesterday',
@@ -80,7 +121,7 @@ def operating_question(question):
 
 
 def direct_question(question):
-    known = latest_question_plan(question)
+    known = registration_question(question) or latest_question_plan(question)
     if known:
         return known
     text = re.sub(r'\s+', '', question.lower()).rstrip('？?。.!！')
@@ -120,8 +161,9 @@ def _month_actions(plan, today, *, is_admin, operating_metrics):
     return actions
 
 
-def answer_response(plan, today, *, is_admin, operating_metrics=False):
-    answer = answer_ledger_question(plan, today, is_admin=is_admin, record_queries=True, operating_metrics=operating_metrics)
+def answer_response(plan, today, *, is_admin, operating_metrics=False, registration_offset=0):
+    answer = answer_ledger_question(plan, today, is_admin=is_admin, record_queries=True,
+                                    operating_metrics=operating_metrics, registration_offset=registration_offset)
     if answer is None:
         if isinstance(plan, dict) and plan.get('period') is None and plan.get('compare_period') is None:
             actions = _month_actions(plan, today, is_admin=is_admin, operating_metrics=operating_metrics)
@@ -137,13 +179,20 @@ def answer_response(plan, today, *, is_admin, operating_metrics=False):
             actions.insert(0, 'compare_last_month')
         if answer['metric'] in _ORDER_METRICS and answer['current']['records']:
             actions.append('details')
+    context_actions = [*actions, 'registration_details'] if answer['metric'] == 'registered_users' else actions
     return {'status': 'ok', 'answer': answer, 'actions': actions,
-            'context': _pack(plan, today, actions) if actions else None}
+            'context': _pack(plan, today, context_actions) if context_actions else None}
 
 
 def apply_action(context, action, payload, *, is_admin, operating_metrics=False):
     plan = context['plan']
     today = date.fromisoformat(context['date'])
+    if action == 'registration_details':
+        offset = payload.get('offset', 0)
+        if plan['metric'] not in REGISTRATION_METRICS or type(offset) is not int or not 0 <= offset <= 100_000:
+            return None
+        return answer_response({**plan, 'metric': 'registered_user_details'}, today, is_admin=is_admin,
+                               operating_metrics=operating_metrics, registration_offset=offset)
     if action == 'details':
         offset = payload.get('offset', 0)
         if type(offset) is not int or offset < 0 or offset > 100_000:

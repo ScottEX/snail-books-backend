@@ -11,6 +11,9 @@ from shared.operating_metrics import period_operating_metrics, revenue_totals
 
 
 _DIVIDEND_METRICS = ('dividend_amount', 'dividend_rounds')
+REGISTRATION_METRICS = ('registered_users', 'registered_user_details')
+_REGISTRATION_PAGE_SIZE = 20
+_REGISTRATION_SCOPE = 'FROM users WHERE is_verified = 1 AND created_at < ? AND (? IS NULL OR created_at >= ?)'
 _METRICS = ('turnover', 'received', 'expense', 'profit', 'registered_users', 'shareholders', *_DIVIDEND_METRICS)
 OPERATING_METRICS = ('net_received', 'operating_profit')
 _PROCUREMENT_TOTALS = ('procurement_summary', 'unsettled_procurement')
@@ -24,7 +27,7 @@ _LATEST_RECORDS = {
                               'date DESC, bill_date DESC, id DESC', 'NULL'),
     'latest_invoice': ('invoice', 'invoice_records', "NULLIF(invoice_number, '')", 'amount', 'date DESC, id DESC', 'NULL'),
 }
-_RECORD_METRICS = (*_LATEST_RECORDS, *_PROCUREMENT_TOTALS)
+_RECORD_METRICS = (*_LATEST_RECORDS, *_PROCUREMENT_TOTALS, 'registered_user_details')
 _CATEGORY_NAMES = {
     'daily': ('daily', '日常'),
     'rent': ('rent', '房租'),
@@ -81,6 +84,8 @@ def interpret_ledger_question(question, today, *, record_queries=False, operatin
     fields = _FIELDS
     if record_queries:
         instructions += (
+            'Use registered_user_details for a registered-user list, usernames or registration dates, '
+            'including requests that also ask how many, such as 有多少注册用户，分别叫什么. '
             'Also support the latest single record by business date. Use latest_procurement for recent purchase orders '
             '(最近一次进货是什么时候, 上次采购单多少钱), latest_expense for expenses, latest_revenue for daily sales '
             'entries, latest_reconciliation for reconciliation submissions, and latest_invoice for invoice records. '
@@ -271,16 +276,17 @@ def procurement_answer_records(plan, today, offset, limit):
     ]
 
 
+def _registration_bounds(start, end):
+    return ((date.fromisoformat(end) + timedelta(days=1)).isoformat(), start, start)
+
+
 def _registered_users(db, start, end):
-    exclusive_end = (date.fromisoformat(end) + timedelta(days=1)).isoformat()
     row = db.execute(
-        """SELECT COUNT(*) AS total,
+        f"""SELECT COUNT(*) AS total,
                   COUNT(CASE WHEN COALESCE(reviewed, 0) = 0 AND delete_scheduled IS NULL THEN 1 END) AS awaiting_review,
                   COUNT(CASE WHEN reviewed = 1 AND is_disabled = 1 AND delete_scheduled IS NULL THEN 1 END) AS disabled
-           FROM users
-           WHERE is_verified = 1 AND created_at < ?
-             AND (? IS NULL OR created_at >= ?)""",
-        (exclusive_end, start, start),
+           {_REGISTRATION_SCOPE}""",
+        _registration_bounds(start, end),
     ).fetchone()
     return {
         'amount': row['total'], 'records': row['total'],
@@ -320,12 +326,24 @@ def _dividend_total(db, metric, start, end, latest_round):
     return result
 
 
+def _registration_details(db, start, end, offset):
+    rows = db.execute(
+        f"""SELECT id, username, created_at {_REGISTRATION_SCOPE}
+           ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?""",
+        (*_registration_bounds(start, end), _REGISTRATION_PAGE_SIZE + 1, offset),
+    ).fetchall()
+    return {
+        'users': [dict(row) for row in rows[:_REGISTRATION_PAGE_SIZE]],
+        'next_offset': offset + _REGISTRATION_PAGE_SIZE if len(rows) > _REGISTRATION_PAGE_SIZE else None,
+    }
+
+
 def _ledger_total(db, metric, category, interval, supplier, *, latest_round=False):
     start, end = (day.isoformat() if day is not None else None for day in interval)
     dates = {'start_date': start, 'end_date': end}
     if metric in _PROCUREMENT_TOTALS:
         return {**dates, **_procurement_total(db, start, end, supplier, unsettled=metric == 'unsettled_procurement')}
-    if metric == 'registered_users':
+    if metric in REGISTRATION_METRICS:
         return {**dates, **_registered_users(db, start, end)}
     if metric in _DIVIDEND_METRICS:
         return {**dates, **_dividend_total(db, metric, start, end, latest_round)}
@@ -382,7 +400,7 @@ def _ledger_total(db, metric, category, interval, supplier, *, latest_round=Fals
 
 
 def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False, validate_only=False,
-                           operating_metrics=False):
+                           operating_metrics=False, registration_offset=0):
     if not isinstance(plan, dict) or plan.keys() != _FIELDS.keys():
         return None
     metric, category = plan['metric'], plan['category']
@@ -412,11 +430,12 @@ def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False,
     comparison_interval = named_ranges.get(compare_period)
     if not interval or (comparison_interval and comparison_interval[1] >= interval[0]):
         return None
-    if metric == 'registered_users' and not is_admin:
+    if metric in REGISTRATION_METRICS and not is_admin:
         raise LedgerAdminRequired()
     if validate_only:
         return True
 
+    registrations = {}
     with get_db() as db:
         if metric in _LATEST_RECORDS:
             return _latest_record(db, metric, interval, category, supplier)
@@ -426,13 +445,18 @@ def answer_ledger_question(plan, today, *, is_admin=False, record_queries=False,
         db.execute('BEGIN')  # Both totals must use the same read snapshot.
         current = _ledger_total(db, metric, category, interval, supplier, latest_round=period == 'latest_round')
         comparison = _ledger_total(db, metric, category, comparison_interval, supplier) if comparison_interval else None
+        if metric == 'registered_user_details':
+            registrations['registrations'] = _registration_details(
+                db, current['start_date'], current['end_date'], registration_offset,
+            )
     difference = None
     if comparison and current.get('fees_complete', True) and comparison.get('fees_complete', True):
-        if metric in ('registered_users', 'dividend_rounds'):
+        if metric in (*REGISTRATION_METRICS, 'dividend_rounds'):
             difference = current['amount'] - comparison['amount']
         elif metric in _PROCUREMENT_TOTALS or (current['records'] and comparison['records']):
             difference = fmt_money(to_decimal(current['amount']) - to_decimal(comparison['amount']))
     return {
-        'metric': metric, 'category': category, 'supplier': supplier, 'current': current,
-        'comparison': comparison, 'difference': difference,
+        'metric': 'registered_users' if metric in REGISTRATION_METRICS else metric,
+        'category': category, 'supplier': supplier, 'current': current,
+        'comparison': comparison, 'difference': difference, **registrations,
     }

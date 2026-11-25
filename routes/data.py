@@ -91,6 +91,9 @@ def _assistant_ledger_ask(payload):
         question = payload.get('question')
         if not isinstance(question, str) or not question.strip() or len(question) > 300:
             return jsonify({'status': 'error', 'message': 'ledgerAiInvalidInput'}), 400
+        if context and 'registration_details' in context['actions'] and ledger_assistant.registration_follow_up(question):
+            result = ledger_assistant.apply_action(context, 'registration_details', {}, **options)
+            return jsonify(result) if result else (jsonify({'status': 'error', 'message': 'ledgerAiUnclear'}), 422)
         action = ledger_assistant.question_action(question)
         if context and action in context['actions']:
             result = ledger_assistant.apply_action(context, action, payload, **options)
