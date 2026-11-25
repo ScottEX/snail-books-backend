@@ -178,15 +178,67 @@ jobs:
     if: github.ref == 'refs/heads/develop' && needs.deploy-staging.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Verify public search reachability
+      - name: Verify deployed chat with navigation and cited public analysis
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/snail-books-backend-staging &&
-            ./venv/bin/python -c "from shared.assistant_web import search_public_web; results = search_public_web('螺蛳粉 行业 产业 发展'); print(f'Public search sources: {len(results)}'); raise SystemExit(0 if results else 1)"
+            set -eu
+            cd /opt/snail-books-backend-staging
+            if [ -r /etc/snail-books-staging/ci-deepseek.env ]; then
+              set -a
+              . /etc/snail-books-staging/ci-deepseek.env
+              set +a
+            fi
+            ./venv/bin/python - <<'PY'
+            import os
+            import re
+            from pathlib import Path
+            from tempfile import TemporaryDirectory
+
+            with TemporaryDirectory(prefix='assistant-chat-smoke-') as temporary:
+                root = Path(temporary)
+                os.environ.update(APP_ENV='staging', FLASK_SECRET_KEY='assistant-chat-smoke-fixture',
+                                  DB=str(root / 'smoke.sqlite'), BG_DIR=str(root / 'bg'),
+                                  INVOICE_FILE_DIR=str(root / 'invoices'), EXPENSE_IMG_DIR=str(root / 'expenses'))
+
+                from app import app
+                from shared.db import get_db
+
+                with get_db() as db:
+                    db.execute("INSERT INTO users (id, username, password, is_verified, is_disabled) "
+                               "VALUES (1, 'ci-chat-fixture', 'fixture', 1, 0)")
+                client = app.test_client()
+                with client.session_transaction() as session:
+                    session['user_id'] = 1
+                revision = None
+                cases = (
+                    ('个人资料', ['profile']),
+                    ('个人', ['profile']),
+                    ('历史', ['expense', 'revenue', 'procurementHistory', 'reconciliation',
+                             'invoiceRecords', 'feeHistory', 'dividendHistory']),
+                    ('螺蛳粉行业分析', None),
+                )
+                for index, (question, expected) in enumerate(cases):
+                    response = client.post('/api/assistant/chat', json={
+                        'text': question, 'revision': revision, 'request_id': f'ci-chat-smoke-{index}',
+                    })
+                    assert response.status_code == 200, f'{question}: HTTP {response.status_code}'
+                    state = response.get_json()
+                    revision, turn = state['revision'], state['turns'][-1]
+                    assert not turn['notice'], f"{question}: {turn['notice']}"
+                    if expected is not None:
+                        assert turn['destinations'] == expected, f'{question}: unexpected destinations'
+                        print(f'{question}: {len(expected)} navigation destination(s)', flush=True)
+                    else:
+                        sources = turn.get('sources') or []
+                        citations = re.findall(r'\[(\d+)\]', turn.get('message') or '')
+                        assert sources and citations, f'{question}: missing sources or cited answer'
+                        assert all(1 <= int(citation) <= len(sources) for citation in citations)
+                        print(f'{question}: cited response with {len(sources)} live source(s)', flush=True)
+            PY
 
   deploy-production:
     needs: test

@@ -307,6 +307,18 @@ class LedgerAssistantTest(unittest.TestCase):
             self.assertEqual(state['turns'][-1]['destinations'], ['invoiceRecords'])
             model.assert_not_called()
 
+    def test_chat_opens_profile_for_full_and_short_keywords(self):
+        client = self.client()
+        state = None
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.request_json',
+        ) as model:
+            for index, text in enumerate(('个人资料', '个人', '個人'), 1):
+                state = self.chat_message(client, index, text, state)
+                self.assertEqual(state['turns'][-1]['destinations'], ['profile'])
+                self.assertIsNone(state['turns'][-1]['notice'])
+            model.assert_not_called()
+
     def test_chat_supports_general_replies_and_distinguishes_a_model_timeout(self):
         from requests import Timeout
         with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
@@ -333,7 +345,7 @@ class LedgerAssistantTest(unittest.TestCase):
                 {'answer': '公开报道提到了产业发展。[1]'}, {'answer': '螺蛳粉源自柳州。'},
             ],
         ) as model, patch('shared.assistant_chat.request_json') as planner:
-            state = self.chat_message(self.client(), 1, '目前螺蛳粉行业现状。')
+            state = self.chat_message(self.client(), 1, '螺蛳粉行业分析')
             turn = state['turns'][-1]
             self.assertEqual(turn['message'], '公开报道提到了产业发展。[1]')
             self.assertEqual(turn['sources'][0]['published_date'], '2026-10-01')

@@ -4,7 +4,7 @@ from shared.app_search import keyword_variants
 
 # IDs are the iOS AppSearchPage values handled by RootStack.
 DESTINATIONS = {
-    'profile': '个人中心、个人资料、个人信息、账户资料、profile、my account、個人中心、個人資料',
+    'profile': '个人中心、个人资料、个人信息、个人、账户资料、profile、my account、個人中心、個人資料',
     'account': '账户信息、昵称、账号资料、account info、帳戶資訊、账号、帳號、暱稱',
     'email': '修改邮箱、更换邮箱、change email、修改郵箱、更改邮箱、更改郵箱、email',
     'password': '修改密码、改密码、更换密码、change password、改密碼、更改密码、更改密碼、更換密碼、password',
