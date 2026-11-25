@@ -249,7 +249,7 @@ class LedgerAssistantTest(unittest.TestCase):
         self.assertGreaterEqual(summarizer.call_count, 2)
         last_input = json.loads(planner.call_args.args[0])
         self.assertEqual(last_input['summary'], '保留月度口径')
-        self.assertNotIn({'user': '第 1 次提问', 'assistant': '收到'}, last_input['recent'])
+        self.assertNotIn('第 1 次提问', [message['user'] for message in last_input['recent']])
         self.assertEqual([turn['position'] for turn in state['turns']], [5, 6, 7, 8])
         before = state['older_before']
         older = client.get(f'/api/assistant/chat?before={before}').get_json()
@@ -288,6 +288,26 @@ class LedgerAssistantTest(unittest.TestCase):
             state = self.chat_message(client, 4, '不要记住扣完手续费的利润', state)
         self.assertEqual(state['turns'][-1]['notice'], 'assistantMemorySpecify')
         self.assertEqual(client.get(prefs).get_json(), {'default_period': 'today'})
+
+    def test_chat_routes_exact_keywords_without_a_model_and_preserves_search_context(self):
+        client = self.client()
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_chat.request_json', return_value={'calls': [
+            {'tool': 'search_business_records', 'keyword': 'A-01', 'kind': 'invoice'},
+        ], 'message': None}) as model:
+            settings = self.chat_message(client, 1, '修改密碼')
+            self.assertEqual(settings['turns'][-1]['destinations'], ['password'])
+            admin = self.chat_message(client, 2, '使用者管理', settings)
+            self.assertEqual(admin['turns'][-1]['destinations'], [])
+            self.assertEqual(admin['turns'][-1]['notice'], 'ledgerAiAdminOnly')
+            invoice = self.chat_message(client, 3, 'a-01', admin)
+            self.assertEqual(invoice['turns'][-1]['searches'][0]['records'][0]['title'], 'A-01')
+            model.assert_not_called()
+            follow_up = self.chat_message(client, 4, '查一下刚才那张发票的记录', invoice)
+        model.assert_called_once()
+        self.assertEqual(json.loads(model.call_args.args[0])['recent'][-1]['search_keywords'], ['a-01'])
+        self.assertEqual(follow_up['turns'][-1]['searches'][0]['records'][0]['title'], 'A-01')
 
     def test_repeat_profit_queries_suggest_without_writing_a_preference(self):
         client = self.client()

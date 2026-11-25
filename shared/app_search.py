@@ -62,16 +62,34 @@ def keyword_condition(column, variants):
 
 
 APP_SEARCH_KINDS = tuple(source[0] for source in _SOURCES)
+_IDENTIFIER_COLUMNS = {
+    'invoice': ('invoice_number', 'company'),
+    'procurement': ('b.batch_number', 'i.product_name', 'p.supplier'),
+    'product': ('name', 'supplier'),
+    'partner': ('name',),
+}
 
 
-def search_app_records(keyword, kind=None):
+def search_app_records(keyword, kind=None, *, exact_identifiers=False):
     variants = keyword_variants(keyword)
     with get_db() as db:
         results = []
         for source, query, columns in _SOURCES:
             if kind is not None and kind != source:
                 continue
-            conditions = [keyword_condition(column, variants) for column in columns]
-            rows = db.execute(query.format(*conditions), variants * len(columns))
+            conditions, params = [], []
+            if exact_identifiers and source not in _IDENTIFIER_COLUMNS:
+                continue
+            for column in columns:
+                if exact_identifiers and column not in _IDENTIFIER_COLUMNS[source]:
+                    conditions.append('0')
+                    continue
+                if exact_identifiers:
+                    placeholders = ', '.join('LOWER(?)' for _ in variants)
+                    conditions.append(f"LOWER(TRIM(COALESCE({column}, ''))) IN ({placeholders})")
+                else:
+                    conditions.append(keyword_condition(column, variants))
+                params.extend(variants)
+            rows = db.execute(query.format(*conditions), params)
             results.extend({'kind': source, **dict(row)} for row in rows)
     return results
