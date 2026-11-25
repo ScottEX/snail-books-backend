@@ -220,6 +220,8 @@ jobs:
                     ('历史', ['expense', 'revenue', 'procurementHistory', 'reconciliation',
                              'invoiceRecords', 'feeHistory', 'dividendHistory']),
                     ('螺蛳粉行业分析', None),
+                    ('整深圳地区螺蛳粉现状整理成报告', None),
+                    ('你自己查', None),
                 )
                 for index, (question, expected) in enumerate(cases):
                     response = client.post('/api/assistant/chat', json={
@@ -237,6 +239,9 @@ jobs:
                         citations = re.findall(r'\[(\d+)\]', turn.get('message') or '')
                         assert sources and citations, f'{question}: missing sources or cited answer'
                         assert all(1 <= int(citation) <= len(sources) for citation in citations)
+                        if question in ('整深圳地区螺蛳粉现状整理成报告', '你自己查'):
+                            assert turn['public_topic'] == '深圳 螺蛳粉', f'{question}: lost the regional topic'
+                            assert '深圳' in turn['message'], f'{question}: report omitted the requested location'
                         print(f'{question}: cited response with {len(sources)} live source(s)', flush=True)
             PY
 

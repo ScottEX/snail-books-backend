@@ -368,6 +368,38 @@ class LedgerAssistantTest(unittest.TestCase):
             self.assertEqual(state['turns'][-1]['notice'], 'assistantWebPublicOnly')
             search.assert_not_called()
 
+    def test_regional_report_retries_the_same_question_and_keeps_results_on_invalid_model_reply(self):
+        question = '整深圳地区螺蛳粉现状整理成报告'
+        sources = [{'title': '深圳螺蛳粉门店报道', 'url': 'https://example.com/local',
+                    'publisher': '测试来源', 'published_date': None, 'snippet': ''}]
+        client = self.client()
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.reserve_ai_request', return_value=True,
+        ), patch('shared.assistant_web.search_regional_report', side_effect=[[], sources]) as search, patch(
+            'shared.assistant_web.summarize_public_web', side_effect=ValueError('Incomplete model response'),
+        ) as model, patch('shared.assistant_chat.request_json') as planner:
+            first = self.chat_message(client, 1, question)
+            second = self.chat_message(client, 2, '你自己查', first)
+        self.assertEqual(first['turns'][-1]['notice'], 'assistantWebNoResults')
+        result = second['turns'][-1]
+        self.assertEqual(result['public_topic'], '深圳 螺蛳粉')
+        self.assertEqual(result['public_question'], question)
+        self.assertIsNone(result['notice'])
+        self.assertIn('深圳螺蛳粉现状简报', result['message'])
+        self.assertIn('深圳螺蛳粉门店报道 [1]', result['message'])
+        self.assertEqual(search.call_args.kwargs, {'retry': True})
+        model.assert_called_once_with(question, sources, as_report=True)
+        planner.assert_not_called()
+
+    def test_search_retry_recovers_regional_topic_from_old_failed_chat(self):
+        from shared.assistant_web import recent_public_request
+        previous = [
+            {'text': '请整理一份深圳地区螺蛳粉的现状报告', 'message': '资料不足，无法形成报告。'},
+            {'text': '你自己查', 'notice': 'assistantModelInvalid'},
+        ]
+        self.assertEqual(recent_public_request(previous)[1:], ('深圳 螺蛳粉', ('深圳', '螺蛳粉')))
+        self.assertIsNone(recent_public_request([*previous, {'text': '这个月我们店利润多少'}]))
+
     def test_chat_routes_exact_keywords_without_a_model_and_preserves_search_context(self):
         client = self.client()
         with patch('shared.assistant_chat.ai_configured', return_value=True), patch(

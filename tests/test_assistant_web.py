@@ -4,7 +4,7 @@ from xml.etree import ElementTree
 
 import requests
 
-from shared.assistant_web import WebSearchUnavailable, search_public_web, summarize_public_web
+from shared.assistant_web import WebSearchUnavailable, search_public_web, search_regional_report, summarize_public_web
 
 
 class AssistantWebTest(unittest.TestCase):
@@ -52,3 +52,18 @@ class AssistantWebTest(unittest.TestCase):
         self.assertEqual(sources[0]['title'], 'Industry headline')
         self.assertEqual(sources[0]['url'], 'https://www.baidu.com/link?url=article')
         self.assertIsNone(sources[0]['published_date'])
+
+    def test_region_search_filters_unrelated_locations_and_deduplicates_across_queries(self):
+        items = ElementTree.fromstring('''
+            <channel>
+              <item><title>柳州螺蛳粉产值</title><link>https://example.com/liuzhou</link></item>
+              <item><title>深圳餐饮报道</title><link>https://example.com/other</link></item>
+              <item><title>深圳餐饮</title><link>https://example.com/local</link>
+                <description>深圳出现螺螄粉新门店</description></item>
+            </channel>
+        ''').findall('item')
+        with patch('shared.assistant_web._read_rss', return_value=items), patch(
+            'shared.assistant_web._baidu_sources', return_value=None,
+        ):
+            sources = search_regional_report('深圳', '螺蛳粉', retry=True)
+        self.assertEqual([item['url'] for item in sources], ['https://example.com/local'])

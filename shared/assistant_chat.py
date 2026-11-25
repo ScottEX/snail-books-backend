@@ -234,16 +234,20 @@ def _model_error(error):
     return 'assistantModelInvalid'
 
 
-def _web_reply(text, query):
+def _web_reply(text, query, *, location=None, retry=False):
     notice = 'assistantWebNoResults'
     try:
-        sources = assistant_web.search_public_web(query)
+        sources = (assistant_web.search_regional_report(*location, retry=retry) if location
+                   else assistant_web.search_public_web(query))
     except assistant_web.WebSearchUnavailable:
         _LOG.warning('Assistant public search feeds unavailable')
         sources = []
         notice = 'assistantWebUnavailable'
+    context = {'public_topic': query, 'public_question': text}
     if not sources:
-        result = {'notice': notice, 'public_topic': query}
+        result = {**context, 'notice': notice}
+        if location:
+            return {**result, 'message': assistant_web.regional_report_outline(location, [])}
         if ai_configured():
             try:
                 result['message'] = assistant_web.public_background(text)
@@ -251,13 +255,16 @@ def _web_reply(text, query):
                 _model_error(error)
         return result
     visible = [{key: value for key, value in source.items() if key != 'snippet'} for source in sources]
-    result = {'sources': visible, 'public_topic': query}
+    result = {**context, 'sources': visible}
     if not ai_configured():
-        return {**result, 'notice': 'assistantWebSummaryUnavailable'}
+        return ({**result, 'message': assistant_web.regional_report_outline(location, sources)} if location
+                else {**result, 'notice': 'assistantWebSummaryUnavailable'})
     try:
-        return {**result, 'message': assistant_web.summarize_public_web(text, sources)}
+        return {**result, 'message': assistant_web.summarize_public_web(text, sources, as_report=bool(location))}
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as error:
         _model_error(error)
+        if location:
+            return {**result, 'message': assistant_web.regional_report_outline(location, sources)}
         return {**result, 'notice': 'assistantWebSummaryUnavailable'}
 
 
@@ -265,10 +272,15 @@ def _reply(text, previous, turns, today, summary, preferences, *, user_id, is_ad
     preference = assistant_memory.confirmed_preference(text)
     if preference:
         return {'saved_preference': preference}
-    public_query = assistant_web.known_public_query(text)
+    question = text
+    retry = assistant_web.is_search_retry(text)
+    location = assistant_web.regional_report(text)
+    public_query = ' '.join(location) if location else assistant_web.known_public_query(text)
+    if retry and (prior := assistant_web.recent_public_request(turns)):
+        question, public_query, location = prior
     if public_query:
         if reserve_ai_request(user_id):
-            return _web_reply(text, public_query)
+            return _web_reply(question, public_query, location=location, retry=retry)
         return {'notice': 'expenseAiRateLimit'}
     fallback = _fallback(text, previous, is_admin=is_admin)
     if ai_configured() and reserve_ai_request(user_id):
@@ -341,7 +353,7 @@ def _reply(text, previous, turns, today, summary, preferences, *, user_id, is_ad
         notice = 'ledgerAiUnclear'
     return {'message': message, 'answers': answers, 'destinations': destinations, 'searches': searches,
             'draft': draft, 'notice': notice, 'plan': latest_plan,
-            **{key: web[key] for key in ('sources', 'public_topic') if web and key in web}}
+            **{key: web[key] for key in ('sources', 'public_topic', 'public_question') if web and key in web}}
 
 
 def send_message(user_id, revision, request_id, text, today, *, is_admin):
