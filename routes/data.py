@@ -15,7 +15,7 @@ from shared.i18n import t
 from shared.validation import validate_required
 from shared.money import fmt_money, to_decimal
 from shared.config import ADMIN_USER_ID
-from shared import ledger_assistant
+from shared import assistant_chat, ledger_assistant
 from shared.ledger_query import (
     LedgerAdminRequired, answer_ledger_question, interpret_ledger_question, make_plan, operating_totals,
 )
@@ -24,6 +24,35 @@ from shared.rate_limit import reserve_ai_request
 from shared.write_request import start_write, finish_write
 
 data_bp = Blueprint('data', __name__)
+
+
+@data_bp.route('/assistant/chat', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def chat():
+    is_admin = str(g.user_id) == ADMIN_USER_ID
+    if request.method == 'GET':
+        return jsonify(assistant_chat.load_chat(g.user_id, is_admin=is_admin))
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+    revision, request_id = payload.get('revision'), payload.get('request_id')
+    if (not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,96}', request_id)
+            or (revision is not None and (not isinstance(revision, str) or
+                                          not re.fullmatch(r'[A-Za-z0-9_-]{8,96}', revision)))):
+        return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+
+    if request.method == 'DELETE':
+        state = assistant_chat.reset_chat(g.user_id, revision, request_id)
+    else:
+        text = payload.get('text')
+        if not isinstance(text, str) or not text.strip() or len(text.strip()) > 500:
+            return jsonify({'message': 'ledgerAiInvalidInput'}), 400
+        today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+        state = assistant_chat.send_message(g.user_id, revision, request_id, text.strip(), today, is_admin=is_admin)
+    if state is None:
+        return jsonify({'message': 'assistantChatChanged'}), 409
+    return jsonify(assistant_chat.public_chat(state, is_admin=is_admin))
 
 
 @data_bp.route('/app/search', methods=['POST'])

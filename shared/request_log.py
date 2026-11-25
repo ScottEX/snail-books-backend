@@ -66,7 +66,7 @@ def _now_iso() -> str:
 
 
 _SENSITIVE_MASK = '***'
-_PRIVATE_BODY_PATHS = {'/api/transactions/expense-draft', '/api/ledger/ask', '/api/app/search'}
+_PRIVATE_BODY_PATHS = {'/api/transactions/expense-draft', '/api/ledger/ask', '/api/app/search', '/api/assistant/chat'}
 
 
 def _mask_sensitive(data):

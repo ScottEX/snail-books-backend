@@ -1,5 +1,6 @@
 """Regression tests for the assistant's question and expense draft endpoints."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -129,6 +130,71 @@ class LedgerAssistantTest(unittest.TestCase):
             self.assertIsNone(more['next_offset'])
         self.request(self.client(), status=422, action='registration_details', context=result['context'])
         self.request(client, status=422, action='registration_details', context=result['context'], offset=-1)
+
+    def test_chat_executes_multiple_tools_and_inherits_registration_scope(self):
+        client = self.client(self.admin_id)
+        def send(request_id, text, revision=None):
+            response = client.post('/api/assistant/chat', json={
+                'request_id': request_id, 'text': text, 'revision': revision,
+            })
+            self.assertEqual(response.status_code, 200, response.get_json())
+            return response.get_json()
+
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.request_json',
+            side_effect=[
+                {'calls': [
+                    {'tool': 'query_registered_users', 'metric': 'registered_user_details', 'period': 'this_month'},
+                    {'tool': 'find_app_destinations', 'route': 'userManagement'},
+                ], 'message': None},
+                {'calls': [{'tool': 'query_registered_users', 'metric': 'registered_user_details',
+                            'use_previous': True}], 'message': None},
+                {'calls': [{'tool': 'find_app_destinations', 'route': 'profile'}], 'message': '可以打开个人中心。'},
+            ],
+        ) as provider:
+            first = send('chat-test-01', '这个月注册用户有多少，名字是什么')
+            second = send('chat-test-02', '他们什么时候注册的？', first['revision'])
+            third = send('chat-test-03', '我想看看我的账户资料', second['revision'])
+            duplicate = send('chat-test-03', '我想看看我的账户资料', second['revision'])
+            self.assertEqual(provider.call_count, 3)
+            inputs = json.loads(provider.call_args_list[1].args[0])
+            self.assertEqual(inputs['previous_query']['period'], 'this_month')
+            self.assertEqual(inputs['recent'][0]['user'], '这个月注册用户有多少，名字是什么')
+            self.assertNotIn('2026-11-10 10:20:00', provider.call_args_list[1].args[0])
+
+        for state in (first, second):
+            turn = state['turns'][-1]
+            self.assertEqual(turn['destinations'], ['userManagement'])
+            answer = turn['answers'][0]['answer']
+            self.assertEqual(answer['current']['amount'], 2)
+            self.assertEqual([row['username'] for row in answer['registrations']['users']], ['member', 'admin'])
+        self.assertEqual(third['turns'][-1]['destinations'], ['profile'])
+        self.assertEqual(third, duplicate)
+        self.assertEqual(client.get('/api/assistant/chat').get_json(), third)
+        self.assertEqual(self.client().get('/api/assistant/chat').get_json(), {'revision': None, 'turns': []})
+        stale = client.post('/api/assistant/chat', json={
+            'revision': first['revision'], 'request_id': 'chat-stale-1', 'text': 'another device',
+        })
+        self.assertEqual(stale.status_code, 409)
+        reset = client.delete('/api/assistant/chat', json={'revision': third['revision'], 'request_id': 'chat-reset-1'})
+        self.assertEqual(reset.get_json(), {'revision': 'chat-reset-1', 'turns': []})
+
+    def test_chat_rejects_privileged_tools_and_unknown_destinations(self):
+        with patch('shared.assistant_chat.ai_configured', return_value=True), patch(
+            'shared.assistant_chat.request_json',
+            return_value={'calls': [
+                {'tool': 'find_app_destinations', 'route': 'https://example.com'},
+                {'tool': 'find_app_destinations', 'route': 'userManagement'},
+                {'tool': 'query_registered_users', 'metric': 'registered_user_details'},
+            ], 'message': None},
+        ):
+            result = self.client().post('/api/assistant/chat', json={
+                'request_id': 'chat-test-denied', 'text': '给我用户名单', 'revision': None,
+            })
+        self.assertEqual(result.status_code, 200)
+        turn = result.get_json()['turns'][0]
+        self.assertEqual((turn['answers'], turn['destinations'], turn['notice']), ([], [], 'ledgerAiAdminOnly'))
+        self.assertEqual(self.app.test_client().get('/api/assistant/chat').status_code, 401)
 
     def test_expense_draft_resolves_explicit_relative_dates_in_beijing(self):
         client = self.client()
